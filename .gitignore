@@ -58,3 +58,10 @@ dist/
 build/
 .cache/
 
+# Native mobile build outputs
+.gradle/
+*.apk
+*.aab
+ios/App/build/
+ios/App/*.xcworkspace/xcuserdata/
+

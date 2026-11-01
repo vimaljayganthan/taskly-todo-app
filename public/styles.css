@@ -1082,3 +1082,39 @@ kbd {
     bottom: 16px;
   }
 }
+
+/* ==========================================================================
+   Capacitor Mobile & Safe Area Enhancements
+   ========================================================================== */
+@supports (padding-top: env(safe-area-inset-top)) {
+  body {
+    padding-top: max(20px, calc(env(safe-area-inset-top) + 12px));
+    padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 20px));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+}
+
+body.is-native-mobile {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior-y: none;
+}
+
+body.is-native-mobile input,
+body.is-native-mobile textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+button, input, [role="button"], [role="tab"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 768px) {
+  .task-input,
+  .due-date-input {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS */
+  }
+}

@@ -8,13 +8,25 @@
     "dev": "node --watch server.js",
     "test": "node --test",
     "migrate:firestore": "node scripts/migrate-to-firestore.js",
-    "migrate:supabase": "node scripts/migrate-to-supabase.js"
+    "migrate:supabase": "node scripts/migrate-to-supabase.js",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "cap:assets": "python3 scripts/generate-mobile-assets.py"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@google-cloud/firestore": "^9.4.0",
     "@supabase/supabase-js": "^2.118.0",
     "express": "^5.3.0"

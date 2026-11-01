@@ -203,6 +203,58 @@ node -c scripts/migrate-to-supabase.js
 
 ---
 
+## Mobile Applications (Android & iOS with Capacitor)
+
+Taskly can be built and run as native **Android** and **iOS** mobile applications using Capacitor. The mobile apps reuse the identical frontend and communicate directly with the live production backend (`https://taskly-todo-app-4z1c.vercel.app`), preserving all CRUD functionality and Supabase persistence without exposing any database secrets inside the client apps.
+
+### Mobile Features
+- **App Name**: `Taskly`
+- **Application ID**: `com.taskly.app`
+- **Branded App Icon & Splash Screen**: Emerald Green checkmark branding (`#10b981`) on Midnight Obsidian (`#0f172a`).
+- **Safe Area Inset Support**: Full notch and dynamic island compatibility for iPhone and modern Android devices (`viewport-fit=cover`).
+- **Dynamic Status Bar Styling**: Automatically switches between dark and light status bar themes to match the in-app theme toggle.
+- **Native Android Back Button**: Navigates back in browser history or cleanly exits app.
+
+### Building & Running on Android
+
+1. **Prerequisites**: Install [Android Studio](https://developer.android.com/studio) and ensure the Android SDK is installed.
+2. **Sync Web Assets & Plugins**:
+   ```bash
+   npm run cap:sync
+   ```
+3. **Open Android Project in Android Studio**:
+   ```bash
+   npm run cap:open:android
+   ```
+4. **Build & Run**:
+   - In Android Studio, connect a physical device via USB or start an Android Virtual Device (AVD).
+   - Click the green **Run (▶)** button or build an APK via **Build** -> **Build Bundle(s) / APK(s)** -> **Build APK(s)**.
+
+### Building & Running on iOS
+
+1. **Prerequisites**: macOS with [Xcode](https://developer.apple.com/xcode/) installed.
+2. **Sync Web Assets & Plugins**:
+   ```bash
+   npm run cap:sync
+   ```
+3. **Open iOS Project in Xcode**:
+   ```bash
+   npm run cap:open:ios
+   ```
+4. **Build & Run**:
+   - In Xcode, select your target simulator (e.g. iPhone 16 Pro) or your connected iPhone.
+   - Select your Development Team under **Signing & Capabilities** in the target settings.
+   - Click **Run (⌘ + R)**.
+
+### Regenerating App Icons & Splash Screens
+To recreate all multi-density native icons and splash screens:
+```bash
+npm run cap:assets
+npm run cap:sync
+```
+
+---
+
 ## License
 
 ISC License. See [package.json](package.json) for details.

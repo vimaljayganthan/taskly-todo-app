@@ -1,3 +1,25 @@
+// ==========================================================================
+// API Base URL Configuration (Automatic Hybrid Web & Native Mobile Routing)
+// ==========================================================================
+const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined' && window.TASKLY_API_URL) {
+    return window.TASKLY_API_URL.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const isCapacitor = Boolean(
+      window.Capacitor?.isNativePlatform?.() ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.protocol === 'ionic:' ||
+      (window.location.hostname === 'localhost' && window.location.port === '' && !window.location.origin.includes(':3000'))
+    );
+    if (isCapacitor) {
+      return 'https://taskly-todo-app-4z1c.vercel.app';
+    }
+  }
+  // Standard web browser deployment on Vercel or local Express development
+  return '';
+})();
+
 // State Management
 const state = {
   todos: [],
@@ -47,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDateDisplay();
   setupEventListeners();
   updateCharCounter();
+  initCapacitor();
   fetchTodos();
 });
 
@@ -58,6 +81,54 @@ function toggleTheme() {
   state.theme = state.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', state.theme);
   localStorage.setItem('taskly_theme', state.theme);
+  updateStatusBarTheme();
+}
+
+// Native Capacitor Lifecycle & Status Bar Configuration
+async function initCapacitor() {
+  if (typeof window !== 'undefined' && (window.Capacitor?.isNativePlatform?.() || window.location.protocol === 'capacitor:')) {
+    try {
+      document.body.classList.add('is-native-mobile');
+
+      // 1. Configure Status Bar to match Taskly theme
+      updateStatusBarTheme();
+
+      // 2. Hide Splash Screen smoothly once UI is mounted
+      if (window.Capacitor?.Plugins?.SplashScreen) {
+        setTimeout(async () => {
+          try {
+            await window.Capacitor.Plugins.SplashScreen.hide({ fadeOutDuration: 300 });
+          } catch (_) {}
+        }, 400);
+      }
+
+      // 3. Native Android Hardware Back Button Handling
+      if (window.Capacitor?.Plugins?.App) {
+        window.Capacitor.Plugins.App.addListener('backButton', ({ canGoBack }) => {
+          if (canGoBack) {
+            window.history.back();
+          } else {
+            window.Capacitor.Plugins.App.exitApp();
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('[Capacitor] Plugin initialization notice:', err);
+    }
+  }
+}
+
+function updateStatusBarTheme() {
+  if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.StatusBar) {
+    try {
+      const { StatusBar, Style } = window.Capacitor.Plugins;
+      const isDark = state.theme === 'dark';
+      StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {});
+      if (window.Capacitor.getPlatform() === 'android') {
+        StatusBar.setBackgroundColor({ color: isDark ? '#0f172a' : '#ffffff' }).catch(() => {});
+      }
+    } catch (_) {}
+  }
 }
 
 function initDateDisplay() {
@@ -108,7 +179,7 @@ function setupEventListeners() {
 // ==========================================================================
 async function fetchTodos() {
   try {
-    const res = await fetch('/api/todos');
+    const res = await fetch(`${API_BASE_URL}/api/todos`);
     if (!res.ok) throw new Error('Failed to load tasks');
     state.todos = await res.json();
     render();
@@ -124,7 +195,7 @@ async function handleAddTask(e) {
   if (!title) return;
 
   try {
-    const res = await fetch('/api/todos', {
+    const res = await fetch(`${API_BASE_URL}/api/todos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, dueDate })
@@ -172,7 +243,7 @@ async function handleToggleComplete(id) {
   render();
 
   try {
-    const res = await fetch(`/api/todos/${id}`, {
+    const res = await fetch(`${API_BASE_URL}/api/todos/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ completed: nextStatus })
@@ -198,7 +269,7 @@ async function handleDeleteTask(id) {
   }
 
   try {
-    const res = await fetch(`/api/todos/${id}`, {
+    const res = await fetch(`${API_BASE_URL}/api/todos/${id}`, {
       method: 'DELETE'
     });
 
@@ -218,7 +289,7 @@ async function handleClearCompleted() {
   if (!completedCount) return;
 
   try {
-    const res = await fetch('/api/todos', {
+    const res = await fetch(`${API_BASE_URL}/api/todos`, {
       method: 'DELETE'
     });
 
