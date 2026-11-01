@@ -2,7 +2,7 @@ const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { FileStorageAdapter, FirestoreStorageAdapter } = require('../storage/taskStore.js');
+const { FileStorageAdapter, FirestoreStorageAdapter, SupabaseStorageAdapter } = require('../storage/taskStore.js');
 
 describe('Storage Adapters Test Suite', () => {
   const testFilePath = path.join('/tmp', `taskly-test-${Date.now()}.json`);
@@ -68,6 +68,158 @@ describe('Storage Adapters Test Suite', () => {
       });
       const deletedCount = await adapter.clearCompleted();
       assert.ok(deletedCount >= 1);
+    });
+  });
+
+  describe('SupabaseStorageAdapter (Vercel Serverless Production Validation)', () => {
+    let mockRows;
+    let mockSupabase;
+    let supabaseAdapter;
+
+    before(() => {
+      mockRows = new Map();
+
+      mockSupabase = {
+        from: (table) => {
+          let currentFilter = null;
+          let currentOrder = null;
+          let pendingInsert = null;
+          let pendingUpdate = null;
+          let isDelete = false;
+
+          const queryBuilder = {
+            select: () => queryBuilder,
+            order: (col, opts) => {
+              currentOrder = { col, ascending: opts?.ascending ?? true };
+              return queryBuilder;
+            },
+            eq: (col, val) => {
+              currentFilter = { col, val };
+              return queryBuilder;
+            },
+            insert: (payload) => {
+              pendingInsert = Array.isArray(payload) ? payload : [payload];
+              return queryBuilder;
+            },
+            update: (payload) => {
+              pendingUpdate = payload;
+              return queryBuilder;
+            },
+            delete: () => {
+              isDelete = true;
+              return queryBuilder;
+            },
+            single: async () => {
+              const res = await queryBuilder;
+              return { data: res.data ? res.data[0] : null, error: res.error };
+            },
+            then: (resolve) => {
+              if (pendingInsert) {
+                const inserted = [];
+                for (const item of pendingInsert) {
+                  mockRows.set(item.id, Object.assign({}, item));
+                  inserted.push(item);
+                }
+                return resolve({ data: inserted, error: null });
+              }
+
+              if (pendingUpdate) {
+                const updated = [];
+                for (const [id, row] of mockRows.entries()) {
+                  if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                    const newRow = Object.assign({}, row, pendingUpdate);
+                    mockRows.set(id, newRow);
+                    updated.push(newRow);
+                  }
+                }
+                return resolve({ data: updated, error: null });
+              }
+
+              if (isDelete) {
+                const deleted = [];
+                for (const [id, row] of Array.from(mockRows.entries())) {
+                  if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                    mockRows.delete(id);
+                    deleted.push(row);
+                  }
+                }
+                return resolve({ data: deleted, error: null });
+              }
+
+              // Query select
+              let list = Array.from(mockRows.values());
+              if (currentOrder) {
+                list.sort((a, b) => {
+                  const valA = a[currentOrder.col] || '';
+                  const valB = b[currentOrder.col] || '';
+                  return currentOrder.ascending ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+                });
+              }
+              return resolve({ data: list, error: null });
+            }
+          };
+
+          return queryBuilder;
+        }
+      };
+
+      supabaseAdapter = new SupabaseStorageAdapter(mockSupabase, 'todos');
+    });
+
+    test('Supabase: Creates and persists a task', async () => {
+      const task = {
+        id: 'sb-task-1',
+        title: 'Production Supabase Task',
+        dueDate: '2026-12-15',
+        completed: false,
+        createdAt: new Date().toISOString()
+      };
+      const created = await supabaseAdapter.createTask(task);
+      assert.strictEqual(created.id, 'sb-task-1');
+      assert.strictEqual(created.title, 'Production Supabase Task');
+      assert.strictEqual(created.dueDate, '2026-12-15');
+      assert.strictEqual(mockRows.size, 1);
+    });
+
+    test('Supabase: Retrieves all tasks mapped to frontend contract', async () => {
+      const tasks = await supabaseAdapter.getAllTasks();
+      assert.strictEqual(tasks.length, 1);
+      assert.strictEqual(tasks[0].id, 'sb-task-1');
+      assert.strictEqual(tasks[0].dueDate, '2026-12-15');
+    });
+
+    test('Supabase: Updates task fields (completion, title, dueDate)', async () => {
+      const updated = await supabaseAdapter.updateTask('sb-task-1', {
+        completed: true,
+        title: 'Updated Supabase Task'
+      });
+      assert.strictEqual(updated.completed, true);
+      assert.strictEqual(updated.title, 'Updated Supabase Task');
+
+      const notFound = await supabaseAdapter.updateTask('non-existent', { completed: true });
+      assert.strictEqual(notFound, null);
+    });
+
+    test('Supabase: Deletes a task by ID', async () => {
+      const success = await supabaseAdapter.deleteTask('sb-task-1');
+      assert.strictEqual(success, true);
+      assert.strictEqual(mockRows.size, 0);
+
+      const notFound = await supabaseAdapter.deleteTask('non-existent');
+      assert.strictEqual(notFound, false);
+    });
+
+    test('Supabase: Bulk clears completed tasks', async () => {
+      await supabaseAdapter.createTask({ id: 's1', title: 'Task 1', completed: true });
+      await supabaseAdapter.createTask({ id: 's2', title: 'Task 2', completed: true });
+      await supabaseAdapter.createTask({ id: 's3', title: 'Task 3', completed: false });
+
+      const deletedCount = await supabaseAdapter.clearCompleted();
+      assert.strictEqual(deletedCount, 2);
+
+      const remaining = await supabaseAdapter.getAllTasks();
+      assert.strictEqual(remaining.length, 1);
+      assert.strictEqual(remaining[0].id, 's3');
     });
   });
 
@@ -187,4 +339,3 @@ describe('Storage Adapters Test Suite', () => {
     });
   });
 });
-

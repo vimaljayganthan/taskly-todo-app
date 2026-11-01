@@ -4,7 +4,7 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 const app = require('../server.js');
-const { setStorage, FileStorageAdapter } = require('../storage/taskStore.js');
+const { setStorage, FileStorageAdapter, SupabaseStorageAdapter } = require('../storage/taskStore.js');
 
 // Lightweight in-memory HTTP dispatcher for Express (zero network/socket dependency)
 function mockRequest(app, options) {
@@ -45,7 +45,7 @@ function mockRequest(app, options) {
   });
 }
 
-describe('Taskly Production API Test Suite', () => {
+describe('Taskly Production API Test Suite (File Storage)', () => {
   let createdTodoId;
   const testFile = path.join('/tmp', `taskly-api-test-${Date.now()}.json`);
 
@@ -158,5 +158,152 @@ describe('Taskly Production API Test Suite', () => {
     });
     assert.strictEqual(res.status, 404);
     assert.strictEqual(res.body.error, 'Endpoint not found');
+  });
+});
+
+describe('Taskly Production API Test Suite (Supabase PostgreSQL Mode)', () => {
+  let createdTodoId;
+  let mockRows;
+
+  before(() => {
+    mockRows = new Map();
+
+    const mockSupabase = {
+      from: () => {
+        let currentFilter = null;
+        let pendingInsert = null;
+        let pendingUpdate = null;
+        let isDelete = false;
+
+        const builder = {
+          select: () => builder,
+          order: () => builder,
+          eq: (col, val) => {
+            currentFilter = { col, val };
+            return builder;
+          },
+          insert: (payload) => {
+            pendingInsert = Array.isArray(payload) ? payload : [payload];
+            return builder;
+          },
+          update: (payload) => {
+            pendingUpdate = payload;
+            return builder;
+          },
+          delete: () => {
+            isDelete = true;
+            return builder;
+          },
+          single: async () => {
+            const res = await builder;
+            return { data: res.data ? res.data[0] : null, error: res.error };
+          },
+          then: (resolve) => {
+            if (pendingInsert) {
+              const inserted = [];
+              for (const item of pendingInsert) {
+                mockRows.set(item.id, Object.assign({}, item));
+                inserted.push(item);
+              }
+              return resolve({ data: inserted, error: null });
+            }
+            if (pendingUpdate) {
+              const updated = [];
+              for (const [id, row] of mockRows.entries()) {
+                if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                  const newRow = Object.assign({}, row, pendingUpdate);
+                  mockRows.set(id, newRow);
+                  updated.push(newRow);
+                }
+              }
+              return resolve({ data: updated, error: null });
+            }
+            if (isDelete) {
+              const deleted = [];
+              for (const [id, row] of Array.from(mockRows.entries())) {
+                if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                  mockRows.delete(id);
+                  deleted.push(row);
+                }
+              }
+              return resolve({ data: deleted, error: null });
+            }
+            return resolve({ data: Array.from(mockRows.values()), error: null });
+          }
+        };
+        return builder;
+      }
+    };
+
+    setStorage(new SupabaseStorageAdapter(mockSupabase, 'todos'), 'supabase');
+  });
+
+  test('POST /api/todos (Supabase): Creates a new task and returns 201', async () => {
+    const payload = {
+      title: 'Supabase Task via REST API',
+      dueDate: '2026-11-28'
+    };
+    const res = await mockRequest(app, {
+      method: 'POST',
+      url: '/api/todos',
+      body: payload
+    });
+
+    assert.strictEqual(res.status, 201);
+    assert.ok(res.body.id);
+    assert.strictEqual(res.body.title, payload.title);
+    assert.strictEqual(res.body.dueDate, '2026-11-28');
+    assert.strictEqual(res.body.completed, false);
+    createdTodoId = res.body.id;
+  });
+
+  test('GET /api/todos (Supabase): Retrieves tasks from Supabase', async () => {
+    const res = await mockRequest(app, { method: 'GET', url: '/api/todos' });
+    assert.strictEqual(res.status, 200);
+    assert.ok(Array.isArray(res.body));
+    assert.strictEqual(res.body.length, 1);
+    assert.strictEqual(res.body[0].id, createdTodoId);
+  });
+
+  test('PATCH /api/todos/:id (Supabase): Updates completion status', async () => {
+    const res = await mockRequest(app, {
+      method: 'PATCH',
+      url: `/api/todos/${createdTodoId}`,
+      body: { completed: true, title: 'Completed Supabase Task' }
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.completed, true);
+    assert.strictEqual(res.body.title, 'Completed Supabase Task');
+  });
+
+  test('DELETE /api/todos/:id (Supabase): Deletes single task', async () => {
+    const res = await mockRequest(app, {
+      method: 'DELETE',
+      url: `/api/todos/${createdTodoId}`
+    });
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.success, true);
+    assert.strictEqual(mockRows.size, 0);
+  });
+
+  test('DELETE /api/todos (Supabase): Bulk clears completed tasks', async () => {
+    // Insert 3 tasks
+    await mockRequest(app, { method: 'POST', url: '/api/todos', body: { title: 'Bulk 1' } });
+    await mockRequest(app, { method: 'POST', url: '/api/todos', body: { title: 'Bulk 2' } });
+    const res3 = await mockRequest(app, { method: 'POST', url: '/api/todos', body: { title: 'Bulk 3' } });
+
+    // Mark 1 and 2 as completed
+    const list = await mockRequest(app, { method: 'GET', url: '/api/todos' });
+    await mockRequest(app, { method: 'PATCH', url: `/api/todos/${list.body[0].id}`, body: { completed: true } });
+    await mockRequest(app, { method: 'PATCH', url: `/api/todos/${list.body[1].id}`, body: { completed: true } });
+
+    const clearRes = await mockRequest(app, { method: 'DELETE', url: '/api/todos' });
+    assert.strictEqual(clearRes.status, 200);
+    assert.strictEqual(clearRes.body.count, 2);
+
+    const afterList = await mockRequest(app, { method: 'GET', url: '/api/todos' });
+    assert.strictEqual(afterList.body.length, 1);
   });
 });

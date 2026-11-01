@@ -27,9 +27,11 @@ jobs:
       - name: Syntax & Integrity Validation
         run: |
           node -c server.js
+          node -c api/index.js
           node -c public/app.js
           node -c storage/taskStore.js
           node -c scripts/migrate-to-firestore.js
+          node -c scripts/migrate-to-supabase.js
 
       - name: Run Automated Test Suite
         run: npm test

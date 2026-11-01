@@ -1,6 +1,9 @@
 # Taskly — Production-Ready Task Manager
 
-Taskly is a modern, responsive, and minimalist task management web application designed for high-focus daily productivity. Built with Node.js and vanilla web technologies, Taskly delivers a lightweight, zero-bloat user experience alongside clean RESTful backend APIs and dual-mode data persistence (Local JSON for development, Google Cloud Firestore for production).
+Taskly is a modern, responsive, and minimalist task management web application designed for high-focus daily productivity. Built with Node.js and vanilla web technologies, Taskly delivers a lightweight, zero-bloat user experience alongside clean RESTful backend APIs and multi-environment data persistence:
+- **Local Development**: Zero-setup local JSON file storage (`data/todos.json`) with atomic write protection.
+- **Vercel Production**: High-performance, serverless PostgreSQL persistence via **Supabase**.
+- **Container / GCP Cloud Run**: Cloud Firestore Native support.
 
 ---
 
@@ -13,7 +16,7 @@ Taskly is a modern, responsive, and minimalist task management web application d
 - 🔤 **Live Character Counter**: Real-time title character counter that warns in bold red when titles exceed 50 characters.
 - 🌓 **Adaptive Light & Dark Themes**: Modern White & Brightened Green light theme and a high-contrast Midnight Obsidian & Neon Green dark theme with persistent local storage.
 - ⚡ **Lightweight Architecture**: Zero frontend bundle overhead—pure HTML5, modern CSS custom properties, and native ES6+ JavaScript.
-- 🛡️ **Dual-Mode Persistence & Enterprise Safety**: Local JSON files for offline development; Google Cloud Firestore Native for multi-instance production with zero data loss and automated health probes.
+- 🛡️ **Vercel Serverless & Supabase Ready**: Engineered for serverless environments where local filesystems are read-only (`/var/task`). Automatically routes through Supabase PostgreSQL over HTTPS.
 
 ---
 
@@ -22,11 +25,10 @@ Taskly is a modern, responsive, and minimalist task management web application d
 - **Runtime**: Node.js (v20+ / v24+)
 - **Backend Framework**: Express.js (v5.3.0)
 - **Frontend**: Vanilla HTML5, CSS3 (Custom Design Tokens), JavaScript (ES6+ Fetch & DOM APIs)
-- **Database (Production)**: Google Cloud Firestore (Native Mode)
-- **Database (Development)**: Local JSON (`data/todos.json`) with atomic write protection
-- **Containerization**: Multi-stage Docker (`node:20-alpine`, non-root security)
-- **Cloud Platform**: Google Cloud Run (`asia-south1`, Mumbai)
-- **CI/CD**: GitHub Actions with Workload Identity Federation (Zero long-lived keys)
+- **Production Database**: Supabase PostgreSQL (via `@supabase/supabase-js`)
+- **Local Database**: Local JSON (`data/todos.json`) with atomic write protection
+- **Hosting & Serverless**: Vercel Serverless Functions (`api/index.js`, `vercel.json`) / Docker & Google Cloud Run ready
+- **CI/CD**: GitHub Actions automated lint, syntax validation, and test runner
 
 ---
 
@@ -38,10 +40,13 @@ ToDo/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                   # CI pipeline (lint, automated test suite, Docker verify)
-│       └── deploy-gcp.yml           # CD pipeline (WIF auth, Artifact Registry, Cloud Run)
+│       └── deploy-gcp.yml           # CD pipeline for Google Cloud Run
 ├── .gitignore                       # Git exclusion rules for node_modules, secrets, and backups
+├── api/
+│   └── index.js                     # Vercel Serverless Function entrypoint
+├── vercel.json                      # Vercel URL rewrite rules for /api and static routes
 ├── Dockerfile                       # Multi-stage production container definition
-├── .dockerignore                    # Build optimization rules
+├── .dockerignore                    # Container build exclusion rules
 ├── data/
 │   ├── todos.json                   # Local development task storage (git-ignored)
 │   └── todos.backup.json            # Permanent backup of initial tasks
@@ -50,12 +55,15 @@ ToDo/
 │   ├── styles.css                   # Theme variables, responsive styles, and animations
 │   └── app.js                       # Client-side reactivity, optimistic UI, and API sync
 ├── scripts/
-│   └── migrate-to-firestore.js      # Non-destructive, idempotent Firestore migration utility
+│   ├── supabase-schema.sql          # Copy-pasteable SQL schema for Supabase
+│   ├── migrate-to-supabase.js       # Safe, idempotent Supabase migration utility
+│   └── migrate-to-firestore.js      # Safe, idempotent Firestore migration utility
 ├── storage/
-│   └── taskStore.js                 # Dual-mode repository adapter (File vs. Firestore)
+│   └── taskStore.js                 # Unified storage adapter (File, Supabase, Firestore)
 ├── tests/
-│   ├── api.test.js                  # Production API & health check test suite
-│   ├── storage.test.js              # FileStorage and Firestore mock test suite
+│   ├── api.test.js                  # Production API & health check test suite (File & Supabase)
+│   ├── storage.test.js              # Unit tests for all storage adapters
+│   ├── supabase_migration.test.js   # Supabase migration test suite
 │   └── migration.test.js            # Firestore migration idempotency test suite
 ├── server.js                        # Hardened Express.js REST API and static asset server
 ├── package.json                     # Dependencies, metadata, and lifecycle scripts
@@ -73,7 +81,7 @@ ToDo/
 - [npm](https://www.npmjs.com/) (version 9.0.0 or higher)
 - [Git](https://git-scm.com/)
 
-### Installation
+### Local Installation
 
 1. **Clone the repository:**
    ```bash
@@ -91,57 +99,94 @@ ToDo/
    cp .env.example .env
    ```
 
+4. **Start the local development server:**
+   ```bash
+   npm run dev
+   ```
+   Navigate to [http://localhost:3000](http://localhost:3000) in your browser. Tasks are saved locally to `data/todos.json`.
+
 ---
 
-## Environment Variable Configuration
+## Deploying to Vercel with Supabase PostgreSQL
+
+### Step 1: Set Up Supabase Database
+
+1. Sign in to [Supabase](https://supabase.com/) and create a new project.
+2. In the Supabase Dashboard, open the **SQL Editor** from the left sidebar.
+3. Open [`scripts/supabase-schema.sql`](scripts/supabase-schema.sql), copy its contents, paste them into the SQL Editor, and click **Run**.
+4. Navigate to **Project Settings** -> **API** in Supabase and copy:
+   - **Project URL** (`https://<project-ref>.supabase.co`)
+   - **anon / public key** (`eyJhbGciOi...`)
+
+### Step 2: Configure Environment Variables in Vercel
+
+In your [Vercel Project Dashboard](https://vercel.com/dashboard):
+1. Navigate to **Settings** -> **Environment Variables**.
+2. Add the following two variables (for `Production`, `Preview`, and `Development` environments):
+
+| Variable Name | Value | Purpose |
+| :--- | :--- | :--- |
+| `SUPABASE_URL` | `https://<your-project-ref>.supabase.co` | Supabase API URL |
+| `SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1Ni...` | Supabase Public / Anon API Key |
+
+*(Optional)* You can also set `DATA_STORE=supabase`, though Taskly automatically detects Supabase when deployed on Vercel.
+
+### Step 3: (Optional) Migrate Local Tasks to Supabase
+
+To copy your initial tasks from `data/todos.json` into your Supabase database:
+
+```bash
+# Preview actions without writing (dry-run)
+SUPABASE_URL="https://<ref>.supabase.co" SUPABASE_ANON_KEY="..." npm run migrate:supabase -- --dry-run
+
+# Execute idempotent migration
+SUPABASE_URL="https://<ref>.supabase.co" SUPABASE_ANON_KEY="..." npm run migrate:supabase
+```
+
+*Note: The migration script checks document IDs before inserting and never overwrites existing records.*
+
+### Step 4: Deploy to Vercel
+
+Push your code to your GitHub repository connected to Vercel, or deploy using the Vercel CLI:
+
+```bash
+vercel --prod
+```
+
+Vercel will build the project using [`vercel.json`](vercel.json) and serve API requests through [`api/index.js`](api/index.js).
+
+---
+
+## Environment Variable Reference
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
-| `PORT` | `3000` | Port on which the HTTP server listens (Cloud Run injects `8080`) |
+| `PORT` | `3000` | Port for local HTTP server (Cloud Run automatically sets `8080`) |
 | `NODE_ENV` | `development` | Runtime environment (`development` or `production`) |
-| `DATA_STORE` | `file` | Storage adapter mode (`file` or `firestore`) |
-| `GOOGLE_CLOUD_PROJECT` | `taskly-prod-202611` | GCP Project ID for Firestore connection |
-| `FIRESTORE_DATABASE_ID` | `(default)` | Firestore database ID |
+| `DATA_STORE` | `file` | Storage adapter mode: `file`, `supabase`, or `firestore` |
+| `SUPABASE_URL` | None | Supabase project URL (Required in Vercel production) |
+| `SUPABASE_ANON_KEY` | None | Supabase anon key (Required in Vercel production) |
+| `GOOGLE_CLOUD_PROJECT` | `taskly-prod-202611` | GCP Project ID (Only needed if using Cloud Run) |
 
 ---
 
-## Local Development & Testing
+## Testing & Verification
 
-Start the server with Node's native file watcher for live reloading on file changes:
-
-```bash
-npm run dev
-```
-
-For standard execution:
-
-```bash
-npm start
-```
-
-Run the complete automated test suite (API, Storage Adapters, Migration engine):
+Run the complete automated test suite across all storage adapters (File, Supabase, Firestore) and API routes:
 
 ```bash
 npm test
 ```
 
----
+Validate JavaScript syntax across all files:
 
-## Data Migration to Firestore
-
-To safely migrate local tasks from `data/todos.json` to Google Cloud Firestore:
-
-1. **Simulate migration (dry-run mode):**
-   ```bash
-   GOOGLE_CLOUD_PROJECT=taskly-prod-202611 node scripts/migrate-to-firestore.js --dry-run
-   ```
-
-2. **Execute live idempotent migration:**
-   ```bash
-   GOOGLE_CLOUD_PROJECT=taskly-prod-202611 npm run migrate:firestore
-   ```
-
-*Safety guarantee:* The migration script checks document IDs before writing, skips existing documents, never overwrites records, and preserves `data/todos.json`.
+```bash
+node -c server.js
+node -c api/index.js
+node -c public/app.js
+node -c storage/taskStore.js
+node -c scripts/migrate-to-supabase.js
+```
 
 ---
 
@@ -149,21 +194,12 @@ To safely migrate local tasks from `data/todos.json` to Google Cloud Firestore:
 
 | Method | Endpoint | Description | Request Body | Response |
 | :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/healthz` | Container health probe | None | `200 OK` `{"status":"UP", ...}` |
+| `GET` | `/healthz` | Health check probe | None | `200 OK` `{"status":"UP", ...}` |
 | `GET` | `/api/todos` | Retrieve all tasks | None | `Array<Todo>` |
-| `POST` | `/api/todos` | Create a new task | `{"title": "string", "dueDate": "YYYY-MM-DD"}` | `201 Created` with Todo |
+| `POST` | `/api/todos` | Create a new task | `{"title": "string", "dueDate": "YYYY-MM-DD"}` | `201 Created` with new Todo |
 | `PATCH` | `/api/todos/:id` | Update task status or fields | `{"completed": boolean, "title": "string", "dueDate": "string"}` | `200 OK` with updated Todo |
 | `DELETE` | `/api/todos/:id` | Delete an individual task | None | `200 OK` `{"success": true, "id": "..."}` |
 | `DELETE` | `/api/todos` | Bulk-delete completed tasks | None | `200 OK` `{"success": true, "count": N}` |
-
----
-
-## Deployment Architecture
-
-* **Region:** `asia-south1` (Mumbai, India) for minimal latency (<35ms).
-* **Compute:** Google Cloud Run (Fully managed, scales 0 to 5 instances, 512MB RAM, 1 vCPU).
-* **Database:** Cloud Firestore Native Mode with transactional persistence.
-* **Security:** GitHub Actions Workload Identity Federation (WIF) — zero stored private keys. Separate deployment and runtime service accounts following least privilege.
 
 ---
 

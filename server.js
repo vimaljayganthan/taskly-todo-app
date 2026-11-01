@@ -54,6 +54,19 @@ app.get(['/healthz', '/api/health'], (req, res) => {
 // REST API Routes
 // ==========================================================================
 
+// Storage Initialization Middleware (Guarantees database adapter is ready in serverless environments like Vercel)
+app.use('/api', async (req, res, next) => {
+  try {
+    await initializeStorage();
+    next();
+  } catch (err) {
+    console.error('[Storage Error in Request]:', err.message);
+    res.status(500).json({
+      error: err.message || 'Database connection error'
+    });
+  }
+});
+
 // GET /api/todos - Retrieve all todos
 app.get('/api/todos', async (req, res, next) => {
   try {

@@ -99,3 +99,4 @@ describe('Safe Firestore Migration Test Suite', () => {
     assert.strictEqual(summary.failed, 2);
   });
 });
+
