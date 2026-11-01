@@ -1,0 +1,57 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Environment and sensitive configuration files
+.env
+.env.*
+!.env.example
+*.local
+
+# Google Cloud credentials, Service Accounts, and Keys
+*credentials*.json
+*service-account*.json
+*service_account*.json
+client_secret*.json
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+*.crt
+
+# Runtime data (server automatically seeds sample tasks if not present)
+data/todos.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Diagnostic and coverage outputs
+coverage/
+.nyc_output/
+
+# OS-generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor directories
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Build and production artifacts
+dist/
+build/
+.cache/

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimal To-Do — Clean & Simple Task Manager</title>
+  <meta name="description" content="A clean, fast, and simple to-do application to organize your daily tasks effortlessly.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-background">
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+  </div>
+
+  <main class="app-container" id="app-main">
+    <!-- Header Section -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="brand">
+          <div class="logo-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="app-title">Taskly</h1>
+            <p class="app-subtitle" id="date-display">Today's Focus</p>
+          </div>
+        </div>
+
+        <button id="theme-toggle-btn" class="icon-button" aria-label="Toggle dark/light mode" title="Toggle theme">
+          <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Statistics Dashboard -->
+      <section class="stats-dashboard" id="stats-dashboard" aria-label="Task statistics">
+        <div class="stats-grid" role="tablist" aria-label="Task statistics filters">
+          <!-- Total Card -->
+          <button type="button" class="stat-card stat-card-total active" data-stat-filter="all" role="tab" aria-selected="true" title="Filter by all tasks">
+            <div class="stat-card-header">
+              <span class="stat-icon-wrapper stat-icon-total" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                  <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                  <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                  <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                </svg>
+              </span>
+              <span class="stat-label">Total</span>
+            </div>
+            <div class="stat-card-body">
+              <span class="stat-value" id="stat-total-value">0</span>
+              <span class="stat-subtext">tasks</span>
+            </div>
+          </button>
+
+          <!-- Completed Card -->
+          <button type="button" class="stat-card stat-card-completed" data-stat-filter="completed" role="tab" aria-selected="false" title="Filter by completed tasks">
+            <div class="stat-card-header">
+              <span class="stat-icon-wrapper stat-icon-completed" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </span>
+              <span class="stat-label">Done</span>
+            </div>
+            <div class="stat-card-body">
+              <span class="stat-value" id="stat-completed-value">0</span>
+              <span class="stat-subtext" id="stat-completed-rate">0%</span>
+            </div>
+          </button>
+
+          <!-- Pending Card -->
+          <button type="button" class="stat-card stat-card-pending" data-stat-filter="pending" role="tab" aria-selected="false" title="Filter by pending tasks">
+            <div class="stat-card-header">
+              <span class="stat-icon-wrapper stat-icon-pending" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </span>
+              <span class="stat-label">Pending</span>
+            </div>
+            <div class="stat-card-body">
+              <span class="stat-value" id="stat-pending-value">0</span>
+              <span class="stat-subtext">active</span>
+            </div>
+          </button>
+
+          <!-- Overdue Card -->
+          <button type="button" class="stat-card stat-card-overdue" data-stat-filter="overdue" role="tab" aria-selected="false" title="Filter by overdue tasks">
+            <div class="stat-card-header">
+              <span class="stat-icon-wrapper stat-icon-overdue" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </span>
+              <span class="stat-label">Overdue</span>
+            </div>
+            <div class="stat-card-body">
+              <span class="stat-value" id="stat-overdue-value">0</span>
+              <span class="stat-subtext" id="stat-overdue-subtext">urgent</span>
+            </div>
+          </button>
+        </div>
+
+        <!-- Segmented Progress Bar -->
+        <div class="segmented-progress-wrap">
+          <div class="segmented-progress-labels">
+            <span class="progress-status" id="progress-summary-text">0 of 0 completed</span>
+            <span class="progress-percentage" id="progress-percent">0%</span>
+          </div>
+          <div class="segmented-progress-track" role="progressbar" aria-label="Task completion progress breakdown" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="progress-seg progress-seg-completed" id="seg-completed" style="width: 0%" title="Completed"></div>
+            <div class="progress-seg progress-seg-pending" id="seg-pending" style="width: 0%" title="Pending"></div>
+            <div class="progress-seg progress-seg-overdue" id="seg-overdue" style="width: 0%" title="Overdue"></div>
+          </div>
+          <div class="segmented-progress-legend">
+            <span class="legend-item"><span class="legend-dot legend-dot-completed"></span> Done</span>
+            <span class="legend-item"><span class="legend-dot legend-dot-pending"></span> Pending</span>
+            <span class="legend-item"><span class="legend-dot legend-dot-overdue"></span> Overdue</span>
+          </div>
+        </div>
+      </section>
+    </header>
+
+    <!-- Task Input Form -->
+    <section class="input-card">
+      <form id="todo-form" class="todo-form" autocomplete="off">
+        <div class="title-input-group">
+          <div class="input-wrapper">
+            <span class="input-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </span>
+            <input 
+              type="text" 
+              id="task-title-input" 
+              name="taskTitle"
+              class="task-input" 
+              placeholder="Add a new task..." 
+              maxlength="150"
+              required
+              aria-label="New task title"
+            />
+          </div>
+          <div class="char-counter-wrapper">
+            <span id="char-counter" class="char-counter" aria-live="polite">
+              <span id="char-count">0</span> / 50 characters
+            </span>
+          </div>
+        </div>
+
+        <div class="date-input-wrapper" title="Set due date (optional)">
+          <span class="date-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </span>
+          <input 
+            type="date" 
+            id="task-due-date-input" 
+            name="dueDate"
+            class="task-date-input" 
+            aria-label="Due date (optional)"
+          />
+        </div>
+
+        <button type="submit" id="add-task-btn" class="submit-button" aria-label="Add task">
+          <span>Add Task</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </form>
+    </section>
+
+    <!-- Filters & Action Bar -->
+    <section class="controls-bar" aria-label="Filter and manage tasks">
+      <div class="filter-tabs" role="tablist">
+        <button type="button" class="filter-btn active" id="filter-all" data-filter="all" role="tab" aria-selected="true">
+          All <span class="filter-badge" id="badge-all">0</span>
+        </button>
+        <button type="button" class="filter-btn" id="filter-pending" data-filter="pending" role="tab" aria-selected="false">
+          Pending <span class="filter-badge" id="badge-pending">0</span>
+        </button>
+        <button type="button" class="filter-btn" id="filter-overdue" data-filter="overdue" role="tab" aria-selected="false">
+          Overdue <span class="filter-badge" id="badge-overdue">0</span>
+        </button>
+        <button type="button" class="filter-btn" id="filter-completed" data-filter="completed" role="tab" aria-selected="false">
+          Done <span class="filter-badge" id="badge-completed">0</span>
+        </button>
+      </div>
+
+      <button type="button" id="clear-completed-btn" class="clear-btn" style="display: none;" title="Remove all completed tasks">
+        Clear completed
+      </button>
+    </section>
+
+    <!-- Task List Container -->
+    <section class="list-section">
+      <ul id="todo-list" class="todo-list" aria-live="polite">
+        <!-- Rendered dynamically by app.js -->
+      </ul>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <div class="empty-icon-wrap">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+        </div>
+        <h2 class="empty-title" id="empty-title">All tasks completed</h2>
+        <p class="empty-desc" id="empty-desc">Enjoy your day or add a new task above!</p>
+      </div>
+    </section>
+
+    <!-- Footer Stats / Keyboard tips -->
+    <footer class="app-footer">
+      <p class="tip-text">
+        <kbd>Enter</kbd> to add task &bull; Click circle to toggle complete
+      </p>
+    </footer>
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
