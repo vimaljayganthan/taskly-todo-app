@@ -8,15 +8,20 @@ on:
         required: true
         default: 'production'
 
+# Least Privilege Permissions required for Workload Identity Federation (WIF)
+permissions:
+  contents: read
+  id-token: write
+
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: taskly-app
-  REGION: us-central1
+  REGION: asia-south1
   GAR_REPOSITORY: taskly-repo
 
 jobs:
   deploy:
-    name: Build & Deploy to Cloud Run
+    name: Build & Deploy to Cloud Run (Mumbai)
     runs-on: ubuntu-latest
     environment: production
 
@@ -24,10 +29,12 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
+      # Secure Workload Identity Federation (Zero Long-Lived Service Account Keys)
+      - name: Authenticate to Google Cloud via Workload Identity Federation
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -39,25 +46,35 @@ jobs:
       - name: Build & Tag Container Image
         run: |
           IMAGE_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-          docker build -t "$IMAGE_URI" -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}:latest" .
+          LATEST_URI="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+          docker build -t "$IMAGE_URI" -t "$LATEST_URI" .
           docker push "$IMAGE_URI"
-          docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+          docker push "$LATEST_URI"
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Cloud Run (Mumbai - asia-south1)
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-          flags: '--allow-unauthenticated --port=8080'
+          flags: >-
+            --allow-unauthenticated
+            --port=8080
+            --max-instances=5
+            --min-instances=0
+            --memory=512Mi
+            --cpu=1
+            --service-account=${{ secrets.GCP_RUNTIME_SA }}
+            --set-env-vars=NODE_ENV=production,DATA_STORE=firestore,GCP_PROJECT_ID=${{ env.PROJECT_ID }}
 
       - name: Verify Cloud Run Service Health
         run: |
           SERVICE_URL="${{ steps.deploy.outputs.url }}"
           echo "Deployed service URL: $SERVICE_URL"
+          echo "Probing /healthz endpoint..."
           curl -fail -s "$SERVICE_URL/healthz" | grep -q '"status":"UP"' || {
             echo "Healthcheck failed after deployment!"
             exit 1
           }
-          echo "Deployment verified healthy!"
+          echo "Healthcheck passed: Cloud Run service is UP and healthy."

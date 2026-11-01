@@ -20,8 +20,10 @@ client_secret*.json
 *.pfx
 *.crt
 
-# Runtime data (server automatically seeds sample tasks if not present)
+# Runtime data and backups (server automatically seeds sample tasks if not present)
 data/todos.json
+data/*.backup.json
+data/*.tmp
 
 # Logs
 logs/

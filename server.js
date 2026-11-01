@@ -1,69 +1,13 @@
 const express = require('express');
-const fs = require('fs');
-const fsPromises = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
+const { initializeStorage, getStorage } = require('./storage/taskStore');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.join(__dirname, 'data');
-const DATA_FILE = path.join(DATA_DIR, 'todos.json');
 
 // Security: Disable Express fingerprinting
 app.disable('x-powered-by');
-
-// Ensure data directory exists synchronously at startup
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-const defaultTodos = [
-  {
-    id: 'sample-1',
-    title: 'Explore your new To-Do app',
-    completed: false,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'sample-2',
-    title: 'Check off this task when completed',
-    completed: true,
-    createdAt: new Date(Date.now() - 3600000).toISOString()
-  }
-];
-
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(defaultTodos, null, 2), 'utf8');
-}
-
-// Asynchronous helper to read todos
-async function readTodos() {
-  try {
-    const raw = await fsPromises.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    if (err.code === 'ENOENT') {
-      return defaultTodos;
-    }
-    console.error('Error reading todos file:', err);
-    return [];
-  }
-}
-
-// Asynchronous atomic write helper (writes to temporary file, then atomically renames)
-async function writeTodos(todos) {
-  const tempFile = `${DATA_FILE}.${crypto.randomUUID()}.tmp`;
-  try {
-    await fsPromises.writeFile(tempFile, JSON.stringify(todos, null, 2), 'utf8');
-    await fsPromises.rename(tempFile, DATA_FILE);
-  } catch (err) {
-    console.error('Error writing todos file:', err);
-    try {
-      if (fs.existsSync(tempFile)) await fsPromises.unlink(tempFile);
-    } catch (_) {}
-    throw err;
-  }
-}
 
 // Security: HTTP Response Headers Middleware
 app.use((req, res, next) => {
@@ -79,7 +23,6 @@ app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    // Keep liveness probes quiet in logs
     if (req.path !== '/healthz') {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
     }
@@ -114,7 +57,8 @@ app.get(['/healthz', '/api/health'], (req, res) => {
 // GET /api/todos - Retrieve all todos
 app.get('/api/todos', async (req, res, next) => {
   try {
-    const todos = await readTodos();
+    const storage = getStorage();
+    const todos = await storage.getAllTasks();
     res.json(todos);
   } catch (err) {
     next(err);
@@ -143,7 +87,6 @@ app.post('/api/todos', async (req, res, next) => {
       parsedDueDate = trimmedDate;
     }
 
-    const todos = await readTodos();
     const newTodo = {
       id: crypto.randomUUID(),
       title: trimmedTitle,
@@ -152,8 +95,8 @@ app.post('/api/todos', async (req, res, next) => {
       createdAt: new Date().toISOString()
     };
 
-    todos.unshift(newTodo);
-    await writeTodos(todos);
+    const storage = getStorage();
+    await storage.createTask(newTodo);
 
     res.status(201).json(newTodo);
   } catch (err) {
@@ -166,17 +109,14 @@ app.patch('/api/todos/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { completed, title, dueDate } = req.body;
+    const storage = getStorage();
 
-    const todos = await readTodos();
-    const todoIndex = todos.findIndex(t => t.id === id);
-
-    if (todoIndex === -1) {
-      return res.status(404).json({ error: 'Task not found' });
-    }
+    const updateFields = {
+      updatedAt: new Date().toISOString()
+    };
 
     if (typeof completed === 'boolean') {
-      todos[todoIndex].completed = completed;
-      todos[todoIndex].updatedAt = new Date().toISOString();
+      updateFields.completed = completed;
     }
 
     if (typeof title === 'string') {
@@ -187,23 +127,25 @@ app.patch('/api/todos/:id', async (req, res, next) => {
       if (trimmedTitle.length > 150) {
         return res.status(400).json({ error: 'Title must not exceed 150 characters' });
       }
-      todos[todoIndex].title = trimmedTitle;
-      todos[todoIndex].updatedAt = new Date().toISOString();
+      updateFields.title = trimmedTitle;
     }
 
     if (dueDate !== undefined) {
       if (dueDate === null || dueDate === '') {
-        todos[todoIndex].dueDate = null;
+        updateFields.dueDate = null;
       } else if (typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate.trim())) {
-        todos[todoIndex].dueDate = dueDate.trim();
+        updateFields.dueDate = dueDate.trim();
       } else {
         return res.status(400).json({ error: 'Due date must be in YYYY-MM-DD format' });
       }
-      todos[todoIndex].updatedAt = new Date().toISOString();
     }
 
-    await writeTodos(todos);
-    res.json(todos[todoIndex]);
+    const updated = await storage.updateTask(id, updateFields);
+    if (!updated) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    res.json(updated);
   } catch (err) {
     next(err);
   }
@@ -213,15 +155,12 @@ app.patch('/api/todos/:id', async (req, res, next) => {
 app.delete('/api/todos/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const todos = await readTodos();
-    const exists = todos.some(t => t.id === id);
+    const storage = getStorage();
+    const success = await storage.deleteTask(id);
 
-    if (!exists) {
+    if (!success) {
       return res.status(404).json({ error: 'Task not found' });
     }
-
-    const updatedTodos = todos.filter(t => t.id !== id);
-    await writeTodos(updatedTodos);
 
     res.json({ success: true, id });
   } catch (err) {
@@ -232,11 +171,8 @@ app.delete('/api/todos/:id', async (req, res, next) => {
 // DELETE /api/todos - Bulk clear completed
 app.delete('/api/todos', async (req, res, next) => {
   try {
-    const todos = await readTodos();
-    const remaining = todos.filter(t => !t.completed);
-    const deletedCount = todos.length - remaining.length;
-    await writeTodos(remaining);
-
+    const storage = getStorage();
+    const deletedCount = await storage.clearCompleted();
     res.json({ success: true, count: deletedCount });
   } catch (err) {
     next(err);
@@ -268,7 +204,6 @@ function gracefulShutdown(signal) {
       console.log('HTTP server closed. Exiting process.');
       process.exit(0);
     });
-    // Force shutdown if connections do not close in 10s
     setTimeout(() => {
       console.error('Could not close connections in time, forcefully shutting down');
       process.exit(1);
@@ -278,12 +213,23 @@ function gracefulShutdown(signal) {
   }
 }
 
-if (require.main === module) {
+async function startServer() {
+  try {
+    await initializeStorage();
+  } catch (err) {
+    console.error('Fatal storage initialization error:', err.message);
+    process.exit(1);
+  }
+
   server = app.listen(PORT, () => {
     console.log(`To-Do server is running on http://localhost:${PORT}`);
   });
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+}
+
+if (require.main === module) {
+  startServer();
 }
 
 module.exports = app;

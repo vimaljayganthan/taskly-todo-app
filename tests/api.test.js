@@ -1,7 +1,10 @@
-const { test, describe } = require('node:test');
+const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert');
 const { EventEmitter } = require('events');
+const fs = require('fs');
+const path = require('path');
 const app = require('../server.js');
+const { setStorage, FileStorageAdapter } = require('../storage/taskStore.js');
 
 // Lightweight in-memory HTTP dispatcher for Express (zero network/socket dependency)
 function mockRequest(app, options) {
@@ -44,6 +47,17 @@ function mockRequest(app, options) {
 
 describe('Taskly Production API Test Suite', () => {
   let createdTodoId;
+  const testFile = path.join('/tmp', `taskly-api-test-${Date.now()}.json`);
+
+  before(() => {
+    setStorage(new FileStorageAdapter(testFile));
+  });
+
+  after(() => {
+    try {
+      if (fs.existsSync(testFile)) fs.unlinkSync(testFile);
+    } catch (_) {}
+  });
 
   test('Health Check: GET /healthz returns 200 with UP status and metadata', async () => {
     const res = await mockRequest(app, { method: 'GET', url: '/healthz' });

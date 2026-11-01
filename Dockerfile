@@ -20,6 +20,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY server.js ./
 COPY public/ ./public/
 COPY data/ ./data/
+COPY storage/ ./storage/
+COPY scripts/ ./scripts/
 
 # Ensure runtime data directory has correct permissions for the non-root node user
 RUN chown -R node:node /app
