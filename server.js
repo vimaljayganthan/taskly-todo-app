@@ -95,7 +95,7 @@ app.get('/api/todos', async (req, res, next) => {
 // POST /api/todos - Add a new todo with input validation
 app.post('/api/todos', async (req, res, next) => {
   try {
-    const { title, dueDate } = req.body;
+    const { title, dueDate, description, priority, category, time, reminder } = req.body;
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: 'Title is required' });
     }
@@ -114,10 +114,21 @@ app.post('/api/todos', async (req, res, next) => {
       parsedDueDate = trimmedDate;
     }
 
+    const validPriorities = ['High', 'Medium', 'Low'];
+    const parsedPriority = validPriorities.includes(priority) ? priority : 'Medium';
+
+    const validCategories = ['Project', 'Work', 'Study', 'Personal'];
+    const parsedCategory = validCategories.includes(category) ? category : 'Personal';
+
     const newTodo = {
       id: crypto.randomUUID(),
       title: trimmedTitle,
       dueDate: parsedDueDate,
+      time: typeof time === 'string' && time.trim() ? time.trim().slice(0, 30) : null,
+      description: typeof description === 'string' ? description.trim().slice(0, 1000) : '',
+      priority: parsedPriority,
+      category: parsedCategory,
+      reminder: Boolean(reminder),
       completed: false,
       createdAt: new Date().toISOString()
     };
@@ -135,7 +146,7 @@ app.post('/api/todos', async (req, res, next) => {
 app.patch('/api/todos/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { completed, title, dueDate } = req.body;
+    const { completed, title, dueDate, description, priority, category, time, reminder } = req.body;
     const storage = getStorage();
 
     const updateFields = {
@@ -165,6 +176,26 @@ app.patch('/api/todos/:id', async (req, res, next) => {
       } else {
         return res.status(400).json({ error: 'Due date must be in YYYY-MM-DD format' });
       }
+    }
+
+    if (typeof description === 'string') {
+      updateFields.description = description.trim().slice(0, 1000);
+    }
+
+    if (['High', 'Medium', 'Low'].includes(priority)) {
+      updateFields.priority = priority;
+    }
+
+    if (['Project', 'Work', 'Study', 'Personal'].includes(category)) {
+      updateFields.category = category;
+    }
+
+    if (time !== undefined) {
+      updateFields.time = typeof time === 'string' && time.trim() ? time.trim().slice(0, 30) : null;
+    }
+
+    if (typeof reminder === 'boolean') {
+      updateFields.reminder = reminder;
     }
 
     const updated = await storage.updateTask(id, updateFields);

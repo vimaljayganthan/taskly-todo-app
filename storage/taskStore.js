@@ -11,15 +11,51 @@ function getDataFile() {
 const defaultTodos = [
   {
     id: 'sample-1',
-    title: 'Explore your new To-Do app',
+    title: 'Finish AIML assignment',
+    description: 'Complete gradient descent exercises and model evaluation',
+    dueDate: new Date().toISOString().split('T')[0],
+    time: '2:00 PM',
+    priority: 'High',
+    category: 'Study',
+    reminder: true,
     completed: false,
     createdAt: new Date().toISOString()
   },
   {
     id: 'sample-2',
-    title: 'Check off this task when completed',
+    title: 'Update project report',
+    description: 'Review Q4 deliverables and push presentation slides',
+    dueDate: new Date().toISOString().split('T')[0],
+    time: '4:00 PM',
+    priority: 'Medium',
+    category: 'Project',
+    reminder: false,
     completed: true,
     createdAt: new Date(Date.now() - 3600000).toISOString()
+  },
+  {
+    id: 'sample-3',
+    title: 'Team meeting',
+    description: 'Weekly sprint planning and backlog grooming with engineers',
+    dueDate: new Date().toISOString().split('T')[0],
+    time: '5:30 PM',
+    priority: 'Medium',
+    category: 'Work',
+    reminder: true,
+    completed: false,
+    createdAt: new Date(Date.now() - 7200000).toISOString()
+  },
+  {
+    id: 'sample-4',
+    title: 'Build ColdGuard UI',
+    description: 'Complete dashboard and connect with FastAPI backend',
+    dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    time: '6:00 PM',
+    priority: 'High',
+    category: 'Project',
+    reminder: true,
+    completed: false,
+    createdAt: new Date(Date.now() - 10800000).toISOString()
   }
 ];
 
@@ -130,6 +166,11 @@ class SupabaseStorageAdapter {
       title: row.title,
       completed: Boolean(row.completed),
       dueDate: row.due_date || row.dueDate || null,
+      time: row.time || null,
+      description: row.description || '',
+      priority: row.priority || 'Medium',
+      category: row.category || 'Personal',
+      reminder: Boolean(row.reminder),
       createdAt: row.created_at || row.createdAt || new Date().toISOString(),
       updatedAt: row.updated_at || row.updatedAt || null
     };
@@ -161,7 +202,13 @@ class SupabaseStorageAdapter {
         due_date: todo.dueDate || null,
         created_at: todo.createdAt || new Date().toISOString()
       };
+      if (todo.time) payload.time = todo.time;
+      if (todo.description) payload.description = todo.description;
+      if (todo.priority) payload.priority = todo.priority;
+      if (todo.category) payload.category = todo.category;
+      if (todo.reminder !== undefined) payload.reminder = todo.reminder;
 
+      let resultData = null;
       const { data, error } = await this.client
         .from(this.tableName)
         .insert(payload)
@@ -169,9 +216,29 @@ class SupabaseStorageAdapter {
         .single();
 
       if (error) {
-        throw error;
+        if (error.message && error.message.includes('column')) {
+          const basicPayload = {
+            id: todo.id,
+            title: todo.title,
+            completed: Boolean(todo.completed),
+            due_date: todo.dueDate || null,
+            created_at: todo.createdAt || new Date().toISOString()
+          };
+          const retry = await this.client
+            .from(this.tableName)
+            .insert(basicPayload)
+            .select()
+            .single();
+          if (retry.error) throw retry.error;
+          resultData = retry.data;
+        } else {
+          throw error;
+        }
+      } else {
+        resultData = data;
       }
-      return this._mapFromDb(data || payload);
+
+      return this._mapFromDb(resultData || payload);
     } catch (err) {
       console.error(`[SupabaseStorageAdapter] Error creating task ${todo.id}:`, err.message || err);
       throw new Error(`Supabase insert failed: ${err.message || err}`);
@@ -184,8 +251,14 @@ class SupabaseStorageAdapter {
       if (fields.title !== undefined) payload.title = fields.title;
       if (fields.completed !== undefined) payload.completed = fields.completed;
       if (fields.dueDate !== undefined) payload.due_date = fields.dueDate;
+      if (fields.time !== undefined) payload.time = fields.time;
+      if (fields.description !== undefined) payload.description = fields.description;
+      if (fields.priority !== undefined) payload.priority = fields.priority;
+      if (fields.category !== undefined) payload.category = fields.category;
+      if (fields.reminder !== undefined) payload.reminder = fields.reminder;
       payload.updated_at = fields.updatedAt || new Date().toISOString();
 
+      let resultData = null;
       const { data, error } = await this.client
         .from(this.tableName)
         .update(payload)
@@ -193,14 +266,31 @@ class SupabaseStorageAdapter {
         .select();
 
       if (error) {
-        throw error;
+        if (error.message && error.message.includes('column')) {
+          const basicPayload = {};
+          if (fields.title !== undefined) basicPayload.title = fields.title;
+          if (fields.completed !== undefined) basicPayload.completed = fields.completed;
+          if (fields.dueDate !== undefined) basicPayload.due_date = fields.dueDate;
+          basicPayload.updated_at = fields.updatedAt || new Date().toISOString();
+          const retry = await this.client
+            .from(this.tableName)
+            .update(basicPayload)
+            .eq('id', id)
+            .select();
+          if (retry.error) throw retry.error;
+          resultData = retry.data;
+        } else {
+          throw error;
+        }
+      } else {
+        resultData = data;
       }
 
-      if (!data || data.length === 0) {
+      if (!resultData || resultData.length === 0) {
         return null;
       }
 
-      return this._mapFromDb(data[0]);
+      return this._mapFromDb(resultData[0]);
     } catch (err) {
       console.error(`[SupabaseStorageAdapter] Error updating task ${id}:`, err.message || err);
       throw new Error(`Supabase update failed: ${err.message || err}`);

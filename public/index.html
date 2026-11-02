@@ -1,266 +1,793 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Taskly — Clean & Simple Task Manager</title>
-  <meta name="description" content="A clean, fast, and simple to-do application to organize your daily tasks effortlessly.">
-  <meta name="theme-color" content="#0f172a">
+  <title>Taskly — Plan • Organize • Get Things Done</title>
+  <meta name="description" content="A modern, intuitive task manager to organize your life, track productivity, and never miss deadlines.">
+  <meta name="theme-color" content="#ffffff" id="meta-theme-color">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
   <link rel="icon" type="image/png" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-background">
-    <div class="glow glow-1"></div>
-    <div class="glow glow-2"></div>
-  </div>
 
-  <main class="app-container" id="app-main">
-    <!-- Header Section -->
-    <header class="app-header">
-      <div class="header-content">
-        <div class="brand">
-          <div class="logo-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
-              <path d="m9 12 2 2 4-4"/>
-            </svg>
-          </div>
-          <div>
-            <h1 class="app-title">Taskly</h1>
-            <p class="app-subtitle" id="date-display">Today's Focus</p>
+  <!-- Main Application Container -->
+  <div class="app-viewport" id="app-viewport">
+
+    <!-- ==================================================================== -->
+    <!-- 1. MAIN APPLICATION TABS (DEFAULT VIEW)                              -->
+    <!-- ==================================================================== -->
+    <div id="main-flow" class="screen-flow active">
+
+      <!-- Desktop Global Top Navigation Header (Visible on Desktop >= 768px in Main App) -->
+      <header class="desktop-header">
+        <div class="desktop-brand">
+          <img src="logo.png" alt="Taskly" class="desktop-logo" width="34" height="34">
+          <div class="desktop-brand-text">
+            <span class="desktop-brand-name">Taskly</span>
+            <span class="desktop-brand-tag">Plan • Organize • Get Things Done</span>
           </div>
         </div>
 
-        <button id="theme-toggle-btn" class="icon-button" aria-label="Toggle dark/light mode" title="Toggle theme">
-          <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5"></circle>
-            <line x1="12" y1="1" x2="12" y2="3"></line>
-            <line x1="12" y1="21" x2="12" y2="23"></line>
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-            <line x1="1" y1="12" x2="3" y2="12"></line>
-            <line x1="21" y1="12" x2="23" y2="12"></line>
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-          </svg>
-          <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-          </svg>
-        </button>
+        <nav class="desktop-nav">
+          <button type="button" class="desktop-nav-link active" data-tab="home">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span>Dashboard</span>
+          </button>
+          <button type="button" class="desktop-nav-link" data-tab="calendar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Calendar</span>
+          </button>
+          <button type="button" class="desktop-nav-link" data-tab="progress">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span>Progress</span>
+          </button>
+          <button type="button" class="desktop-nav-link" data-tab="profile">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Profile</span>
+          </button>
+        </nav>
+
+        <div class="desktop-header-right">
+          <button type="button" class="btn-desktop-add" id="btn-desktop-add-task">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Add Task</span>
+          </button>
+          <button type="button" class="btn-desktop-theme" id="btn-desktop-theme" title="Toggle Theme" aria-label="Toggle Theme">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          </button>
+        </div>
+      </header>
+        
+        <!-- Screen 5: Home Dashboard -->
+        <section id="tab-home" class="tab-view active">
+          <!-- Dashboard Greeting & Header -->
+          <header class="dash-header">
+            <div class="dash-greeting">
+              <h1 class="dash-title" id="greeting-title">Hello, vimal 👋</h1>
+              <p class="dash-subtitle">Let's make today productive!</p>
+            </div>
+            <button id="btn-header-avatar" class="dash-avatar" aria-label="Open Profile">
+              <div class="avatar-circle">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+            </button>
+          </header>
+
+          <!-- Metrics Row (4 Stat Cards: Red, Green, Yellow, Indigo) -->
+          <div class="metrics-grid">
+            <!-- Total Tasks -->
+            <div class="stat-card stat-card-red" id="card-stat-total" title="Show all tasks">
+              <div class="stat-icon-wrap">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+              </div>
+              <div class="stat-number" id="stat-total-count">5</div>
+              <div class="stat-label">Total Tasks</div>
+            </div>
+
+            <!-- Completed -->
+            <div class="stat-card stat-card-green" id="card-stat-completed" title="Filter to completed tasks">
+              <div class="stat-icon-wrap">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+              <div class="stat-number" id="stat-completed-count">4</div>
+              <div class="stat-label">Completed</div>
+            </div>
+
+            <!-- Pending -->
+            <div class="stat-card stat-card-yellow" id="card-stat-pending" title="Filter to pending tasks">
+              <div class="stat-icon-wrap">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div class="stat-number" id="stat-pending-count">1</div>
+              <div class="stat-label">Pending</div>
+            </div>
+
+            <!-- Efficiency Rate -->
+            <div class="stat-card stat-card-indigo" id="card-stat-efficiency" title="Completion rate">
+              <div class="stat-icon-wrap">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </div>
+              <div class="stat-number" id="stat-efficiency-count">80%</div>
+              <div class="stat-label">Efficiency</div>
+            </div>
+          </div>
+
+          <!-- Responsive Dashboard Layout: Multi-column on Desktop, Streamlined on Mobile -->
+          <div class="dash-content-grid">
+            
+            <!-- Left / Main Tasks Column -->
+            <div class="dash-main-col">
+              <div class="section-block">
+                <div class="section-head">
+                  <div class="section-title-wrap">
+                    <h2 class="section-title" id="home-tasks-heading">Tasks</h2>
+                    <span class="tasks-counter-badge" id="tasks-active-badge">5 Tasks</span>
+                  </div>
+
+                  <!-- Task Filter Pills -->
+                  <div class="task-filter-pills" id="home-filter-pills">
+                    <button type="button" class="filter-pill active" data-filter="all">All (<span id="pill-count-all">5</span>)</button>
+                    <button type="button" class="filter-pill" data-filter="today">Today (<span id="pill-count-today">4</span>)</button>
+                    <button type="button" class="filter-pill" data-filter="pending">Pending (<span id="pill-count-pending">1</span>)</button>
+                    <button type="button" class="filter-pill" data-filter="completed">Completed (<span id="pill-count-completed">4</span>)</button>
+                  </div>
+                </div>
+
+                <!-- Tasks List with Completed Toggles & Delete Buttons -->
+                <div class="task-list" id="home-today-task-list">
+                  <!-- Dynamically Rendered with Checkboxes, Badges & DELETE BUTTONS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Right / Sidebar Column (Progress Analytics on Desktop) -->
+            <div class="dash-side-col">
+              <!-- Progress Ring Card with Aerodynamic Swoosh -->
+              <div class="dash-progress-card">
+                <div class="progress-card-head">
+                  <span class="progress-card-title">Progress Overview</span>
+                  <div class="dropdown-filter">
+                    <select id="home-progress-filter">
+                      <option value="week">This Week ▾</option>
+                      <option value="month">This Month ▾</option>
+                      <option value="all">All Time ▾</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="progress-card-body">
+                  <!-- Radial Progress Ring -->
+                  <div class="progress-ring-container">
+                    <svg class="progress-ring" width="94" height="94" viewBox="0 0 100 100">
+                      <circle class="ring-bg" cx="50" cy="50" r="40" stroke-width="9"/>
+                      <circle class="ring-fill" id="home-progress-ring-fill" cx="50" cy="50" r="40" stroke-width="9" stroke-dasharray="251.2" stroke-dashoffset="95"/>
+                    </svg>
+                    <div class="ring-center-text" id="home-progress-percent">80%</div>
+                  </div>
+
+                  <div class="progress-card-info">
+                    <div class="progress-task-count" id="home-progress-task-count">4 of 5 tasks completed</div>
+                    <div class="progress-trend" id="home-progress-trend">+20% from last week</div>
+                  </div>
+                </div>
+
+                <!-- Bottom Green Wave Curve Accent -->
+                <div class="card-bottom-swoosh">
+                  <svg viewBox="0 0 200 40" fill="none" preserveAspectRatio="none">
+                    <path d="M0 40 C 60 10, 140 30, 200 0 L 200 40 Z" fill="rgba(16, 185, 129, 0.2)"/>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Desktop Quick Actions Card -->
+              <div class="dash-side-card desktop-only-widget">
+                <h3 class="side-card-title">Quick Actions</h3>
+                <div class="side-actions-grid">
+                  <button type="button" class="btn-side-action" id="btn-quick-new-task">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span>Create New Task</span>
+                  </button>
+                  <button type="button" class="btn-side-action" id="btn-quick-calendar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <span>Open Calendar</span>
+                  </button>
+                  <button type="button" class="btn-side-action btn-side-danger" id="btn-quick-clear-completed">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    <span>Clear Completed Tasks</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Screen 6: Calendar Page (WHOLE RED THEME) -->
+        <section id="tab-calendar" class="tab-view theme-red-screen">
+          <!-- Themed Top Banner Card (Red Theme) -->
+          <div class="page-themed-banner banner-theme-red">
+            <div class="banner-pill-badge pill-red">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>Calendar</span>
+            </div>
+            <p class="banner-subtext">View tasks by date, plan ahead, and manage deadlines.</p>
+          </div>
+
+          <!-- Calendar Desktop Grid Container -->
+          <div class="calendar-desktop-wrap">
+            <!-- Interactive Month Navigator Card -->
+            <div class="calendar-card">
+              <div class="calendar-month-nav">
+                <button id="btn-cal-prev" class="btn-cal-arrow" aria-label="Previous month">‹</button>
+                <div class="cal-month-title" id="cal-month-display">November 2026</div>
+                <button id="btn-cal-next" class="btn-cal-arrow" aria-label="Next month">›</button>
+              </div>
+
+              <!-- Day of Week Headers -->
+              <div class="calendar-weekdays">
+                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+              </div>
+
+              <!-- Interactive Date Strip / Grid -->
+              <div class="calendar-days-grid" id="calendar-days-container">
+                <!-- Dynamically generated days -->
+              </div>
+            </div>
+
+            <!-- Tasks on Selected Date -->
+            <div class="section-block">
+              <div class="section-head">
+                <h2 class="section-title" id="cal-selected-date-title">Tasks on Mon, 2 Nov</h2>
+              </div>
+
+              <div class="task-list" id="calendar-task-list">
+                <!-- Dynamically rendered tasks for selected date -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Screen 7: Add Task Page -->
+        <section id="tab-add" class="tab-view">
+          <!-- Themed Top Banner Card (Green Theme) -->
+          <div class="page-themed-banner banner-theme-green">
+            <div class="banner-pill-badge pill-green">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>Add Task</span>
+            </div>
+            <p class="banner-subtext">Create a new task with details like date, priority, and category.</p>
+          </div>
+
+          <form id="form-add-task" class="add-task-form">
+            <!-- Back & Title -->
+            <div class="add-screen-nav">
+              <button type="button" id="btn-back-from-add" class="btn-back" aria-label="Go back">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              </button>
+              <h3 class="add-nav-title">Add Task</h3>
+            </div>
+
+            <!-- Task Title Input -->
+            <div class="form-group">
+              <label for="add-title" class="form-label">Task Title</label>
+              <input type="text" id="add-title" class="form-input" placeholder="Build ColdGuard UI" required maxlength="150">
+            </div>
+
+            <!-- Description (optional) -->
+            <div class="form-group">
+              <label for="add-desc" class="form-label">Description <span class="label-opt">(optional)</span></label>
+              <textarea id="add-desc" class="form-textarea" placeholder="Complete the dashboard and connect with FastAPI" rows="3" maxlength="1000"></textarea>
+            </div>
+
+            <!-- Due Date & Time Group -->
+            <div class="form-row-card">
+              <div class="row-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </div>
+              <div class="row-content">
+                <label for="add-due-date" class="row-label">Due Date</label>
+                <input type="date" id="add-due-date" class="row-input-field">
+              </div>
+            </div>
+
+            <div class="form-row-card">
+              <div class="row-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div class="row-content">
+                <label for="add-time" class="row-label">Time</label>
+                <input type="text" id="add-time" class="row-input-field" placeholder="Today, 6:00 PM">
+              </div>
+            </div>
+
+            <!-- Priority Selector -->
+            <div class="form-row-card">
+              <div class="row-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+              </div>
+              <div class="row-content flex-between">
+                <span class="row-label">Priority</span>
+                <div class="pill-selector" id="add-priority-selector">
+                  <button type="button" class="pill-opt opt-high active" data-val="High">High</button>
+                  <button type="button" class="pill-opt opt-med" data-val="Medium">Medium</button>
+                  <button type="button" class="pill-opt opt-low" data-val="Low">Low</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Category Selector -->
+            <div class="form-row-card">
+              <div class="row-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+              </div>
+              <div class="row-content flex-between">
+                <span class="row-label">Category</span>
+                <div class="pill-selector" id="add-category-selector">
+                  <button type="button" class="pill-opt opt-cat active" data-val="Project">Project</button>
+                  <button type="button" class="pill-opt opt-cat" data-val="Work">Work</button>
+                  <button type="button" class="pill-opt opt-cat" data-val="Study">Study</button>
+                  <button type="button" class="pill-opt opt-cat" data-val="Personal">Personal</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Reminder Toggle -->
+            <div class="form-row-card">
+              <div class="row-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              </div>
+              <div class="row-content flex-between">
+                <span class="row-label">Reminder</span>
+                <label class="switch">
+                  <input type="checkbox" id="add-reminder" checked>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Submit Button -->
+            <button type="submit" class="btn-primary-wide">Add Task</button>
+          </form>
+        </section>
+
+        <!-- Screen 8: Progress Analytics Page (WARM YELLOW THEME) -->
+        <section id="tab-progress" class="tab-view theme-yellow-screen">
+          <!-- Themed Top Banner Card (Warm Yellow / Amber Theme) -->
+          <div class="page-themed-banner banner-theme-yellow">
+            <div class="banner-pill-badge pill-yellow">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              <span>Progress</span>
+            </div>
+            <p class="banner-subtext">Track your productivity, completed tasks, and weekly performances.</p>
+          </div>
+
+          <!-- Segmented Control Filters -->
+          <div class="segmented-control" id="progress-timeframe-filter">
+            <button class="seg-btn active" data-timeframe="week">This Week</button>
+            <button class="seg-btn" data-timeframe="month">This Month</button>
+            <button class="seg-btn" data-timeframe="all">All Time</button>
+          </div>
+
+          <!-- Progress Desktop Grid Container -->
+          <div class="progress-desktop-wrap">
+            <!-- Main Circular Progress Ring Card -->
+            <div class="analytics-card card-yellow-accent">
+              <div class="progress-ring-container large-ring">
+                <svg class="progress-ring" width="120" height="120" viewBox="0 0 100 100">
+                  <circle class="ring-bg" cx="50" cy="50" r="40" stroke-width="9"/>
+                  <circle class="ring-fill ring-fill-red" id="analytics-ring-fill" cx="50" cy="50" r="40" stroke-width="9" stroke-dasharray="251.2" stroke-dashoffset="95"/>
+                </svg>
+                <div class="ring-center-text" id="analytics-percent">62%</div>
+              </div>
+
+              <div class="analytics-ring-info">
+                <div class="analytics-big-stat" id="analytics-tasks-summary">5 of 8 tasks completed</div>
+                <div class="analytics-trend-badge" id="analytics-trend-badge">+20% from last week</div>
+              </div>
+            </div>
+
+            <!-- Task Overview Breakdown -->
+            <div class="overview-card card-yellow-accent">
+              <h3 class="overview-title">Task Overview</h3>
+              <div class="overview-list">
+                <div class="overview-item">
+                  <span class="status-dot dot-completed"></span>
+                  <span class="overview-label">Completed</span>
+                  <span class="overview-val" id="overview-completed-val">5</span>
+                </div>
+                <div class="overview-item">
+                  <span class="status-dot dot-pending"></span>
+                  <span class="overview-label">Pending</span>
+                  <span class="overview-val" id="overview-pending-val">2</span>
+                </div>
+                <div class="overview-item">
+                  <span class="status-dot dot-overdue"></span>
+                  <span class="overview-label">Overdue</span>
+                  <span class="overview-val" id="overview-overdue-val">1</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Productivity (Last 7 Days) Bar Chart -->
+            <div class="barchart-card card-yellow-accent">
+              <h3 class="barchart-title">Productivity (Last 7 Days)</h3>
+              <div class="barchart-container" id="barchart-bars">
+                <!-- Dynamically populated 7 bars -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Screen 9: Profile Page (WHOLE GREEN THEME) -->
+        <section id="tab-profile" class="tab-view theme-green-screen">
+          <!-- Themed Top Banner Card (Green Theme) -->
+          <div class="page-themed-banner banner-theme-green">
+            <div class="banner-pill-badge pill-green">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span>Profile</span>
+            </div>
+            <p class="banner-subtext">View and update your personal details and preferences.</p>
+          </div>
+
+          <!-- Profile Bio Card -->
+          <div class="profile-card">
+            <div class="profile-avatar-wrap">
+              <div class="profile-avatar-circle">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <button id="btn-edit-avatar" class="avatar-edit-pencil" aria-label="Edit Profile">✎</button>
+            </div>
+            <h3 class="profile-name" id="profile-display-name">Aadarsh Nithish</h3>
+            <p class="profile-age" id="profile-display-age">Age: 21</p>
+          </div>
+
+          <!-- Settings List Group -->
+          <div class="settings-group">
+            <!-- Edit Details -->
+            <button class="settings-item" id="btn-open-edit-modal">
+              <div class="settings-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </div>
+              <span class="settings-item-label">Edit Details</span>
+              <span class="settings-chevron">›</span>
+            </button>
+
+            <!-- Theme Switcher -->
+            <button class="settings-item" id="btn-toggle-theme">
+              <div class="settings-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              </div>
+              <span class="settings-item-label">Theme</span>
+              <span class="settings-item-val" id="theme-display-val">Light ›</span>
+            </button>
+
+            <!-- Onboarding Tour -->
+            <button class="settings-item" id="btn-open-tour">
+              <div class="settings-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              </div>
+              <span class="settings-item-label">View Onboarding Tour</span>
+              <span class="settings-chevron">›</span>
+            </button>
+
+            <!-- About Taskly -->
+            <button class="settings-item" id="btn-open-about">
+              <div class="settings-item-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              </div>
+              <span class="settings-item-label">About Taskly</span>
+              <span class="settings-chevron">›</span>
+            </button>
+
+            <!-- Log Out / Reset -->
+            <button class="settings-item item-logout" id="btn-logout">
+              <div class="settings-item-icon text-red">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </div>
+              <span class="settings-item-label text-red">Log Out</span>
+              <span class="settings-chevron text-red">›</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Persistent Bottom Navigation Bar -->
+        <nav class="bottom-nav" id="bottom-nav">
+          <!-- Home -->
+          <button class="nav-tab active" data-tab="home" aria-label="Home Dashboard">
+            <div class="nav-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+            <span class="nav-label">Home</span>
+          </button>
+
+          <!-- Calendar -->
+          <button class="nav-tab" data-tab="calendar" aria-label="Calendar">
+            <div class="nav-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <span class="nav-label">Calendar</span>
+          </button>
+
+          <!-- Central Red Add Task FAB -->
+          <button class="nav-fab" id="nav-btn-add" data-tab="add" aria-label="Add Task">
+            <div class="fab-circle">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+          </button>
+
+          <!-- Progress -->
+          <button class="nav-tab" data-tab="progress" aria-label="Progress">
+            <div class="nav-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </div>
+            <span class="nav-label">Progress</span>
+          </button>
+
+          <!-- Profile -->
+          <button class="nav-tab" data-tab="profile" aria-label="Profile">
+            <div class="nav-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <span class="nav-label">Profile</span>
+          </button>
+        </nav>
+
       </div>
 
-      <!-- Statistics Dashboard -->
-      <section class="stats-dashboard" id="stats-dashboard" aria-label="Task statistics">
-        <div class="stats-grid" role="tablist" aria-label="Task statistics filters">
-          <!-- Total Card -->
-          <button type="button" class="stat-card stat-card-total active" data-stat-filter="all" role="tab" aria-selected="true" title="Filter by all tasks">
-            <div class="stat-card-header">
-              <span class="stat-icon-wrapper stat-icon-total" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-                  <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-                  <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-                  <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-                </svg>
-              </span>
-              <span class="stat-label">Total</span>
-            </div>
-            <div class="stat-card-body">
-              <span class="stat-value" id="stat-total-value">0</span>
-              <span class="stat-subtext">tasks</span>
-            </div>
-          </button>
+      <!-- ==================================================================== -->
+      <!-- 2. ONBOARDING & SETUP FLOW (INTRO ANIMATION, LAUNCH, CAROUSEL, SETUP, WELCOME) -->
+      <!-- ==================================================================== -->
+      <div id="onboarding-flow" class="screen-flow">
+        
+        <!-- Screen 0: Intro Animation Loop (Paper Airplane Gliding) -->
+        <section id="screen-intro" class="onboard-step active" aria-label="Taskly Intro Animation">
+          <video id="intro-video" class="intro-fullscreen-video" autoplay loop muted playsinline preload="auto">
+            <source src="intro-animation.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        </section>
 
-          <!-- Completed Card -->
-          <button type="button" class="stat-card stat-card-completed" data-stat-filter="completed" role="tab" aria-selected="false" title="Filter by completed tasks">
-            <div class="stat-card-header">
-              <span class="stat-icon-wrapper stat-icon-completed" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-              </span>
-              <span class="stat-label">Done</span>
-            </div>
-            <div class="stat-card-body">
-              <span class="stat-value" id="stat-completed-value">0</span>
-              <span class="stat-subtext" id="stat-completed-rate">0%</span>
-            </div>
-          </button>
+        <!-- Screen 1: App Launch / Full-Page Landing Page -->
+        <section id="screen-launch" class="onboard-step" aria-label="Taskly Landing Page">
+          <img src="landing-cover.png?v=4k" alt="Taskly - Plan • Organize • Get Things Done" class="landing-fullscreen-img">
+        </section>
 
-          <!-- Pending Card -->
-          <button type="button" class="stat-card stat-card-pending" data-stat-filter="pending" role="tab" aria-selected="false" title="Filter by pending tasks">
-            <div class="stat-card-header">
-              <span class="stat-icon-wrapper stat-icon-pending" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-              </span>
-              <span class="stat-label">Pending</span>
-            </div>
-            <div class="stat-card-body">
-              <span class="stat-value" id="stat-pending-value">0</span>
-              <span class="stat-subtext">active</span>
-            </div>
-          </button>
-
-          <!-- Overdue Card -->
-          <button type="button" class="stat-card stat-card-overdue" data-stat-filter="overdue" role="tab" aria-selected="false" title="Filter by overdue tasks">
-            <div class="stat-card-header">
-              <span class="stat-icon-wrapper stat-icon-overdue" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
-                  <line x1="12" y1="9" x2="12" y2="13"></line>
-                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                </svg>
-              </span>
-              <span class="stat-label">Overdue</span>
-            </div>
-            <div class="stat-card-body">
-              <span class="stat-value" id="stat-overdue-value">0</span>
-              <span class="stat-subtext" id="stat-overdue-subtext">urgent</span>
-            </div>
-          </button>
-        </div>
-
-        <!-- Segmented Progress Bar -->
-        <div class="segmented-progress-wrap">
-          <div class="segmented-progress-labels">
-            <span class="progress-status" id="progress-summary-text">0 of 0 completed</span>
-            <span class="progress-percentage" id="progress-percent">0%</span>
+        <!-- Screen 2: Carousel Slides (2a, 2b, 2c) -->
+        <section id="screen-carousel" class="onboard-step">
+          <div class="step-nav-bar">
+            <button type="button" id="btn-back-to-launch" class="btn-step-nav" aria-label="Back to Landing Page">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              <span>Back</span>
+            </button>
+            <div class="step-nav-counter">Page 2 of 4</div>
+            <button id="btn-skip-onboarding" class="btn-text">Skip</button>
           </div>
-          <div class="segmented-progress-track" role="progressbar" aria-label="Task completion progress breakdown" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div class="progress-seg progress-seg-completed" id="seg-completed" style="width: 0%" title="Completed"></div>
-            <div class="progress-seg progress-seg-pending" id="seg-pending" style="width: 0%" title="Pending"></div>
-            <div class="progress-seg progress-seg-overdue" id="seg-overdue" style="width: 0%" title="Overdue"></div>
-          </div>
-          <div class="segmented-progress-legend">
-            <span class="legend-item"><span class="legend-dot legend-dot-completed"></span> Done</span>
-            <span class="legend-item"><span class="legend-dot legend-dot-pending"></span> Pending</span>
-            <span class="legend-item"><span class="legend-dot legend-dot-overdue"></span> Overdue</span>
-          </div>
-        </div>
-      </section>
-    </header>
 
-    <!-- Task Input Form -->
-    <section class="input-card">
-      <form id="todo-form" class="todo-form" autocomplete="off">
-        <div class="title-input-group">
-          <div class="input-wrapper">
-            <span class="input-icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
+          <div class="carousel-slides-container">
+            <!-- Slide 1 -->
+            <div class="carousel-slide active" data-slide="0">
+              <div class="slide-illustration">
+                <div class="illo-card illo-clipboard">
+                  <div class="illo-clip"></div>
+                  <div class="illo-lines">
+                    <div class="illo-line line-1"></div>
+                    <div class="illo-line line-2"></div>
+                    <div class="illo-line line-3"></div>
+                  </div>
+                  <div class="illo-check-circle">✓</div>
+                  <div class="illo-pencil"></div>
+                </div>
+              </div>
+              <h2 class="slide-title">Organize Your Tasks</h2>
+              <p class="slide-desc">Create, manage, and track your daily tasks easily.</p>
+            </div>
+
+            <!-- Slide 2 -->
+            <div class="carousel-slide" data-slide="1">
+              <div class="slide-illustration">
+                <div class="illo-card illo-calendar">
+                  <div class="illo-cal-header">
+                    <div class="illo-cal-ring ring-l"></div>
+                    <div class="illo-cal-ring ring-r"></div>
+                  </div>
+                  <div class="illo-cal-grid">
+                    <span></span><span></span><span></span>
+                    <span class="active-dot"></span><span></span><span></span>
+                  </div>
+                </div>
+              </div>
+              <h2 class="slide-title">Stay on Schedule</h2>
+              <p class="slide-desc">Never miss a deadline with an intuitive calendar.</p>
+            </div>
+
+            <!-- Slide 3 -->
+            <div class="carousel-slide" data-slide="2">
+              <div class="slide-illustration">
+                <div class="illo-card illo-chart">
+                  <div class="illo-bars">
+                    <div class="illo-bar b1"></div>
+                    <div class="illo-bar b2"></div>
+                    <div class="illo-bar b3"></div>
+                    <div class="illo-bar b4"></div>
+                  </div>
+                  <div class="illo-arrow-up">↗</div>
+                </div>
+              </div>
+              <h2 class="slide-title">Track Your Progress</h2>
+              <p class="slide-desc">See how productive you are and build better habits.</p>
+            </div>
+          </div>
+
+          <!-- Carousel Footer -->
+          <div class="carousel-footer">
+            <div class="carousel-dots" id="carousel-dots">
+              <span class="dot active" data-index="0"></span>
+              <span class="dot" data-index="1"></span>
+              <span class="dot" data-index="2"></span>
+            </div>
+
+            <!-- Next FAB for Slides 1 & 2 -->
+            <button id="btn-next-slide" class="btn-circle-fab" aria-label="Next slide">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
               </svg>
-            </span>
-            <input 
-              type="text" 
-              id="task-title-input" 
-              name="taskTitle"
-              class="task-input" 
-              placeholder="Add a new task..." 
-              maxlength="150"
-              required
-              aria-label="New task title"
-            />
+            </button>
+
+            <!-- Get Started Button for Slide 3 -->
+            <button id="btn-get-started" class="btn-primary-wide hidden">
+              <span>Get Started</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </button>
           </div>
-          <div class="char-counter-wrapper">
-            <span id="char-counter" class="char-counter" aria-live="polite">
-              <span id="char-count">0</span> / 50 characters
-            </span>
+        </section>
+
+        <!-- Screen 3: Profile Setup -->
+        <section id="screen-profile-setup" class="onboard-step">
+          <div class="step-nav-bar">
+            <button type="button" id="btn-back-to-carousel" class="btn-step-nav" aria-label="Back to Onboarding">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              <span>Back</span>
+            </button>
+            <div class="step-nav-counter">Page 3 of 4</div>
+            <div style="width: 48px;"></div>
           </div>
-        </div>
 
-        <div class="date-input-wrapper" title="Set due date (optional)">
-          <span class="date-icon" aria-hidden="true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-          </span>
-          <input 
-            type="date" 
-            id="task-due-date-input" 
-            name="dueDate"
-            class="task-date-input" 
-            aria-label="Due date (optional)"
-          />
-        </div>
+          <div class="step-content">
+            <h2 class="setup-title">Let's set up<br>your profile ✨</h2>
+            <p class="setup-subtitle">Tell us a little about yourself.</p>
 
-        <button type="submit" id="add-task-btn" class="submit-button" aria-label="Add task">
-          <span>Add Task</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-            <polyline points="12 5 19 12 12 19"></polyline>
-          </svg>
-        </button>
-      </form>
-    </section>
+            <form id="form-profile-setup" class="setup-form">
+              <div class="input-card">
+                <div class="input-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div class="input-card-body">
+                  <label for="setup-name" class="input-card-label">Your Name</label>
+                  <input type="text" id="setup-name" class="input-card-field" placeholder="Aadarsh Nithish" required maxlength="40">
+                </div>
+              </div>
 
-    <!-- Filters & Action Bar -->
-    <section class="controls-bar" aria-label="Filter and manage tasks">
-      <div class="filter-tabs" role="tablist">
-        <button type="button" class="filter-btn active" id="filter-all" data-filter="all" role="tab" aria-selected="true">
-          All <span class="filter-badge" id="badge-all">0</span>
-        </button>
-        <button type="button" class="filter-btn" id="filter-pending" data-filter="pending" role="tab" aria-selected="false">
-          Pending <span class="filter-badge" id="badge-pending">0</span>
-        </button>
-        <button type="button" class="filter-btn" id="filter-overdue" data-filter="overdue" role="tab" aria-selected="false">
-          Overdue <span class="filter-badge" id="badge-overdue">0</span>
-        </button>
-        <button type="button" class="filter-btn" id="filter-completed" data-filter="completed" role="tab" aria-selected="false">
-          Done <span class="filter-badge" id="badge-completed">0</span>
-        </button>
+              <div class="input-card">
+                <div class="input-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </div>
+                <div class="input-card-body">
+                  <label for="setup-age" class="input-card-label">Your Age</label>
+                  <input type="number" id="setup-age" class="input-card-field" placeholder="21" min="5" max="120" required>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-primary-wide">
+                <span>Continue</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- Screen 4: Welcome & Celebration -->
+        <section id="screen-welcome" class="onboard-step">
+          <div class="step-nav-bar">
+            <button type="button" id="btn-back-to-setup" class="btn-step-nav" aria-label="Back to Profile Setup">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              <span>Back</span>
+            </button>
+            <div class="step-nav-counter">Page 4 of 4</div>
+            <div style="width: 48px;"></div>
+          </div>
+
+          <div class="welcome-card">
+            <div class="welcome-check-badge">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5"/>
+              </svg>
+            </div>
+
+            <div class="welcome-logo-wrap">
+              <img src="logo.png" alt="Taskly" class="welcome-logo-img">
+            </div>
+
+            <h2 class="welcome-title">Welcome to<br>Taskly! 🎉</h2>
+            <p class="welcome-desc">You're all set. Let's make today productive!</p>
+
+            <button id="btn-enter-home" class="btn-primary-wide">
+              <span>Go to Home</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </section>
+
       </div>
 
-      <button type="button" id="clear-completed-btn" class="clear-btn" style="display: none;" title="Remove all completed tasks">
-        Clear completed
-      </button>
-    </section>
-
-    <!-- Task List Container -->
-    <section class="list-section">
-      <ul id="todo-list" class="todo-list" aria-live="polite">
-        <!-- Rendered dynamically by app.js -->
-      </ul>
-
-      <!-- Empty State -->
-      <div id="empty-state" class="empty-state" style="display: none;">
-        <div class="empty-icon-wrap">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
+      <!-- ==================================================================== -->
+      <!-- 3. MODALS                                                            -->
+      <!-- ==================================================================== -->
+      <div id="modal-edit-profile" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 class="modal-title">Edit Details</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-edit-modal">×</button>
+          </div>
+          <form id="form-edit-profile" class="modal-form">
+            <div class="form-group">
+              <label for="edit-name" class="form-label">Your Name</label>
+              <input type="text" id="edit-name" class="form-input" placeholder="Aadarsh Nithish" required maxlength="40">
+            </div>
+            <div class="form-group">
+              <label for="edit-age" class="form-label">Your Age</label>
+              <input type="number" id="edit-age" class="form-input" placeholder="21" min="5" max="120" required>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-modal-cancel" id="btn-cancel-edit">Cancel</button>
+              <button type="submit" class="btn-primary-compact">Save Changes</button>
+            </div>
+          </form>
         </div>
-        <h2 class="empty-title" id="empty-title">All tasks completed</h2>
-        <p class="empty-desc" id="empty-desc">Enjoy your day or add a new task above!</p>
       </div>
-    </section>
 
-    <!-- Footer Stats / Keyboard tips -->
-    <footer class="app-footer">
-      <p class="tip-text">
-        <kbd>Enter</kbd> to add task &bull; Click circle to toggle complete
-      </p>
-    </footer>
-  </main>
+      <div id="modal-about" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 class="modal-title">About Taskly</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-about-modal">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="about-logo-row">
+              <img src="logo.png" alt="Taskly" width="56" height="56">
+              <div>
+                <div class="about-app-name">Taskly</div>
+                <div class="about-app-ver">Version 2.0 (Aerodynamic Edition)</div>
+              </div>
+            </div>
+            <p class="about-desc">
+              Taskly is your personal productivity command center, designed to help you organize daily tasks, plan deadlines with an interactive calendar, and track progress over time.
+            </p>
+            <div class="about-meta">
+              <div>Backend: Node.js / Express</div>
+              <div>Database: Supabase PostgreSQL (Production)</div>
+              <div>Client: Capacitor Mobile & Web</div>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-primary-compact" id="btn-close-about-ok">Got it</button>
+          </div>
+        </div>
+      </div>
 
-  <!-- Toast Notification Container -->
-  <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+    </div> <!-- /.app-viewport -->
 
   <script src="app.js"></script>
 </body>
