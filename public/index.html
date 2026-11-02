@@ -9,17 +9,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
-  <link rel="icon" type="image/png" href="icon-192.png">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+  <link rel="icon" type="image/png" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="/styles.css?v=2.2">
 </head>
-<body>
+<body class="onboarding-active">
 
   <!-- Main Application Container -->
   <div class="app-viewport" id="app-viewport">
@@ -27,12 +27,12 @@
     <!-- ==================================================================== -->
     <!-- 1. MAIN APPLICATION TABS (DEFAULT VIEW)                              -->
     <!-- ==================================================================== -->
-    <div id="main-flow" class="screen-flow active">
+    <div id="main-flow" class="screen-flow">
 
       <!-- Desktop Global Top Navigation Header (Visible on Desktop >= 768px in Main App) -->
       <header class="desktop-header">
         <div class="desktop-brand">
-          <img src="logo.png" alt="Taskly" class="desktop-logo" width="34" height="34">
+          <img src="/logo.png" alt="Taskly" class="desktop-logo" width="34" height="34">
           <div class="desktop-brand-text">
             <span class="desktop-brand-name">Taskly</span>
             <span class="desktop-brand-tag">Plan • Organize • Get Things Done</span>
@@ -548,19 +548,19 @@
       <!-- ==================================================================== -->
       <!-- 2. ONBOARDING & SETUP FLOW (INTRO ANIMATION, LAUNCH, CAROUSEL, SETUP, WELCOME) -->
       <!-- ==================================================================== -->
-      <div id="onboarding-flow" class="screen-flow">
+      <div id="onboarding-flow" class="screen-flow active">
         
         <!-- Screen 0: Intro Animation Loop (Paper Airplane Gliding) -->
         <section id="screen-intro" class="onboard-step active" aria-label="Taskly Intro Animation">
           <video id="intro-video" class="intro-fullscreen-video" autoplay loop muted playsinline preload="auto">
-            <source src="intro-animation.mp4" type="video/mp4">
+            <source src="/intro-animation.mp4" type="video/mp4">
             Your browser does not support the video tag.
           </video>
         </section>
 
         <!-- Screen 1: App Launch / Full-Page Landing Page -->
         <section id="screen-launch" class="onboard-step" aria-label="Taskly Landing Page">
-          <img src="landing-cover.png?v=4k" alt="Taskly - Plan • Organize • Get Things Done" class="landing-fullscreen-img">
+          <img src="/landing-cover.png?v=4k" alt="Taskly - Plan • Organize • Get Things Done" class="landing-fullscreen-img">
         </section>
 
         <!-- Screen 2: Carousel Slides (2a, 2b, 2c) -->
@@ -717,7 +717,7 @@
             </div>
 
             <div class="welcome-logo-wrap">
-              <img src="logo.png" alt="Taskly" class="welcome-logo-img">
+              <img src="/logo.png" alt="Taskly" class="welcome-logo-img">
             </div>
 
             <h2 class="welcome-title">Welcome to<br>Taskly! 🎉</h2>
@@ -789,6 +789,6 @@
 
     </div> <!-- /.app-viewport -->
 
-  <script src="app.js"></script>
+  <script src="/app.js?v=2.2"></script>
 </body>
 </html>

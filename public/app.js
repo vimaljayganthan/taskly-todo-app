@@ -32,13 +32,13 @@ const state = {
   user: {
     name: 'Aadarsh Nithish',
     age: 21,
-    onboarded: true
+    onboarded: false
   },
   theme: 'light',
 
   // Active Flow & Navigation
-  flow: 'main', // 'main' | 'onboarding'
-  currentOnboardingStep: 'launch',
+  flow: 'onboarding', // 'main' | 'onboarding'
+  currentOnboardingStep: 'intro',
   carouselIndex: 0,
   activeTab: 'home', // 'home' | 'calendar' | 'add' | 'progress' | 'profile'
 
@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
   restoreActiveRoute();
 });
 
-// Restore active route based on URL hash, query params, or saved localStorage state
+// Restore active route based on URL hash, query params, or default to intro animation
 function restoreActiveRoute() {
   const hash = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
   const params = new URLSearchParams(window.location.search);
@@ -103,7 +103,7 @@ function restoreActiveRoute() {
   const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add'];
   const onboardingSteps = ['intro', 'launch', 'carousel', 'profile-setup', 'welcome'];
 
-  // 1. Explicit URL Hash takes highest priority (e.g. #calendar, #progress, #launch)
+  // 1. Explicit URL Hash takes highest priority (e.g. #calendar, #progress, #home, #launch, #intro)
   if (mainTabs.includes(hash)) {
     showMainFlow(hash, false);
     return;
@@ -113,7 +113,7 @@ function restoreActiveRoute() {
     return;
   }
 
-  // 2. Query Parameters take second priority (e.g. ?tab=calendar)
+  // 2. Query Parameters take second priority (e.g. ?tab=calendar, ?step=intro)
   if (paramTab && mainTabs.includes(paramTab)) {
     showMainFlow(paramTab, false);
     return;
@@ -123,31 +123,19 @@ function restoreActiveRoute() {
     return;
   }
 
-  // 3. Saved localStorage session (preserves exact page on reload)
+  // 3. Saved localStorage session if explicitly onboarded and has an active tab
   try {
     const savedFlow = localStorage.getItem('taskly_active_flow');
     const savedTab = localStorage.getItem('taskly_active_tab');
-    const savedStep = localStorage.getItem('taskly_onboarding_step');
-
-    if (savedFlow === 'main' && savedTab && mainTabs.includes(savedTab)) {
+    if (state.user && state.user.onboarded === true && savedFlow === 'main' && savedTab && mainTabs.includes(savedTab)) {
       showMainFlow(savedTab, false);
-      return;
-    }
-    if (savedFlow === 'onboarding' && savedStep && onboardingSteps.includes(savedStep) && state.user.onboarded !== true) {
-      showOnboardingStep(savedStep, false);
       return;
     }
   } catch (_) {}
 
-  // 4. Default fallback:
-  // If user has already completed onboarding (or default sample user), go to home dashboard;
-  // otherwise show first-time intro animation screen
-  if (state.user && state.user.onboarded) {
-    const fallbackTab = localStorage.getItem('taskly_active_tab');
-    showMainFlow(mainTabs.includes(fallbackTab) ? fallbackTab : 'home', false);
-  } else {
-    showOnboardingStep('intro', false);
-  }
+  // 4. Default entry point for root (/):
+  // Start with Screen 0 Intro Animation loop -> transitions to Screen 1 Landing Page upon click
+  showOnboardingStep('intro', false);
 }
 
 // Load preferences from localStorage
@@ -1125,8 +1113,15 @@ function setupEventListeners() {
   if (btnLogout) {
     btnLogout.addEventListener('click', () => {
       if (confirm('Reset your profile and test onboarding again?')) {
+        state.user.name = 'Aadarsh Nithish';
+        state.user.age = 21;
         state.user.onboarded = false;
-        saveUserPreferences();
+        try {
+          localStorage.removeItem('taskly_user');
+          localStorage.removeItem('taskly_active_flow');
+          localStorage.removeItem('taskly_active_tab');
+          localStorage.removeItem('taskly_onboarding_step');
+        } catch (_) {}
         showOnboardingStep('intro');
       }
     });
