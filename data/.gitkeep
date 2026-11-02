@@ -1,0 +1,3 @@
+# Preserve data directory in version control
+# Local task databases (todos.json) and backups are generated at runtime and ignored.
+

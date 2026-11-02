@@ -8,4 +8,6 @@ tests/
 .DS_Store
 .env*
 *.tmp
+data/*.json
+data/*.backup.json
 coverage/
