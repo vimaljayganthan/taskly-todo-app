@@ -3,6 +3,8 @@ const assert = require('node:assert');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
+
+process.env.NODE_ENV = 'development';
 const app = require('../server.js');
 const { setStorage, FileStorageAdapter, SupabaseStorageAdapter } = require('../storage/taskStore.js');
 
@@ -13,7 +15,8 @@ function mockRequest(app, options) {
     req.method = (options.method || 'GET').toUpperCase();
     req.url = options.url || '/';
     req.headers = Object.assign({
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      'authorization': 'Bearer mock-user:api-test-user-1:test@taskly.app'
     }, options.headers || {});
     req.body = options.body;
 
@@ -170,16 +173,20 @@ describe('Taskly Production API Test Suite (Supabase PostgreSQL Mode)', () => {
 
     const mockSupabase = {
       from: () => {
-        let currentFilter = null;
+        const filters = [];
         let pendingInsert = null;
         let pendingUpdate = null;
         let isDelete = false;
+
+        const matchesFilters = (row) => {
+          return filters.every(f => row[f.col] === f.val);
+        };
 
         const builder = {
           select: () => builder,
           order: () => builder,
           eq: (col, val) => {
-            currentFilter = { col, val };
+            filters.push({ col, val });
             return builder;
           },
           insert: (payload) => {
@@ -210,7 +217,7 @@ describe('Taskly Production API Test Suite (Supabase PostgreSQL Mode)', () => {
             if (pendingUpdate) {
               const updated = [];
               for (const [id, row] of mockRows.entries()) {
-                if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                if (matchesFilters(row)) {
                   const newRow = Object.assign({}, row, pendingUpdate);
                   mockRows.set(id, newRow);
                   updated.push(newRow);
@@ -221,14 +228,15 @@ describe('Taskly Production API Test Suite (Supabase PostgreSQL Mode)', () => {
             if (isDelete) {
               const deleted = [];
               for (const [id, row] of Array.from(mockRows.entries())) {
-                if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                if (matchesFilters(row)) {
                   mockRows.delete(id);
                   deleted.push(row);
                 }
               }
               return resolve({ data: deleted, error: null });
             }
-            return resolve({ data: Array.from(mockRows.values()), error: null });
+            const rows = Array.from(mockRows.values()).filter(matchesFilters);
+            return resolve({ data: rows, error: null });
           }
         };
         return builder;

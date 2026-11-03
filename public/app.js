@@ -30,10 +30,14 @@ const API_BASE_URL = getApiBaseUrl();
 const state = {
   // User Profile
   user: {
+    id: null,
+    email: '',
     name: 'Aadarsh Nithish',
     age: 21,
     onboarded: false
   },
+  userToken: null,
+  authMode: 'login', // 'login' | 'signup'
   theme: 'light',
 
   // Active Flow & Navigation
@@ -53,6 +57,74 @@ const state = {
   todos: [],
   dashboardFilter: 'all' // 'all' | 'today' | 'pending' | 'completed'
 };
+
+// Supabase Auth Integration
+let supabaseClient = null;
+
+async function initSupabaseAuth() {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/config`);
+    if (!res.ok) throw new Error('Failed to load server config');
+    const config = await res.json();
+
+    if (window.supabase && config.supabaseUrl && config.supabaseAnonKey) {
+      supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
+
+      const { data } = await supabaseClient.auth.getSession();
+      if (data && data.session) {
+        syncAuthSession(data.session);
+      }
+
+      supabaseClient.auth.onAuthStateChange((event, session) => {
+        if (session) {
+          syncAuthSession(session);
+        } else {
+          syncAuthSignOut();
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[Supabase Auth Init Warning]:', err.message);
+  }
+}
+
+function syncAuthSession(session) {
+  state.userToken = session.access_token;
+  try {
+    localStorage.setItem('taskly_user_token', session.access_token);
+  } catch (_) {}
+
+  const meta = session.user?.user_metadata || {};
+  state.user.id = session.user?.id;
+  state.user.email = session.user?.email || '';
+  if (meta.name) {
+    state.user.name = meta.name;
+  } else if (!state.user.name && session.user?.email) {
+    state.user.name = session.user.email.split('@')[0];
+  }
+  if (meta.age) {
+    state.user.age = meta.age;
+  }
+
+  saveUserPreferences();
+  renderProfile();
+  fetchTodos();
+}
+
+function syncAuthSignOut() {
+  state.userToken = null;
+  state.todos = [];
+  try {
+    localStorage.removeItem('taskly_user_token');
+  } catch (_) {}
+  renderAll();
+}
 
 // Date Format Helpers
 function toYmdString(date) {
@@ -83,11 +155,14 @@ function formatDateFriendly(dateStr) {
 // ==========================================================================
 // Initialization
 // ==========================================================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   loadStoredPreferences();
   applyTheme(state.theme);
   setupEventListeners();
-  fetchTodos();
+  await initSupabaseAuth();
+  if (state.userToken) {
+    fetchTodos();
+  }
 
   // Restore the active screen/route on reload or initial visit
   restoreActiveRoute();
@@ -145,6 +220,10 @@ function loadStoredPreferences() {
     if (storedUser) {
       const parsed = JSON.parse(storedUser);
       state.user = Object.assign({}, state.user, parsed);
+    }
+    const storedToken = localStorage.getItem('taskly_user_token');
+    if (storedToken) {
+      state.userToken = storedToken;
     }
     const storedTheme = localStorage.getItem('taskly_theme');
     if (storedTheme) {
@@ -306,63 +385,44 @@ function updateCarouselSlide(idx) {
 }
 
 // ==========================================================================
-// API Operations
+// API Operations (User-Scoped & Authenticated)
 // ==========================================================================
 async function fetchTodos() {
+  if (!state.userToken) {
+    state.todos = [];
+    renderAll();
+    return;
+  }
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/todos`);
+    const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
+      headers: {
+        'Authorization': `Bearer ${state.userToken}`
+      }
+    });
+    if (res.status === 401) {
+      console.warn('[Fetch]: Unauthenticated or expired session.');
+      state.todos = [];
+      renderAll();
+      return;
+    }
     if (!res.ok) throw new Error('Failed to load tasks');
     state.todos = await res.json();
     renderAll();
   } catch (err) {
     console.warn('[Fetch Warning]:', err.message);
-    // If empty or offline, fallback to sample defaults so UI never renders empty
-    if (!state.todos || state.todos.length === 0) {
-      state.todos = [
-        {
-          id: 'sample-1',
-          title: 'Finish AIML assignment',
-          description: 'Complete gradient descent exercises',
-          dueDate: toYmdString(new Date()),
-          time: '2:00 PM',
-          priority: 'High',
-          category: 'Study',
-          reminder: true,
-          completed: false,
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 'sample-2',
-          title: 'Update project report',
-          description: 'Review Q4 deliverables and slides',
-          dueDate: toYmdString(new Date()),
-          time: '4:00 PM',
-          priority: 'Medium',
-          category: 'Project',
-          reminder: false,
-          completed: true,
-          createdAt: new Date(Date.now() - 3600000).toISOString()
-        },
-        {
-          id: 'sample-3',
-          title: 'Team meeting',
-          description: 'Sprint planning and backlog grooming',
-          dueDate: toYmdString(new Date()),
-          time: '5:30 PM',
-          priority: 'Medium',
-          category: 'Work',
-          reminder: true,
-          completed: false,
-          createdAt: new Date(Date.now() - 7200000).toISOString()
-        }
-      ];
-    }
+    state.todos = state.todos || [];
     renderAll();
   }
 }
 
 async function handleAddTask(e) {
   e.preventDefault();
+  if (!state.userToken) {
+    alert('Please sign in or create an account to create tasks.');
+    showOnboardingStep('profile-setup');
+    return;
+  }
+
   const titleInput = document.getElementById('add-title');
   const descInput = document.getElementById('add-desc');
   const dateInput = document.getElementById('add-due-date');
@@ -391,22 +451,26 @@ async function handleAddTask(e) {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.userToken}`
+      },
       body: JSON.stringify(payload)
     });
 
-    if (res.ok) {
-      const created = await res.json();
-      state.todos.unshift(created);
-    } else {
-      // Local optimistic fallback
-      const localCreated = Object.assign({
-        id: `local-${Date.now()}`,
-        completed: false,
-        createdAt: new Date().toISOString()
-      }, payload);
-      state.todos.unshift(localCreated);
+    if (res.status === 401) {
+      alert('Your session has expired. Please sign in again.');
+      showOnboardingStep('profile-setup');
+      return;
     }
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to save task.');
+    }
+
+    const created = await res.json();
+    state.todos.unshift(created);
 
     // Reset Form
     titleInput.value = '';
@@ -417,19 +481,12 @@ async function handleAddTask(e) {
     showMainFlow('home');
   } catch (err) {
     console.error('Add task error:', err);
-    // Optimistic fallback
-    const localCreated = Object.assign({
-      id: `local-${Date.now()}`,
-      completed: false,
-      createdAt: new Date().toISOString()
-    }, payload);
-    state.todos.unshift(localCreated);
-    titleInput.value = '';
-    showMainFlow('home');
+    alert(`Could not create task: ${err.message}`);
   }
 }
 
 async function handleToggleComplete(id) {
+  if (!state.userToken) return;
   const task = state.todos.find(t => t.id === id);
   if (!task) return;
 
@@ -440,7 +497,10 @@ async function handleToggleComplete(id) {
   try {
     await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.userToken}`
+      },
       body: JSON.stringify({ completed: nextStatus })
     });
   } catch (err) {
@@ -452,12 +512,16 @@ async function handleDeleteTask(event, id) {
   if (event && event.stopPropagation) {
     event.stopPropagation();
   }
+  if (!state.userToken) return;
   state.todos = state.todos.filter(t => t.id !== id);
   renderAll();
 
   try {
     await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${state.userToken}`
+      }
     });
   } catch (err) {
     console.warn('Delete task warning:', err);
@@ -465,6 +529,7 @@ async function handleDeleteTask(event, id) {
 }
 
 async function handleClearCompleted() {
+  if (!state.userToken) return;
   const hasCompleted = state.todos.some(t => t.completed);
   if (!hasCompleted) return;
 
@@ -473,7 +538,10 @@ async function handleClearCompleted() {
 
   try {
     await fetch(`${getApiBaseUrl()}/api/todos`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${state.userToken}`
+      }
     });
   } catch (err) {
     console.warn('Clear completed warning:', err);
@@ -831,17 +899,144 @@ function setupEventListeners() {
     });
   }
 
-  // Screen 3: Profile Setup Form
+  // Auth Mode Toggles (Sign In vs Create Account)
+  const btnToggleLogin = document.getElementById('btn-toggle-login');
+  const btnToggleSignup = document.getElementById('btn-toggle-signup');
+  const fieldWrapName = document.getElementById('field-wrap-name');
+  const fieldWrapAge = document.getElementById('field-wrap-age');
+  const authTitle = document.getElementById('auth-title');
+  const authSubtitle = document.getElementById('auth-subtitle');
+  const btnAuthText = document.getElementById('btn-auth-text');
+  const authErrorMsg = document.getElementById('auth-error-msg');
+
+  function setAuthMode(mode) {
+    state.authMode = mode;
+    if (authErrorMsg) {
+      authErrorMsg.style.display = 'none';
+      authErrorMsg.textContent = '';
+    }
+    if (mode === 'signup') {
+      btnToggleSignup?.classList.add('active');
+      btnToggleLogin?.classList.remove('active');
+      if (fieldWrapName) fieldWrapName.style.display = 'flex';
+      if (fieldWrapAge) fieldWrapAge.style.display = 'flex';
+      if (authTitle) authTitle.innerHTML = 'Create your<br>account ✨';
+      if (authSubtitle) authSubtitle.textContent = 'Start organizing your tasks with Taskly.';
+      if (btnAuthText) btnAuthText.textContent = 'Create Account';
+    } else {
+      btnToggleLogin?.classList.add('active');
+      btnToggleSignup?.classList.remove('active');
+      if (fieldWrapName) fieldWrapName.style.display = 'none';
+      if (fieldWrapAge) fieldWrapAge.style.display = 'none';
+      if (authTitle) authTitle.innerHTML = 'Welcome back<br>to Taskly ✨';
+      if (authSubtitle) authSubtitle.textContent = 'Sign in to access and sync your tasks.';
+      if (btnAuthText) btnAuthText.textContent = 'Sign In';
+    }
+  }
+
+  if (btnToggleLogin) btnToggleLogin.addEventListener('click', () => setAuthMode('login'));
+  if (btnToggleSignup) btnToggleSignup.addEventListener('click', () => setAuthMode('signup'));
+
+  // Screen 3: Profile Setup Form / Supabase Auth
   const formProfileSetup = document.getElementById('form-profile-setup');
   if (formProfileSetup) {
-    formProfileSetup.addEventListener('submit', (e) => {
+    formProfileSetup.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const emailInput = document.getElementById('setup-email');
+      const passwordInput = document.getElementById('setup-password');
       const nameInput = document.getElementById('setup-name');
       const ageInput = document.getElementById('setup-age');
-      state.user.name = nameInput.value.trim() || 'Aadarsh Nithish';
-      state.user.age = parseInt(ageInput.value, 10) || 21;
-      saveUserPreferences();
-      showOnboardingStep('welcome');
+      const submitBtn = document.getElementById('btn-auth-submit');
+
+      const email = emailInput?.value.trim() || '';
+      const password = passwordInput?.value || '';
+      const name = nameInput?.value.trim() || 'Taskly User';
+      const age = parseInt(ageInput?.value, 10) || 21;
+
+      if (!email || !password) {
+        if (authErrorMsg) {
+          authErrorMsg.textContent = 'Please provide both email and password.';
+          authErrorMsg.style.display = 'flex';
+        }
+        return;
+      }
+
+      if (submitBtn) submitBtn.disabled = true;
+      if (authErrorMsg) authErrorMsg.style.display = 'none';
+
+      try {
+        if (!supabaseClient) {
+          // If supabaseClient isn't initialized yet, try to initialize it once
+          await initSupabaseAuth();
+        }
+
+        if (supabaseClient) {
+          if (state.authMode === 'signup') {
+            const { data, error } = await supabaseClient.auth.signUp({
+              email,
+              password,
+              options: {
+                data: { name, age }
+              }
+            });
+            if (error) throw error;
+
+            state.user.name = name;
+            state.user.age = age;
+            state.user.email = email;
+            saveUserPreferences();
+
+            if (data.session) {
+              syncAuthSession(data.session);
+              showOnboardingStep('welcome');
+            } else {
+              if (authErrorMsg) {
+                authErrorMsg.style.display = 'flex';
+                authErrorMsg.style.borderColor = '#93c5fd';
+                authErrorMsg.style.background = '#eff6ff';
+                authErrorMsg.style.color = '#1d4ed8';
+                authErrorMsg.textContent = 'Account created! Please check your email to confirm registration.';
+              }
+            }
+          } else {
+            // Sign In
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+              email,
+              password
+            });
+            if (error) throw error;
+
+            if (data.session) {
+              syncAuthSession(data.session);
+              state.user.onboarded = true;
+              saveUserPreferences();
+              showMainFlow('home');
+            }
+          }
+        } else {
+          // Fallback if running entirely offline without Supabase
+          state.user.name = name;
+          state.user.age = age;
+          state.user.email = email;
+          state.userToken = `mock-user:${Date.now()}:${encodeURIComponent(email)}`;
+          try {
+            localStorage.setItem('taskly_user_token', state.userToken);
+          } catch (_) {}
+          saveUserPreferences();
+          showOnboardingStep('welcome');
+        }
+      } catch (err) {
+        console.error('Auth error:', err);
+        if (authErrorMsg) {
+          authErrorMsg.style.display = 'flex';
+          authErrorMsg.style.borderColor = '#fecaca';
+          authErrorMsg.style.background = '#fef2f2';
+          authErrorMsg.style.color = '#dc2626';
+          authErrorMsg.textContent = err.message || 'Authentication failed. Please verify credentials.';
+        }
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
   }
 
@@ -1075,20 +1270,33 @@ function setupEventListeners() {
   if (btnCloseAbout) btnCloseAbout.addEventListener('click', () => modalAbout.classList.remove('active'));
   if (btnCloseAboutOk) btnCloseAboutOk.addEventListener('click', () => modalAbout.classList.remove('active'));
 
-  // Log Out / Reset Onboarding
+  // Log Out / Reset Profile
   const btnLogout = document.getElementById('btn-logout');
   if (btnLogout) {
-    btnLogout.addEventListener('click', () => {
-      if (confirm('Reset your profile and test onboarding again?')) {
+    btnLogout.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to log out of Taskly?')) {
+        if (supabaseClient) {
+          try {
+            await supabaseClient.auth.signOut();
+          } catch (err) {
+            console.warn('Sign out warning:', err);
+          }
+        }
+        state.userToken = null;
+        state.todos = [];
+        state.user.id = null;
+        state.user.email = '';
         state.user.name = 'Aadarsh Nithish';
         state.user.age = 21;
         state.user.onboarded = false;
         try {
           localStorage.removeItem('taskly_user');
+          localStorage.removeItem('taskly_user_token');
           localStorage.removeItem('taskly_active_flow');
           localStorage.removeItem('taskly_active_tab');
           localStorage.removeItem('taskly_onboarding_step');
         } catch (_) {}
+        renderAll();
         showOnboardingStep('launch');
       }
     });

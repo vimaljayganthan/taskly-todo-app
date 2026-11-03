@@ -658,32 +658,59 @@
           </div>
 
           <div class="step-content">
-            <h2 class="setup-title">Let's set up<br>your profile ✨</h2>
-            <p class="setup-subtitle">Tell us a little about yourself.</p>
+            <h2 class="setup-title" id="auth-title">Welcome to<br>Taskly ✨</h2>
+            <p class="setup-subtitle" id="auth-subtitle">Sign in or create your account to sync your tasks.</p>
+
+            <div class="auth-toggle-group" id="auth-mode-toggle">
+              <button type="button" class="auth-toggle-btn active" id="btn-toggle-login">Sign In</button>
+              <button type="button" class="auth-toggle-btn" id="btn-toggle-signup">Create Account</button>
+            </div>
+
+            <div id="auth-error-msg" class="auth-error-msg" style="display: none;"></div>
 
             <form id="form-profile-setup" class="setup-form">
-              <div class="input-card">
+              <div class="input-card" id="field-wrap-name" style="display: none;">
                 <div class="input-card-icon">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
                 <div class="input-card-body">
                   <label for="setup-name" class="input-card-label">Your Name</label>
-                  <input type="text" id="setup-name" class="input-card-field" placeholder="Aadarsh Nithish" required maxlength="40">
+                  <input type="text" id="setup-name" class="input-card-field" placeholder="Aadarsh Nithish" maxlength="40">
                 </div>
               </div>
 
-              <div class="input-card">
+              <div class="input-card" id="field-wrap-age" style="display: none;">
                 <div class="input-card-icon">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 </div>
                 <div class="input-card-body">
                   <label for="setup-age" class="input-card-label">Your Age</label>
-                  <input type="number" id="setup-age" class="input-card-field" placeholder="21" min="5" max="120" required>
+                  <input type="number" id="setup-age" class="input-card-field" placeholder="21" min="5" max="120">
                 </div>
               </div>
 
-              <button type="submit" class="btn-primary-wide">
-                <span>Continue</span>
+              <div class="input-card" id="field-wrap-email">
+                <div class="input-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                </div>
+                <div class="input-card-body">
+                  <label for="setup-email" class="input-card-label">Email Address</label>
+                  <input type="email" id="setup-email" class="input-card-field" placeholder="user@example.com" required>
+                </div>
+              </div>
+
+              <div class="input-card" id="field-wrap-password">
+                <div class="input-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <div class="input-card-body">
+                  <label for="setup-password" class="input-card-label">Password</label>
+                  <input type="password" id="setup-password" class="input-card-field" placeholder="••••••••" required minlength="6">
+                </div>
+              </div>
+
+              <button type="submit" id="btn-auth-submit" class="btn-primary-wide">
+                <span id="btn-auth-text">Sign In</span>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
             </form>
@@ -781,6 +808,7 @@
 
     </div> <!-- /.app-viewport -->
 
-  <script src="/app.js?v=2.3"></script>
+  <script src="/vendor/supabase.js"></script>
+  <script src="/app.js?v=2.4"></script>
 </body>
 </html>

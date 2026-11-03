@@ -83,11 +83,13 @@ class FileStorageAdapter {
     }
   }
 
-  async getAllTasks() {
+  async getAllTasks(userId = null) {
     try {
       const raw = await fsPromises.readFile(this.filePath, 'utf8');
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      const all = Array.isArray(parsed) ? parsed : [];
+      if (!userId) return all;
+      return all.filter(t => t.user_id === userId || t.userId === userId);
     } catch (err) {
       if (err.code === 'ENOENT') {
         return defaultTodos;
@@ -97,16 +99,24 @@ class FileStorageAdapter {
     }
   }
 
-  async createTask(todo) {
+  async createTask(todo, userId = null) {
     const todos = await this.getAllTasks();
+    if (userId) {
+      todo.user_id = userId;
+      todo.userId = userId;
+    }
     todos.unshift(todo);
     await this._writeTodos(todos);
     return todo;
   }
 
-  async updateTask(id, fields) {
+  async updateTask(id, fields, userId = null) {
     const todos = await this.getAllTasks();
-    const index = todos.findIndex(t => t.id === id);
+    const index = todos.findIndex(t => {
+      if (t.id !== id) return false;
+      if (!userId) return true;
+      return t.user_id === userId || t.userId === userId;
+    });
     if (index === -1) return null;
 
     todos[index] = Object.assign({}, todos[index], fields);
@@ -114,20 +124,30 @@ class FileStorageAdapter {
     return todos[index];
   }
 
-  async deleteTask(id) {
+  async deleteTask(id, userId = null) {
     const todos = await this.getAllTasks();
-    const exists = todos.some(t => t.id === id);
-    if (!exists) return false;
+    const index = todos.findIndex(t => {
+      if (t.id !== id) return false;
+      if (!userId) return true;
+      return t.user_id === userId || t.userId === userId;
+    });
+    if (index === -1) return false;
 
-    const remaining = todos.filter(t => t.id !== id);
-    await this._writeTodos(remaining);
+    todos.splice(index, 1);
+    await this._writeTodos(todos);
     return true;
   }
 
-  async clearCompleted() {
+  async clearCompleted(userId = null) {
     const todos = await this.getAllTasks();
-    const remaining = todos.filter(t => !t.completed);
-    const deletedCount = todos.length - remaining.length;
+    const initialCount = todos.length;
+    const remaining = todos.filter(t => {
+      if (!t.completed) return true;
+      if (!userId) return false;
+      // If user specified, only delete matching user completed
+      return !(t.user_id === userId || t.userId === userId);
+    });
+    const deletedCount = initialCount - remaining.length;
     await this._writeTodos(remaining);
     return deletedCount;
   }
@@ -176,11 +196,20 @@ class SupabaseStorageAdapter {
     };
   }
 
-  async getAllTasks() {
+  _validateUserId(userId, operationName) {
+    if (typeof userId !== 'string' || !userId.trim()) {
+      throw new Error(`[SupabaseStorageAdapter] Mandatory userId is missing, empty, or invalid for ${operationName}`);
+    }
+    return userId.trim();
+  }
+
+  async getAllTasks(userId) {
+    const validUserId = this._validateUserId(userId, 'getAllTasks');
     try {
       const { data, error } = await this.client
         .from(this.tableName)
         .select('*')
+        .eq('user_id', validUserId)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -193,22 +222,29 @@ class SupabaseStorageAdapter {
     }
   }
 
-  async createTask(todo) {
+  async createTask(todo, userId) {
+    const validUserId = this._validateUserId(userId, 'createTask');
+    if (!todo || typeof todo !== 'object') {
+      throw new Error('[SupabaseStorageAdapter] Invalid todo object for createTask');
+    }
     try {
+      // Always assign user_id from the authenticated userId argument.
+      // Never trust todo.user_id or todo.userId supplied by the request body.
       const payload = {
         id: todo.id,
+        user_id: validUserId,
         title: todo.title,
         completed: Boolean(todo.completed),
-        due_date: todo.dueDate || null,
-        created_at: todo.createdAt || new Date().toISOString()
+        due_date: todo.dueDate !== undefined ? todo.dueDate : (todo.due_date || null),
+        created_at: todo.createdAt || todo.created_at || new Date().toISOString()
       };
-      if (todo.time) payload.time = todo.time;
-      if (todo.description) payload.description = todo.description;
-      if (todo.priority) payload.priority = todo.priority;
-      if (todo.category) payload.category = todo.category;
-      if (todo.reminder !== undefined) payload.reminder = todo.reminder;
+      if (todo.time !== undefined) payload.time = todo.time;
+      if (todo.description !== undefined) payload.description = todo.description;
+      if (todo.priority !== undefined) payload.priority = todo.priority;
+      if (todo.category !== undefined) payload.category = todo.category;
+      if (todo.reminder !== undefined) payload.reminder = Boolean(todo.reminder);
+      if (todo.updatedAt || todo.updated_at) payload.updated_at = todo.updatedAt || todo.updated_at;
 
-      let resultData = null;
       const { data, error } = await this.client
         .from(this.tableName)
         .insert(payload)
@@ -216,93 +252,68 @@ class SupabaseStorageAdapter {
         .single();
 
       if (error) {
-        if (error.message && error.message.includes('column')) {
-          const basicPayload = {
-            id: todo.id,
-            title: todo.title,
-            completed: Boolean(todo.completed),
-            due_date: todo.dueDate || null,
-            created_at: todo.createdAt || new Date().toISOString()
-          };
-          const retry = await this.client
-            .from(this.tableName)
-            .insert(basicPayload)
-            .select()
-            .single();
-          if (retry.error) throw retry.error;
-          resultData = retry.data;
-        } else {
-          throw error;
-        }
-      } else {
-        resultData = data;
+        throw error;
       }
 
-      return this._mapFromDb(resultData || payload);
+      return this._mapFromDb(data || payload);
     } catch (err) {
-      console.error(`[SupabaseStorageAdapter] Error creating task ${todo.id}:`, err.message || err);
+      console.error(`[SupabaseStorageAdapter] Error creating task ${todo?.id}:`, err.message || err);
       throw new Error(`Supabase insert failed: ${err.message || err}`);
     }
   }
 
-  async updateTask(id, fields) {
+  async updateTask(id, fields, userId) {
+    const validUserId = this._validateUserId(userId, 'updateTask');
+    if (!id || typeof id !== 'string') {
+      throw new Error('[SupabaseStorageAdapter] Task ID is required for updateTask');
+    }
     try {
       const payload = {};
       if (fields.title !== undefined) payload.title = fields.title;
-      if (fields.completed !== undefined) payload.completed = fields.completed;
-      if (fields.dueDate !== undefined) payload.due_date = fields.dueDate;
+      if (fields.completed !== undefined) payload.completed = Boolean(fields.completed);
+      if (fields.dueDate !== undefined || fields.due_date !== undefined) {
+        payload.due_date = fields.dueDate !== undefined ? fields.dueDate : fields.due_date;
+      }
       if (fields.time !== undefined) payload.time = fields.time;
       if (fields.description !== undefined) payload.description = fields.description;
       if (fields.priority !== undefined) payload.priority = fields.priority;
       if (fields.category !== undefined) payload.category = fields.category;
-      if (fields.reminder !== undefined) payload.reminder = fields.reminder;
-      payload.updated_at = fields.updatedAt || new Date().toISOString();
+      if (fields.reminder !== undefined) payload.reminder = Boolean(fields.reminder);
+      payload.updated_at = fields.updatedAt || fields.updated_at || new Date().toISOString();
 
-      let resultData = null;
       const { data, error } = await this.client
         .from(this.tableName)
         .update(payload)
         .eq('id', id)
+        .eq('user_id', validUserId)
         .select();
 
       if (error) {
-        if (error.message && error.message.includes('column')) {
-          const basicPayload = {};
-          if (fields.title !== undefined) basicPayload.title = fields.title;
-          if (fields.completed !== undefined) basicPayload.completed = fields.completed;
-          if (fields.dueDate !== undefined) basicPayload.due_date = fields.dueDate;
-          basicPayload.updated_at = fields.updatedAt || new Date().toISOString();
-          const retry = await this.client
-            .from(this.tableName)
-            .update(basicPayload)
-            .eq('id', id)
-            .select();
-          if (retry.error) throw retry.error;
-          resultData = retry.data;
-        } else {
-          throw error;
-        }
-      } else {
-        resultData = data;
+        throw error;
       }
 
-      if (!resultData || resultData.length === 0) {
+      if (!data || data.length === 0) {
         return null;
       }
 
-      return this._mapFromDb(resultData[0]);
+      return this._mapFromDb(data[0]);
     } catch (err) {
       console.error(`[SupabaseStorageAdapter] Error updating task ${id}:`, err.message || err);
       throw new Error(`Supabase update failed: ${err.message || err}`);
     }
   }
 
-  async deleteTask(id) {
+  async deleteTask(id, userId) {
+    const validUserId = this._validateUserId(userId, 'deleteTask');
+    if (!id || typeof id !== 'string') {
+      throw new Error('[SupabaseStorageAdapter] Task ID is required for deleteTask');
+    }
     try {
       const { data, error } = await this.client
         .from(this.tableName)
         .delete()
         .eq('id', id)
+        .eq('user_id', validUserId)
         .select();
 
       if (error) {
@@ -316,12 +327,14 @@ class SupabaseStorageAdapter {
     }
   }
 
-  async clearCompleted() {
+  async clearCompleted(userId) {
+    const validUserId = this._validateUserId(userId, 'clearCompleted');
     try {
       const { data, error } = await this.client
         .from(this.tableName)
         .delete()
         .eq('completed', true)
+        .eq('user_id', validUserId)
         .select();
 
       if (error) {
@@ -423,6 +436,11 @@ class FirestoreStorageAdapter {
 let activeAdapter = null;
 let activeStoreType = 'file';
 
+function getSupabaseAnonKey() {
+  // Normal application storage must never use SUPABASE_SERVICE_ROLE_KEY
+  return process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || null;
+}
+
 async function initializeStorage() {
   if (activeAdapter) {
     return activeAdapter;
@@ -431,15 +449,15 @@ async function initializeStorage() {
   const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
   const isProduction = process.env.NODE_ENV === 'production' || isVercel;
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+  const supabaseAnonKey = getSupabaseAnonKey();
   const forceSupabase = process.env.DATA_STORE === 'supabase';
   const forceFirestore = process.env.DATA_STORE === 'firestore';
 
   // 1. Supabase PostgreSQL Configuration (Primary Production Store for Vercel)
-  if (forceSupabase || (isProduction && !forceFirestore) || (supabaseUrl && supabaseKey)) {
-    console.log('[Storage] Initializing production Supabase PostgreSQL adapter...');
+  if (forceSupabase || (isProduction && !forceFirestore) || (supabaseUrl && supabaseAnonKey)) {
+    console.log('[Storage] Validating Supabase PostgreSQL configuration...');
 
-    if (!supabaseUrl || !supabaseKey) {
+    if (!supabaseUrl || !supabaseAnonKey) {
       if (isProduction || isVercel) {
         console.error('[Storage FATAL] Missing Supabase configuration in production/Vercel.');
         throw new Error(
@@ -449,26 +467,49 @@ async function initializeStorage() {
         );
       }
     } else {
+      // Validate SUPABASE_URL format
+      try {
+        new URL(supabaseUrl);
+      } catch (urlErr) {
+        throw new Error(`Invalid SUPABASE_URL configured: ${supabaseUrl}`);
+      }
+
+      // Check startup connectivity without requiring unauthenticated queries that conflict with RLS
       try {
         const { createClient } = require('@supabase/supabase-js');
-        const supabase = createClient(supabaseUrl, supabaseKey, {
+        const probeClient = createClient(supabaseUrl, supabaseAnonKey, {
           auth: { persistSession: false }
         });
 
-        // Test connectivity
-        const { error } = await supabase.from('todos').select('id').limit(1);
+        const { error } = await probeClient.from('todos').select('id').limit(0);
         if (error) {
-          throw error;
+          const isRlsRestriction = error.code === '42501' ||
+            (error.message && (error.message.includes('permission denied') || error.message.includes('policy') || error.message.includes('row-level security')));
+          if (!isRlsRestriction) {
+            console.warn('[Storage] Supabase probe warning:', error.message || error);
+          }
         }
-
-        console.log('[Storage] Supabase PostgreSQL connected successfully.');
-        activeAdapter = new SupabaseStorageAdapter(supabase);
-        activeStoreType = 'supabase';
-        return activeAdapter;
-      } catch (err) {
-        console.error('[Storage FATAL] Could not connect to Supabase PostgreSQL:', err.message || err);
-        throw new Error(`Supabase initialization failed: ${err.message || err}. Halting to prevent data loss.`);
+      } catch (probeErr) {
+        if (probeErr.code === 'ENOTFOUND' || (probeErr.message && probeErr.message.includes('fetch failed'))) {
+          throw new Error(`Supabase connection probe failed: ${probeErr.message}`);
+        }
       }
+
+      console.log('[Storage] Supabase PostgreSQL configuration verified.');
+      activeStoreType = 'supabase';
+
+      // In production, NEVER create a shared activeAdapter.
+      // Every authenticated production request must use a request-scoped client created by getScopedStorage(req).
+      if (!isProduction) {
+        const { createClient } = require('@supabase/supabase-js');
+        const devClient = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: { persistSession: false }
+        });
+        activeAdapter = new SupabaseStorageAdapter(devClient);
+        return activeAdapter;
+      }
+
+      return null;
     }
   }
 
@@ -504,13 +545,22 @@ async function initializeStorage() {
 function getStorage() {
   if (!activeAdapter) {
     const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
 
-    if (supabaseUrl && supabaseKey) {
+    if (isProduction) {
+      throw new Error(
+        'Direct un-scoped getStorage() is forbidden in production. ' +
+        'Use getScopedStorage(req) with an authenticated request token to ensure RLS isolation.'
+      );
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = getSupabaseAnonKey();
+
+    if (supabaseUrl && supabaseAnonKey) {
       try {
         const { createClient } = require('@supabase/supabase-js');
-        const supabase = createClient(supabaseUrl, supabaseKey, {
+        const supabase = createClient(supabaseUrl, supabaseAnonKey, {
           auth: { persistSession: false }
         });
         activeAdapter = new SupabaseStorageAdapter(supabase);
@@ -519,12 +569,6 @@ function getStorage() {
       } catch (err) {
         console.error('[Storage] Error initializing Supabase client in getStorage():', err.message);
       }
-    }
-
-    if (isVercel || process.env.NODE_ENV === 'production') {
-      throw new Error(
-        'Storage adapter not initialized. Supabase credentials (SUPABASE_URL, SUPABASE_ANON_KEY) are required in production.'
-      );
     }
 
     activeAdapter = new FileStorageAdapter(getDataFile());
@@ -547,9 +591,91 @@ function resetStorage() {
   activeStoreType = 'file';
 }
 
+/**
+ * Creates a tenant-isolated Supabase client for a specific request.
+ * Uses public SUPABASE_ANON_KEY and forwards the user's verified JWT.
+ * Normal application storage must never use SUPABASE_SERVICE_ROLE_KEY.
+ */
+function createScopedSupabaseClient(userJwt) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = getSupabaseAnonKey();
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY in server environment.');
+  }
+
+  const { createClient } = require('@supabase/supabase-js');
+  const headers = {};
+  if (userJwt) {
+    headers.Authorization = `Bearer ${userJwt}`;
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false },
+    global: { headers }
+  });
+}
+
+/**
+ * Resolves a request-scoped storage adapter for the given HTTP request.
+ * In production:
+ *   - NEVER returns activeAdapter to prevent bypassing per-user RLS boundaries.
+ *   - Creates a new request-scoped Supabase client using SUPABASE_ANON_KEY + req.userToken.
+ *   - Fails closed if Supabase configuration is missing or request is unauthenticated.
+ * In non-production:
+ *   - Honors activeAdapter if injected by test harness (e.g. setStorage).
+ *   - Falls back to local file storage if no userToken or activeAdapter.
+ */
+function getScopedStorage(req = null) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+  // 1. Production Mode: Strict request-scoped client isolation
+  if (isProduction) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = getSupabaseAnonKey();
+
+    // Missing public Supabase configuration fails closed
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error(
+        'Missing public Supabase configuration (SUPABASE_URL and SUPABASE_ANON_KEY) in production. ' +
+        'Normal task operations fail closed to protect data isolation.'
+      );
+    }
+
+    // Authenticated production request: create dedicated per-request scoped client
+    if (req && req.userToken) {
+      const scopedClient = createScopedSupabaseClient(req.userToken);
+      return new SupabaseStorageAdapter(scopedClient);
+    }
+
+    // In production, unauthenticated storage access is strictly prohibited
+    throw new Error('Unauthenticated storage access is prohibited in production.');
+  }
+
+  // 2. Non-production environments (test & development):
+  // Test injection: honor activeAdapter if explicitly set by test runner
+  if (activeAdapter) {
+    return activeAdapter;
+  }
+
+  // If userToken is present and Supabase is configured in dev, create scoped client
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = getSupabaseAnonKey();
+  if (supabaseUrl && supabaseAnonKey && req && req.userToken) {
+    const scopedClient = createScopedSupabaseClient(req.userToken);
+    return new SupabaseStorageAdapter(scopedClient);
+  }
+
+  // Default to development storage
+  return getStorage();
+}
+
 module.exports = {
   initializeStorage,
   getStorage,
+  getScopedStorage,
+  createScopedSupabaseClient,
   setStorage,
   resetStorage,
   getStorageType,

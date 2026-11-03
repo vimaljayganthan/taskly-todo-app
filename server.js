@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const { initializeStorage, getStorage } = require('./storage/taskStore');
+const { initializeStorage, getStorage, getScopedStorage } = require('./storage/taskStore');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -65,6 +65,17 @@ app.get(['/healthz', '/api/health'], (req, res) => {
 });
 
 // ==========================================================================
+// Public Client Configuration Discovery (No Secrets Exposed)
+// ==========================================================================
+app.get('/api/config', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL || 'https://liucmamlownxfshnaxtc.supabase.co',
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
+  });
+});
+
+// ==========================================================================
 // REST API Routes
 // ==========================================================================
 
@@ -81,18 +92,116 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
-// GET /api/todos - Retrieve all todos
+// Authentication Middleware: Verifies Bearer JWT for all task endpoints
+async function authenticateUser(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid Bearer token' });
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: Missing Bearer token' });
+  }
+
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+  const isDevelopment = process.env.NODE_ENV === 'development';
+
+  // 1. In production, never accept tokens beginning with mock-user:
+  if (isProduction && token.startsWith('mock-user:')) {
+    return res.status(401).json({ error: 'Unauthorized: Mock tokens are forbidden in production' });
+  }
+
+  // 2. Test mock verifier: ONLY permitted in non-production environments
+  if (!isProduction && req.app.locals && req.app.locals.mockAuthVerifier) {
+    try {
+      const user = await req.app.locals.mockAuthVerifier(token);
+      if (!user) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
+      }
+      req.user = user;
+      req.userToken = token;
+      return next();
+    } catch (err) {
+      return res.status(401).json({ error: 'Unauthorized: Mock authentication failed' });
+    }
+  }
+
+  // 3. Mock-token authentication: ONLY allowed when process.env.NODE_ENV === 'development'
+  if (token.startsWith('mock-user:')) {
+    if (isDevelopment) {
+      const parts = token.split(':');
+      if (parts.length >= 2 && parts[1]) {
+        req.user = {
+          id: parts[1],
+          email: parts[2] ? decodeURIComponent(parts[2]) : 'dev@taskly.app'
+        };
+        req.userToken = token;
+        return next();
+      }
+    }
+    return res.status(401).json({ error: 'Unauthorized: Mock tokens are only allowed in development' });
+  }
+
+  // 4. Supabase JWT Authentication
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+
+  // In production, fail closed if Supabase authentication configuration is missing
+  if (isProduction && (!supabaseUrl || !supabaseAnonKey)) {
+    console.error('[Auth Security]: Supabase configuration missing in production for authenticated request.');
+    return res.status(500).json({ error: 'Server configuration error: Authentication service is unavailable' });
+  }
+
+  if (supabaseUrl && supabaseAnonKey) {
+    try {
+      const { createClient } = require('@supabase/supabase-js');
+
+      // Test client injection allowed ONLY in non-production environments
+      const authClient = (!isProduction && req.app.locals && req.app.locals.mockAuthClient)
+        ? req.app.locals.mockAuthClient
+        : createClient(supabaseUrl, supabaseAnonKey, {
+            auth: { persistSession: false }
+          });
+
+      const { data, error } = await authClient.auth.getUser(token);
+      const user = data ? data.user : null;
+
+      if (error || !user) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
+      }
+
+      req.user = user;
+      req.userToken = token;
+      return next();
+    } catch (err) {
+      console.error('[Auth Error]: Token validation exception:', err.message);
+      return res.status(401).json({ error: 'Unauthorized: Token validation failed' });
+    }
+  }
+
+  // Non-production without Supabase configuration: unverified tokens are rejected
+  return res.status(401).json({ error: 'Unauthorized: Invalid authentication token' });
+}
+
+app.authenticateUser = authenticateUser;
+
+// Enforce authentication on all /api/todos endpoints
+app.use('/api/todos', authenticateUser);
+
+// GET /api/todos - Retrieve todos for authenticated user
 app.get('/api/todos', async (req, res, next) => {
   try {
-    const storage = getStorage();
-    const todos = await storage.getAllTasks();
+    const storage = getScopedStorage(req);
+    const todos = await storage.getAllTasks(req.user.id);
     res.json(todos);
   } catch (err) {
     next(err);
   }
 });
 
-// POST /api/todos - Add a new todo with input validation
+// POST /api/todos - Add a new todo scoped to authenticated user
 app.post('/api/todos', async (req, res, next) => {
   try {
     const { title, dueDate, description, priority, category, time, reminder } = req.body;
@@ -122,6 +231,8 @@ app.post('/api/todos', async (req, res, next) => {
 
     const newTodo = {
       id: crypto.randomUUID(),
+      userId: req.user.id,
+      user_id: req.user.id,
       title: trimmedTitle,
       dueDate: parsedDueDate,
       time: typeof time === 'string' && time.trim() ? time.trim().slice(0, 30) : null,
@@ -133,8 +244,8 @@ app.post('/api/todos', async (req, res, next) => {
       createdAt: new Date().toISOString()
     };
 
-    const storage = getStorage();
-    await storage.createTask(newTodo);
+    const storage = getScopedStorage(req);
+    await storage.createTask(newTodo, req.user.id);
 
     res.status(201).json(newTodo);
   } catch (err) {
@@ -142,12 +253,12 @@ app.post('/api/todos', async (req, res, next) => {
   }
 });
 
-// PATCH /api/todos/:id - Update todo with validation
+// PATCH /api/todos/:id - Update todo with validation (scoped to authenticated user)
 app.patch('/api/todos/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { completed, title, dueDate, description, priority, category, time, reminder } = req.body;
-    const storage = getStorage();
+    const storage = getScopedStorage(req);
 
     const updateFields = {
       updatedAt: new Date().toISOString()
@@ -198,7 +309,7 @@ app.patch('/api/todos/:id', async (req, res, next) => {
       updateFields.reminder = reminder;
     }
 
-    const updated = await storage.updateTask(id, updateFields);
+    const updated = await storage.updateTask(id, updateFields, req.user.id);
     if (!updated) {
       return res.status(404).json({ error: 'Task not found' });
     }
@@ -209,12 +320,12 @@ app.patch('/api/todos/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/todos/:id - Delete a single todo
+// DELETE /api/todos/:id - Delete a single todo (scoped to authenticated user)
 app.delete('/api/todos/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const storage = getStorage();
-    const success = await storage.deleteTask(id);
+    const storage = getScopedStorage(req);
+    const success = await storage.deleteTask(id, req.user.id);
 
     if (!success) {
       return res.status(404).json({ error: 'Task not found' });
@@ -226,11 +337,11 @@ app.delete('/api/todos/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/todos - Bulk clear completed
+// DELETE /api/todos - Bulk clear completed (scoped to authenticated user)
 app.delete('/api/todos', async (req, res, next) => {
   try {
-    const storage = getStorage();
-    const deletedCount = await storage.clearCompleted();
+    const storage = getScopedStorage(req);
+    const deletedCount = await storage.clearCompleted(req.user.id);
     res.json({ success: true, count: deletedCount });
   } catch (err) {
     next(err);

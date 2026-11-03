@@ -81,11 +81,13 @@ describe('Storage Adapters Test Suite', () => {
 
       mockSupabase = {
         from: (table) => {
-          let currentFilter = null;
+          const filters = [];
           let currentOrder = null;
           let pendingInsert = null;
           let pendingUpdate = null;
           let isDelete = false;
+
+          const matchesFilters = (row) => filters.every(f => row[f.col] === f.val);
 
           const queryBuilder = {
             select: () => queryBuilder,
@@ -94,7 +96,7 @@ describe('Storage Adapters Test Suite', () => {
               return queryBuilder;
             },
             eq: (col, val) => {
-              currentFilter = { col, val };
+              filters.push({ col, val });
               return queryBuilder;
             },
             insert: (payload) => {
@@ -126,7 +128,7 @@ describe('Storage Adapters Test Suite', () => {
               if (pendingUpdate) {
                 const updated = [];
                 for (const [id, row] of mockRows.entries()) {
-                  if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                  if (matchesFilters(row)) {
                     const newRow = Object.assign({}, row, pendingUpdate);
                     mockRows.set(id, newRow);
                     updated.push(newRow);
@@ -138,7 +140,7 @@ describe('Storage Adapters Test Suite', () => {
               if (isDelete) {
                 const deleted = [];
                 for (const [id, row] of Array.from(mockRows.entries())) {
-                  if (!currentFilter || row[currentFilter.col] === currentFilter.val) {
+                  if (matchesFilters(row)) {
                     mockRows.delete(id);
                     deleted.push(row);
                   }
@@ -147,7 +149,7 @@ describe('Storage Adapters Test Suite', () => {
               }
 
               // Query select
-              let list = Array.from(mockRows.values());
+              let list = Array.from(mockRows.values()).filter(matchesFilters);
               if (currentOrder) {
                 list.sort((a, b) => {
                   const valA = a[currentOrder.col] || '';
@@ -166,6 +168,8 @@ describe('Storage Adapters Test Suite', () => {
       supabaseAdapter = new SupabaseStorageAdapter(mockSupabase, 'todos');
     });
 
+    const testUserId = 'test-user-prod-1';
+
     test('Supabase: Creates and persists a task', async () => {
       const task = {
         id: 'sb-task-1',
@@ -174,7 +178,7 @@ describe('Storage Adapters Test Suite', () => {
         completed: false,
         createdAt: new Date().toISOString()
       };
-      const created = await supabaseAdapter.createTask(task);
+      const created = await supabaseAdapter.createTask(task, testUserId);
       assert.strictEqual(created.id, 'sb-task-1');
       assert.strictEqual(created.title, 'Production Supabase Task');
       assert.strictEqual(created.dueDate, '2026-12-15');
@@ -182,7 +186,7 @@ describe('Storage Adapters Test Suite', () => {
     });
 
     test('Supabase: Retrieves all tasks mapped to frontend contract', async () => {
-      const tasks = await supabaseAdapter.getAllTasks();
+      const tasks = await supabaseAdapter.getAllTasks(testUserId);
       assert.strictEqual(tasks.length, 1);
       assert.strictEqual(tasks[0].id, 'sb-task-1');
       assert.strictEqual(tasks[0].dueDate, '2026-12-15');
@@ -192,34 +196,127 @@ describe('Storage Adapters Test Suite', () => {
       const updated = await supabaseAdapter.updateTask('sb-task-1', {
         completed: true,
         title: 'Updated Supabase Task'
-      });
+      }, testUserId);
       assert.strictEqual(updated.completed, true);
       assert.strictEqual(updated.title, 'Updated Supabase Task');
 
-      const notFound = await supabaseAdapter.updateTask('non-existent', { completed: true });
+      const notFound = await supabaseAdapter.updateTask('non-existent', { completed: true }, testUserId);
       assert.strictEqual(notFound, null);
     });
 
     test('Supabase: Deletes a task by ID', async () => {
-      const success = await supabaseAdapter.deleteTask('sb-task-1');
+      const success = await supabaseAdapter.deleteTask('sb-task-1', testUserId);
       assert.strictEqual(success, true);
       assert.strictEqual(mockRows.size, 0);
 
-      const notFound = await supabaseAdapter.deleteTask('non-existent');
+      const notFound = await supabaseAdapter.deleteTask('non-existent', testUserId);
       assert.strictEqual(notFound, false);
     });
 
     test('Supabase: Bulk clears completed tasks', async () => {
-      await supabaseAdapter.createTask({ id: 's1', title: 'Task 1', completed: true });
-      await supabaseAdapter.createTask({ id: 's2', title: 'Task 2', completed: true });
-      await supabaseAdapter.createTask({ id: 's3', title: 'Task 3', completed: false });
+      await supabaseAdapter.createTask({ id: 's1', title: 'Task 1', completed: true }, testUserId);
+      await supabaseAdapter.createTask({ id: 's2', title: 'Task 2', completed: true }, testUserId);
+      await supabaseAdapter.createTask({ id: 's3', title: 'Task 3', completed: false }, testUserId);
 
-      const deletedCount = await supabaseAdapter.clearCompleted();
+      const deletedCount = await supabaseAdapter.clearCompleted(testUserId);
       assert.strictEqual(deletedCount, 2);
 
-      const remaining = await supabaseAdapter.getAllTasks();
+      const remaining = await supabaseAdapter.getAllTasks(testUserId);
       assert.strictEqual(remaining.length, 1);
       assert.strictEqual(remaining[0].id, 's3');
+    });
+
+    test('Supabase: Full-field task creation and retrieval preserves all metadata', async () => {
+      const fullTask = {
+        id: 'sb-full-1',
+        title: 'Full Metadata Task',
+        dueDate: '2026-11-20',
+        time: '4:30 PM',
+        description: 'Detailed technical specification',
+        priority: 'High',
+        category: 'Project',
+        reminder: true,
+        completed: false,
+        createdAt: '2026-11-03T10:00:00.000Z',
+        updatedAt: '2026-11-03T10:15:00.000Z'
+      };
+
+      const created = await supabaseAdapter.createTask(fullTask, testUserId);
+      assert.strictEqual(created.id, 'sb-full-1');
+      assert.strictEqual(created.title, 'Full Metadata Task');
+      assert.strictEqual(created.time, '4:30 PM');
+      assert.strictEqual(created.description, 'Detailed technical specification');
+      assert.strictEqual(created.priority, 'High');
+      assert.strictEqual(created.category, 'Project');
+      assert.strictEqual(created.reminder, true);
+      assert.strictEqual(created.completed, false);
+      assert.strictEqual(created.dueDate, '2026-11-20');
+      assert.strictEqual(created.createdAt, '2026-11-03T10:00:00.000Z');
+      assert.strictEqual(created.updatedAt, '2026-11-03T10:15:00.000Z');
+
+      const retrievedList = await supabaseAdapter.getAllTasks(testUserId);
+      const found = retrievedList.find(t => t.id === 'sb-full-1');
+      assert.ok(found, 'Task must be retrievable');
+      assert.strictEqual(found.description, 'Detailed technical specification');
+      assert.strictEqual(found.priority, 'High');
+      assert.strictEqual(found.category, 'Project');
+      assert.strictEqual(found.time, '4:30 PM');
+      assert.strictEqual(found.reminder, true);
+    });
+
+    test('Supabase: Full-field task updates preserve all metadata', async () => {
+      const updated = await supabaseAdapter.updateTask('sb-full-1', {
+        title: 'Updated Metadata Task',
+        time: '6:00 PM',
+        description: 'Updated specification notes',
+        priority: 'Low',
+        category: 'Work',
+        reminder: false,
+        completed: true,
+        dueDate: '2026-11-25',
+        updatedAt: '2026-11-03T12:00:00.000Z'
+      }, testUserId);
+
+      assert.strictEqual(updated.title, 'Updated Metadata Task');
+      assert.strictEqual(updated.time, '6:00 PM');
+      assert.strictEqual(updated.description, 'Updated specification notes');
+      assert.strictEqual(updated.priority, 'Low');
+      assert.strictEqual(updated.category, 'Work');
+      assert.strictEqual(updated.reminder, false);
+      assert.strictEqual(updated.completed, true);
+      assert.strictEqual(updated.dueDate, '2026-11-25');
+      assert.strictEqual(updated.updatedAt, '2026-11-03T12:00:00.000Z');
+    });
+
+    test('Supabase: Database errors are not swallowed on insert or update', async () => {
+      const failingSupabase = {
+        from: () => ({
+          insert: () => ({
+            select: () => ({
+              single: () => Promise.resolve({ data: null, error: new Error('Simulated PG column error') })
+            })
+          }),
+          update: () => ({
+            eq: () => ({
+              eq: () => ({
+                select: () => Promise.resolve({ data: null, error: new Error('Simulated PG constraint error') })
+              })
+            })
+          })
+        })
+      };
+
+      const failingAdapter = new SupabaseStorageAdapter(failingSupabase, 'todos');
+
+      await assert.rejects(
+        () => failingAdapter.createTask({ id: 'err-1', title: 'Fail' }, testUserId),
+        /Supabase insert failed: Simulated PG column error/i
+      );
+
+      await assert.rejects(
+        () => failingAdapter.updateTask('err-1', { title: 'Fail' }, testUserId),
+        /Supabase update failed: Simulated PG constraint error/i
+      );
     });
   });
 
