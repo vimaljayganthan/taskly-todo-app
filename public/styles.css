@@ -2035,8 +2035,7 @@ body.onboarding-active .desktop-header,
   text-transform: uppercase;
 }
 
-/* 0. Intro Animation Screen & 1. App Launch Landing Screen (Fits Whole Page Edge-to-Edge) */
-#screen-intro,
+/* 1. App Launch Landing Screen (Fits Whole Page Edge-to-Edge) */
 #screen-launch {
   position: fixed;
   top: 0;
@@ -2059,32 +2058,21 @@ body.onboarding-active .desktop-header,
   overflow: hidden;
 }
 
-#screen-intro.active,
 #screen-launch.active {
   display: flex !important;
-}
-
-.intro-fullscreen-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  display: block;
-  user-select: none;
-  -webkit-user-drag: none;
-  background: #ffffff;
 }
 
 .landing-fullscreen-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   display: block;
   user-select: none;
   -webkit-user-drag: none;
   image-rendering: -webkit-optimize-contrast;
   image-rendering: high-quality;
+  background-color: #ffffff;
 }
 
 .btn-text {

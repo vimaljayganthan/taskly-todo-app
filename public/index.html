@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="/styles.css?v=2.2">
+  <link rel="stylesheet" href="/styles.css?v=2.3">
 </head>
 <body class="onboarding-active">
 
@@ -546,21 +546,13 @@
       </div>
 
       <!-- ==================================================================== -->
-      <!-- 2. ONBOARDING & SETUP FLOW (INTRO ANIMATION, LAUNCH, CAROUSEL, SETUP, WELCOME) -->
+      <!-- 2. ONBOARDING & SETUP FLOW (LAUNCH, CAROUSEL, SETUP, WELCOME)        -->
       <!-- ==================================================================== -->
       <div id="onboarding-flow" class="screen-flow active">
-        
-        <!-- Screen 0: Intro Animation Loop (Paper Airplane Gliding) -->
-        <section id="screen-intro" class="onboard-step active" aria-label="Taskly Intro Animation">
-          <video id="intro-video" class="intro-fullscreen-video" autoplay loop muted playsinline preload="auto">
-            <source src="/intro-animation.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-        </section>
 
         <!-- Screen 1: App Launch / Full-Page Landing Page -->
-        <section id="screen-launch" class="onboard-step" aria-label="Taskly Landing Page">
-          <img src="/landing-cover.png?v=4k" alt="Taskly - Plan • Organize • Get Things Done" class="landing-fullscreen-img">
+        <section id="screen-launch" class="onboard-step active" aria-label="Taskly Landing Page">
+          <img src="/landing-cover.png?v=blue" alt="Taskly - Plan • Organize • Get Things Done" class="landing-fullscreen-img">
         </section>
 
         <!-- Screen 2: Carousel Slides (2a, 2b, 2c) -->
@@ -789,6 +781,6 @@
 
     </div> <!-- /.app-viewport -->
 
-  <script src="/app.js?v=2.2"></script>
+  <script src="/app.js?v=2.3"></script>
 </body>
 </html>

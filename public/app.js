@@ -38,7 +38,7 @@ const state = {
 
   // Active Flow & Navigation
   flow: 'onboarding', // 'main' | 'onboarding'
-  currentOnboardingStep: 'intro',
+  currentOnboardingStep: 'launch',
   carouselIndex: 0,
   activeTab: 'home', // 'home' | 'calendar' | 'add' | 'progress' | 'profile'
 
@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
   restoreActiveRoute();
 });
 
-// Restore active route based on URL hash, query params, or default to intro animation
+// Restore active route based on URL hash, query params, or default to landing page
 function restoreActiveRoute() {
   const hash = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
   const params = new URLSearchParams(window.location.search);
@@ -101,9 +101,9 @@ function restoreActiveRoute() {
   const paramStep = params.get('step');
 
   const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add'];
-  const onboardingSteps = ['intro', 'launch', 'carousel', 'profile-setup', 'welcome'];
+  const onboardingSteps = ['launch', 'carousel', 'profile-setup', 'welcome'];
 
-  // 1. Explicit URL Hash takes highest priority (e.g. #calendar, #progress, #home, #launch, #intro)
+  // 1. Explicit URL Hash takes highest priority (e.g. #calendar, #progress, #home, #launch)
   if (mainTabs.includes(hash)) {
     showMainFlow(hash, false);
     return;
@@ -113,7 +113,7 @@ function restoreActiveRoute() {
     return;
   }
 
-  // 2. Query Parameters take second priority (e.g. ?tab=calendar, ?step=intro)
+  // 2. Query Parameters take second priority (e.g. ?tab=calendar, ?step=launch)
   if (paramTab && mainTabs.includes(paramTab)) {
     showMainFlow(paramTab, false);
     return;
@@ -134,8 +134,8 @@ function restoreActiveRoute() {
   } catch (_) {}
 
   // 4. Default entry point for root (/):
-  // Start with Screen 0 Intro Animation loop -> transitions to Screen 1 Landing Page upon click
-  showOnboardingStep('intro', false);
+  // Start with Screen 1 Landing Page
+  showOnboardingStep('launch', false);
 }
 
 // Load preferences from localStorage
@@ -215,27 +215,15 @@ function showOnboardingStep(stepId, pushHistory = true) {
     } catch (_) {}
   }
 
-  const steps = ['screen-intro', 'screen-launch', 'screen-carousel', 'screen-profile-setup', 'screen-welcome'];
+  const steps = ['screen-launch', 'screen-carousel', 'screen-profile-setup', 'screen-welcome'];
   steps.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('active', id === `screen-${stepId}`);
   });
 
-  const introVideo = document.getElementById('intro-video');
-  if (stepId === 'intro') {
-    if (introVideo) {
-      introVideo.currentTime = 0;
-      introVideo.play().catch(() => {});
-    }
-  } else {
-    if (introVideo && !introVideo.paused) {
-      introVideo.pause();
-    }
-  }
-
   if (stepId === 'carousel') {
     updateCarouselSlide(state.carouselIndex);
-  } else if (stepId === 'launch' || stepId === 'intro') {
+  } else if (stepId === 'launch') {
     state.carouselIndex = 0;
   }
 }
@@ -781,21 +769,6 @@ function renderProfile() {
 // Event Listeners Setup
 // ==========================================================================
 function setupEventListeners() {
-  // Screen 0: Intro Animation Loop -> Click/Key to proceed to Landing Page (Screen 1)
-  const introScreen = document.getElementById('screen-intro');
-  const introVideo = document.getElementById('intro-video');
-
-  function handleIntroAdvance() {
-    showOnboardingStep('launch');
-  }
-
-  if (introScreen) {
-    introScreen.addEventListener('click', handleIntroAdvance);
-  }
-  if (introVideo) {
-    introVideo.addEventListener('click', handleIntroAdvance);
-  }
-
   // Screen 1: Click Anywhere or Press Any Key to proceed to Carousel (Screen 2)
   const launchScreen = document.getElementById('screen-launch');
   if (launchScreen) {
@@ -807,16 +780,10 @@ function setupEventListeners() {
 
   window.addEventListener('keydown', (e) => {
     if (state.flow === 'onboarding') {
-      if (state.currentOnboardingStep === 'intro') {
-        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
-          showOnboardingStep('launch');
-        }
-      } else if (state.currentOnboardingStep === 'launch') {
+      if (state.currentOnboardingStep === 'launch') {
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
           state.carouselIndex = 0;
           showOnboardingStep('carousel');
-        } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
-          showOnboardingStep('intro');
         }
       }
     }
@@ -1094,7 +1061,7 @@ function setupEventListeners() {
   const btnOpenTour = document.getElementById('btn-open-tour');
   if (btnOpenTour) {
     btnOpenTour.addEventListener('click', () => {
-      showOnboardingStep('intro');
+      showOnboardingStep('launch');
     });
   }
 
@@ -1122,7 +1089,7 @@ function setupEventListeners() {
           localStorage.removeItem('taskly_active_tab');
           localStorage.removeItem('taskly_onboarding_step');
         } catch (_) {}
-        showOnboardingStep('intro');
+        showOnboardingStep('launch');
       }
     });
   }
