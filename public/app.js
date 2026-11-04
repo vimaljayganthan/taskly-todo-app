@@ -61,6 +61,32 @@ const state = {
 // Supabase Auth Integration
 let supabaseClient = null;
 
+function isAuthenticated() {
+  if (!state.userToken || typeof state.userToken !== 'string') return false;
+  if (state.userToken.startsWith('mock-user:')) return false;
+  if (!state.user || !state.user.id) return false;
+  return true;
+}
+
+function handleAuthExpiry() {
+  console.warn('[Auth]: Session expired or unauthorized. Redirecting to sign in.');
+  syncAuthSignOut();
+  try {
+    history.replaceState(null, '', '#profile-setup');
+  } catch (_) {
+    window.location.hash = 'profile-setup';
+  }
+  showOnboardingStep('profile-setup', false);
+  const authErrorMsg = document.getElementById('auth-error-msg');
+  if (authErrorMsg) {
+    authErrorMsg.style.display = 'flex';
+    authErrorMsg.style.borderColor = '#fecaca';
+    authErrorMsg.style.background = '#fef2f2';
+    authErrorMsg.style.color = '#dc2626';
+    authErrorMsg.textContent = 'Your session has expired. Please sign in again.';
+  }
+}
+
 async function initSupabaseAuth() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/config`);
@@ -76,9 +102,11 @@ async function initSupabaseAuth() {
         }
       });
 
-      const { data } = await supabaseClient.auth.getSession();
-      if (data && data.session) {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (data && data.session && !error) {
         syncAuthSession(data.session);
+      } else {
+        syncAuthSignOut();
       }
 
       supabaseClient.auth.onAuthStateChange((event, session) => {
@@ -88,9 +116,14 @@ async function initSupabaseAuth() {
           syncAuthSignOut();
         }
       });
+    } else {
+      supabaseClient = null;
+      syncAuthSignOut();
     }
   } catch (err) {
     console.warn('[Supabase Auth Init Warning]:', err.message);
+    supabaseClient = null;
+    syncAuthSignOut();
   }
 }
 
@@ -120,8 +153,13 @@ function syncAuthSession(session) {
 function syncAuthSignOut() {
   state.userToken = null;
   state.todos = [];
+  state.user.id = null;
+  state.user.email = '';
+  state.user.onboarded = false;
   try {
     localStorage.removeItem('taskly_user_token');
+    localStorage.removeItem('taskly_active_flow');
+    localStorage.removeItem('taskly_active_tab');
   } catch (_) {}
   renderAll();
 }
@@ -155,61 +193,97 @@ function formatDateFriendly(dateStr) {
 // ==========================================================================
 // Initialization
 // ==========================================================================
-document.addEventListener('DOMContentLoaded', async () => {
-  loadStoredPreferences();
-  applyTheme(state.theme);
-  setupEventListeners();
-  await initSupabaseAuth();
-  if (state.userToken) {
-    fetchTodos();
-  }
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', async () => {
+    loadStoredPreferences();
+    applyTheme(state.theme);
+    setupEventListeners();
+    await initSupabaseAuth();
+    if (isAuthenticated()) {
+      fetchTodos();
+    }
 
-  // Restore the active screen/route on reload or initial visit
-  restoreActiveRoute();
-});
+    // Restore the active screen/route on reload or initial visit
+    restoreActiveRoute();
+  });
+}
 
 // Restore active route based on URL hash, query params, or default to landing page
 function restoreActiveRoute() {
-  const hash = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
-  const params = new URLSearchParams(window.location.search);
+  const hash = (typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '').trim().toLowerCase() : '');
+  const params = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams());
   const paramTab = params.get('tab');
   const paramStep = params.get('step');
 
   const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add'];
   const onboardingSteps = ['launch', 'carousel', 'profile-setup', 'welcome'];
 
-  // 1. Explicit URL Hash takes highest priority (e.g. #calendar, #progress, #home, #launch)
-  if (mainTabs.includes(hash)) {
-    showMainFlow(hash, false);
+  // 1. Check if user requests a protected main dashboard tab (via hash or ?tab=)
+  const requestedTab = mainTabs.includes(hash) ? hash : (paramTab && mainTabs.includes(paramTab) ? paramTab : null);
+
+  if (requestedTab) {
+    if (isAuthenticated()) {
+      showMainFlow(requestedTab, false);
+    } else {
+      console.warn(`[Auth Guard]: Blocked unauthenticated route access to #${requestedTab}. Redirecting to sign in.`);
+      try {
+        if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
+      } catch (_) {
+        if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
+      }
+      showOnboardingStep('profile-setup', false);
+    }
     return;
   }
+
+  // 2. Check onboarding steps
   if (onboardingSteps.includes(hash)) {
+    if (hash === 'welcome' && !isAuthenticated()) {
+      // Cannot visit welcome screen if not authenticated
+      try {
+        if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
+      } catch (_) {
+        if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
+      }
+      showOnboardingStep('profile-setup', false);
+      return;
+    }
     showOnboardingStep(hash, false);
     return;
   }
 
-  // 2. Query Parameters take second priority (e.g. ?tab=calendar, ?step=launch)
-  if (paramTab && mainTabs.includes(paramTab)) {
-    showMainFlow(paramTab, false);
-    return;
-  }
   if (paramStep && onboardingSteps.includes(paramStep)) {
+    if (paramStep === 'welcome' && !isAuthenticated()) {
+      try {
+        if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
+      } catch (_) {
+        if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
+      }
+      showOnboardingStep('profile-setup', false);
+      return;
+    }
     showOnboardingStep(paramStep, false);
     return;
   }
 
-  // 3. Saved localStorage session if explicitly onboarded and has an active tab
+  // 3. Saved localStorage session if explicitly onboarded and has an active tab AND authenticated
   try {
     const savedFlow = localStorage.getItem('taskly_active_flow');
     const savedTab = localStorage.getItem('taskly_active_tab');
-    if (state.user && state.user.onboarded === true && savedFlow === 'main' && savedTab && mainTabs.includes(savedTab)) {
+    if (isAuthenticated() && state.user && state.user.onboarded === true && savedFlow === 'main' && savedTab && mainTabs.includes(savedTab)) {
       showMainFlow(savedTab, false);
       return;
     }
   } catch (_) {}
 
   // 4. Default entry point for root (/):
-  // Start with Screen 1 Landing Page
+  // If already authenticated and onboarded, take directly to home dashboard
+  if (isAuthenticated() && state.user && state.user.onboarded === true) {
+    showMainFlow('home', false);
+    return;
+  }
+
+  // Otherwise start with Screen 1 Landing Page
   showOnboardingStep('launch', false);
 }
 
@@ -222,8 +296,12 @@ function loadStoredPreferences() {
       state.user = Object.assign({}, state.user, parsed);
     }
     const storedToken = localStorage.getItem('taskly_user_token');
-    if (storedToken) {
+    if (storedToken && typeof storedToken === 'string' && !storedToken.startsWith('mock-user:')) {
       state.userToken = storedToken;
+    } else if (storedToken) {
+      // Purge any forbidden mock token immediately
+      state.userToken = null;
+      try { localStorage.removeItem('taskly_user_token'); } catch (_) {}
     }
     const storedTheme = localStorage.getItem('taskly_theme');
     if (storedTheme) {
@@ -266,7 +344,9 @@ function applyTheme(theme) {
 function showOnboardingStep(stepId, pushHistory = true) {
   state.flow = 'onboarding';
   state.currentOnboardingStep = stepId;
-  document.body.classList.add('onboarding-active');
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.classList.add('onboarding-active');
+  }
 
   const onboardingFlow = document.getElementById('onboarding-flow');
   const mainFlow = document.getElementById('main-flow');
@@ -308,9 +388,22 @@ function showOnboardingStep(stepId, pushHistory = true) {
 }
 
 function showMainFlow(tabName = 'home', pushHistory = true) {
+  if (!isAuthenticated()) {
+    console.warn(`[Auth Guard]: Attempted to show main flow '${tabName}' while unauthenticated. Redirecting to profile-setup.`);
+    try {
+      if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
+    } catch (_) {
+      if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
+    }
+    showOnboardingStep('profile-setup', false);
+    return;
+  }
+
   state.flow = 'main';
   state.activeTab = tabName;
-  document.body.classList.remove('onboarding-active');
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.classList.remove('onboarding-active');
+  }
 
   const onboardingFlow = document.getElementById('onboarding-flow');
   const mainFlow = document.getElementById('main-flow');
@@ -400,9 +493,7 @@ async function fetchTodos() {
       }
     });
     if (res.status === 401) {
-      console.warn('[Fetch]: Unauthenticated or expired session.');
-      state.todos = [];
-      renderAll();
+      handleAuthExpiry();
       return;
     }
     if (!res.ok) throw new Error('Failed to load tasks');
@@ -459,8 +550,7 @@ async function handleAddTask(e) {
     });
 
     if (res.status === 401) {
-      alert('Your session has expired. Please sign in again.');
-      showOnboardingStep('profile-setup');
+      handleAuthExpiry();
       return;
     }
 
@@ -495,7 +585,7 @@ async function handleToggleComplete(id) {
   renderAll();
 
   try {
-    await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -503,6 +593,10 @@ async function handleToggleComplete(id) {
       },
       body: JSON.stringify({ completed: nextStatus })
     });
+    if (res.status === 401) {
+      handleAuthExpiry();
+      return;
+    }
   } catch (err) {
     console.warn('Update completion warning:', err);
   }
@@ -517,12 +611,16 @@ async function handleDeleteTask(event, id) {
   renderAll();
 
   try {
-    await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${state.userToken}`
       }
     });
+    if (res.status === 401) {
+      handleAuthExpiry();
+      return;
+    }
   } catch (err) {
     console.warn('Delete task warning:', err);
   }
@@ -537,12 +635,16 @@ async function handleClearCompleted() {
   renderAll();
 
   try {
-    await fetch(`${getApiBaseUrl()}/api/todos`, {
+    const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${state.userToken}`
       }
     });
+    if (res.status === 401) {
+      handleAuthExpiry();
+      return;
+    }
   } catch (err) {
     console.warn('Clear completed warning:', err);
   }
@@ -1014,16 +1116,8 @@ function setupEventListeners() {
             }
           }
         } else {
-          // Fallback if running entirely offline without Supabase
-          state.user.name = name;
-          state.user.age = age;
-          state.user.email = email;
-          state.userToken = `mock-user:${Date.now()}:${encodeURIComponent(email)}`;
-          try {
-            localStorage.setItem('taskly_user_token', state.userToken);
-          } catch (_) {}
-          saveUserPreferences();
-          showOnboardingStep('welcome');
+          // Authentication requires active Supabase service - never fallback to mock authentication
+          throw new Error('Authentication service is currently unavailable. Please check your connection and configuration.');
         }
       } catch (err) {
         console.error('Auth error:', err);
@@ -1052,6 +1146,11 @@ function setupEventListeners() {
   const btnEnterHome = document.getElementById('btn-enter-home');
   if (btnEnterHome) {
     btnEnterHome.addEventListener('click', () => {
+      if (!isAuthenticated()) {
+        console.warn('[Auth Guard]: Blocked unauthenticated attempt to enter home.');
+        showOnboardingStep('profile-setup');
+        return;
+      }
       state.user.onboarded = true;
       saveUserPreferences();
       showMainFlow('home');
@@ -1081,6 +1180,9 @@ function setupEventListeners() {
 
   // Browser Back/Forward Navigation Support
   window.addEventListener('hashchange', () => {
+    restoreActiveRoute();
+  });
+  window.addEventListener('popstate', () => {
     restoreActiveRoute();
   });
 
@@ -1282,22 +1384,17 @@ function setupEventListeners() {
             console.warn('Sign out warning:', err);
           }
         }
-        state.userToken = null;
-        state.todos = [];
-        state.user.id = null;
-        state.user.email = '';
+        syncAuthSignOut();
         state.user.name = 'User';
         state.user.age = 18;
-        state.user.onboarded = false;
         try {
           localStorage.removeItem('taskly_user');
-          localStorage.removeItem('taskly_user_token');
-          localStorage.removeItem('taskly_active_flow');
-          localStorage.removeItem('taskly_active_tab');
           localStorage.removeItem('taskly_onboarding_step');
+          if (typeof history !== 'undefined') {
+            history.replaceState(null, '', '#launch');
+          }
         } catch (_) {}
-        renderAll();
-        showOnboardingStep('launch');
+        showOnboardingStep('launch', false);
       }
     });
   }
@@ -1312,4 +1409,22 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    state,
+    isAuthenticated,
+    handleAuthExpiry,
+    initSupabaseAuth,
+    syncAuthSession,
+    syncAuthSignOut,
+    restoreActiveRoute,
+    loadStoredPreferences,
+    saveUserPreferences,
+    applyTheme,
+    showOnboardingStep,
+    showMainFlow,
+    escapeHtml
+  };
 }
