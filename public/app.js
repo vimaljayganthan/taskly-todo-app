@@ -18,7 +18,7 @@ function getApiBaseUrl() {
       (window.location.hostname === 'localhost' && window.location.port === '' && !window.location.origin.includes(':3000'))
     );
     if (isCapacitor) {
-      return 'https://taskly-todo-app-4z1c.vercel.app';
+      return 'https://taskly-todo-app-git-feature-mu-aaec2c-vimaljayganthans-projects.vercel.app';
     }
   }
   return '';
