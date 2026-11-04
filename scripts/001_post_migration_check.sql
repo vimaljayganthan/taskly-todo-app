@@ -22,20 +22,20 @@
 -- ------------------------------------------------------------------------------
 -- Section 1: Detailed Schema & Column Inspection
 -- ------------------------------------------------------------------------------
-SELECT 
+SELECT
   column_name,
   data_type,
   is_nullable,
   column_default
 FROM information_schema.columns
-WHERE table_schema = 'public' 
+WHERE table_schema = 'public'
   AND table_name = 'todos'
 ORDER BY ordinal_position;
 
 -- ------------------------------------------------------------------------------
 -- Section 2: Detailed Foreign Key Constraint & ON DELETE Action
 -- ------------------------------------------------------------------------------
-SELECT 
+SELECT
   c.conname AS constraint_name,
   fn.nspname AS referenced_schema,
   ft.relname AS referenced_table,
@@ -54,26 +54,26 @@ JOIN pg_namespace n ON n.oid = t.relnamespace
 JOIN pg_class ft ON ft.oid = c.confrelid
 JOIN pg_namespace fn ON fn.oid = ft.relnamespace
 JOIN pg_attribute fa ON fa.attrelid = ft.oid AND fa.attnum = c.confkey[1]
-WHERE n.nspname = 'public' 
+WHERE n.nspname = 'public'
   AND t.relname = 'todos'
   AND c.conname = 'fk_todos_user';
 
 -- ------------------------------------------------------------------------------
 -- Section 3: Row Level Security (RLS) Status
 -- ------------------------------------------------------------------------------
-SELECT 
+SELECT
   c.relname AS table_name,
   c.relrowsecurity AS rls_enabled,
   c.relforcerowsecurity AS rls_forced
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = 'public' 
+WHERE n.nspname = 'public'
   AND c.relname = 'todos';
 
 -- ------------------------------------------------------------------------------
 -- Section 4: Active RLS Policies Inspection
 -- ------------------------------------------------------------------------------
-SELECT 
+SELECT
   policyname,
   permissive,
   roles::text[] AS applicable_roles,
@@ -81,19 +81,19 @@ SELECT
   qual AS using_expression,
   with_check AS with_check_expression
 FROM pg_policies
-WHERE schemaname = 'public' 
+WHERE schemaname = 'public'
   AND tablename = 'todos'
 ORDER BY policyname;
 
 -- ------------------------------------------------------------------------------
 -- Section 5: Table Privileges Audit
 -- ------------------------------------------------------------------------------
-SELECT 
+SELECT
   grantee,
   privilege_type,
   is_grantable
 FROM information_schema.role_table_grants
-WHERE table_schema = 'public' 
+WHERE table_schema = 'public'
   AND table_name = 'todos'
   AND grantee IN ('anon', 'authenticated', 'PUBLIC')
 ORDER BY grantee, privilege_type;
@@ -101,11 +101,11 @@ ORDER BY grantee, privilege_type;
 -- ------------------------------------------------------------------------------
 -- Section 6: Multi-Tenant Indexes
 -- ------------------------------------------------------------------------------
-SELECT 
+SELECT
   indexname,
   indexdef
 FROM pg_indexes
-WHERE schemaname = 'public' 
+WHERE schemaname = 'public'
   AND tablename = 'todos'
 ORDER BY indexname;
 
@@ -114,10 +114,6 @@ ORDER BY indexname;
 -- ------------------------------------------------------------------------------
 DO $$
 DECLARE
-  -- Column checks
-  v_col_exists BOOLEAN;
-  v_is_nullable VARCHAR;
-  v_col_type VARCHAR;
   -- Foreign key checks
   v_fk_deltype CHAR(1);
   v_fk_schema VARCHAR;
@@ -136,33 +132,45 @@ DECLARE
   v_cmd TEXT;
   -- Privilege checks
   v_anon_priv_count INTEGER;
-  v_auth_priv_count INTEGER;
   v_auth_privileges TEXT[];
   v_grantable_priv_count INTEGER;
-  -- Index checks
-  v_index_exists BOOLEAN;
 BEGIN
   -- ----------------------------------------------------------------------------
   -- 1. Check user_id column structure (UUID NOT NULL) and all task metadata columns
   -- ----------------------------------------------------------------------------
-  SELECT 
-    EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'todos' AND column_name = 'user_id'),
-    is_nullable,
-    data_type
-  INTO v_col_exists, v_is_nullable, v_col_type
+  -- Check user_id column presence
+  PERFORM 1
   FROM information_schema.columns
-  WHERE table_schema = 'public' AND table_name = 'todos' AND column_name = 'user_id';
+  WHERE table_schema = 'public'
+    AND table_name = 'todos'
+    AND column_name = 'user_id';
 
-  IF NOT v_col_exists THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'POST-CHECK FAILED: column user_id does not exist on public.todos';
   END IF;
 
-  IF v_col_type <> 'uuid' THEN
-    RAISE EXCEPTION 'POST-CHECK FAILED: column user_id type is % (expected uuid)', v_col_type;
+  -- Check user_id data type is uuid
+  PERFORM 1
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'todos'
+    AND column_name = 'user_id'
+    AND data_type = 'uuid';
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'POST-CHECK FAILED: column user_id type must be uuid';
   END IF;
 
-  IF v_is_nullable <> 'NO' THEN
-    RAISE EXCEPTION 'POST-CHECK FAILED: column user_id is nullable (is_nullable = %; expected NO)', v_is_nullable;
+  -- Check user_id is NOT NULL
+  PERFORM 1
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'todos'
+    AND column_name = 'user_id'
+    AND is_nullable = 'NO';
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'POST-CHECK FAILED: column user_id is nullable (expected NOT NULL)';
   END IF;
 
   -- Verify all extended task metadata columns exist with correct types
@@ -225,7 +233,7 @@ BEGIN
   -- ----------------------------------------------------------------------------
   -- 2. Verify Foreign Key Constraint: fk_todos_user -> auth.users(id) ON DELETE RESTRICT
   -- ----------------------------------------------------------------------------
-  SELECT 
+  SELECT
     c.confdeltype,
     fn.nspname,
     ft.relname,
@@ -237,8 +245,8 @@ BEGIN
   JOIN pg_class ft ON ft.oid = c.confrelid
   JOIN pg_namespace fn ON fn.oid = ft.relnamespace
   JOIN pg_attribute fa ON fa.attrelid = ft.oid AND fa.attnum = c.confkey[1]
-  WHERE n.nspname = 'public' 
-    AND t.relname = 'todos' 
+  WHERE n.nspname = 'public'
+    AND t.relname = 'todos'
     AND c.conname = 'fk_todos_user';
 
   IF v_fk_schema IS NULL THEN
@@ -412,8 +420,8 @@ BEGIN
   SELECT ARRAY_AGG(DISTINCT privilege_type ORDER BY privilege_type)
   INTO v_auth_privileges
   FROM information_schema.role_table_grants
-  WHERE table_schema = 'public' 
-    AND table_name = 'todos' 
+  WHERE table_schema = 'public'
+    AND table_name = 'todos'
     AND grantee = 'authenticated';
 
   IF v_auth_privileges IS NULL OR v_auth_privileges <> ARRAY['DELETE', 'INSERT', 'SELECT', 'UPDATE']::TEXT[] THEN
@@ -423,8 +431,8 @@ BEGIN
   -- Verify none of the authenticated grants has is_grantable = 'YES'
   SELECT COUNT(*) INTO v_grantable_priv_count
   FROM information_schema.role_table_grants
-  WHERE table_schema = 'public' 
-    AND table_name = 'todos' 
+  WHERE table_schema = 'public'
+    AND table_name = 'todos'
     AND grantee = 'authenticated'
     AND is_grantable = 'YES';
 
@@ -435,12 +443,13 @@ BEGIN
   -- ----------------------------------------------------------------------------
   -- 7. Verify Index Presence
   -- ----------------------------------------------------------------------------
-  SELECT EXISTS (
-    SELECT 1 FROM pg_indexes
-    WHERE schemaname = 'public' AND tablename = 'todos' AND indexname = 'idx_todos_user_id'
-  ) INTO v_index_exists;
+  PERFORM 1
+  FROM pg_indexes
+  WHERE schemaname = 'public'
+    AND tablename = 'todos'
+    AND indexname = 'idx_todos_user_id';
 
-  IF NOT v_index_exists THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'POST-CHECK FAILED: Index idx_todos_user_id does not exist';
   END IF;
 

@@ -32,8 +32,8 @@ const state = {
   user: {
     id: null,
     email: '',
-    name: 'Aadarsh Nithish',
-    age: 21,
+    name: 'User',
+    age: 18,
     onboarded: false
   },
   userToken: null,
@@ -826,9 +826,9 @@ function renderProfile() {
   const deskNameEl = document.getElementById('desktop-user-name');
   const deskAvatarEl = document.getElementById('desktop-user-avatar');
 
-  const currentName = state.user.name || 'vimal';
+  const currentName = state.user.name || 'User';
   if (nameEl) nameEl.textContent = currentName;
-  if (ageEl) ageEl.textContent = `Age: ${state.user.age || 21}`;
+  if (ageEl) ageEl.textContent = `Age: ${state.user.age || 18}`;
   if (deskNameEl) deskNameEl.textContent = currentName;
   if (deskAvatarEl) deskAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 }
@@ -950,8 +950,8 @@ function setupEventListeners() {
 
       const email = emailInput?.value.trim() || '';
       const password = passwordInput?.value || '';
-      const name = nameInput?.value.trim() || 'Taskly User';
-      const age = parseInt(ageInput?.value, 10) || 21;
+      const name = nameInput?.value.trim() || 'User';
+      const age = parseInt(ageInput?.value, 10) || 18;
 
       if (!email || !password) {
         if (authErrorMsg) {
@@ -1216,8 +1216,8 @@ function setupEventListeners() {
   function openEditModal() {
     const editName = document.getElementById('edit-name');
     const editAge = document.getElementById('edit-age');
-    if (editName) editName.value = state.user.name || 'Aadarsh Nithish';
-    if (editAge) editAge.value = state.user.age || 21;
+    if (editName) editName.value = state.user.name || 'User';
+    if (editAge) editAge.value = state.user.age || 18;
     if (modalEdit) modalEdit.classList.add('active');
   }
 
@@ -1286,8 +1286,8 @@ function setupEventListeners() {
         state.todos = [];
         state.user.id = null;
         state.user.email = '';
-        state.user.name = 'Aadarsh Nithish';
-        state.user.age = 21;
+        state.user.name = 'User';
+        state.user.age = 18;
         state.user.onboarded = false;
         try {
           localStorage.removeItem('taskly_user');
