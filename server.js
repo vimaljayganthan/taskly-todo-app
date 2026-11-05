@@ -1,5 +1,19 @@
-const express = require('express');
+const fs = require('fs');
 const path = require('path');
+
+// Safely load local .env before configuration is initialized
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    if (typeof process.loadEnvFile === 'function') {
+      process.loadEnvFile(envPath);
+    } else {
+      require('dotenv').config({ path: envPath });
+    }
+  } catch (_) {}
+}
+
+const express = require('express');
 const crypto = require('crypto');
 const { initializeStorage, getStorage, getScopedStorage } = require('./storage/taskStore');
 
@@ -52,6 +66,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : '0'
 }));
 
+// Dedicated Email Confirmation Success Page
+app.get(['/auth/confirmed', '/auth/confirmed.html'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'auth', 'confirmed.html'));
+});
+
 // ==========================================================================
 // Health Check Endpoints (Required for Google Cloud Run / Load Balancers)
 // ==========================================================================
@@ -65,13 +84,126 @@ app.get(['/healthz', '/api/health'], (req, res) => {
 });
 
 // ==========================================================================
+// Canonical Application URL Discovery (Environment-Aware)
+// ==========================================================================
+function getCanonicalAppUrl() {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+  const vercelEnv = process.env.VERCEL_ENV; // 'production' | 'preview' | 'development'
+
+  function validateUrl(urlStr, requireHttps = false) {
+    if (!urlStr || typeof urlStr !== 'string') return null;
+    const trimmed = urlStr.trim().replace(/\/+$/, '');
+    if (!trimmed) return null;
+    try {
+      const parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+      if (requireHttps) {
+        if (parsed.protocol !== 'https:') return null;
+        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') return null;
+      }
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // 1. In Vercel Preview: Deployment-specific VERCEL_URL always wins over a globally configured Production APP_URL
+  if (isVercel && vercelEnv === 'preview') {
+    if (process.env.VERCEL_URL) {
+      const previewUrl = validateUrl(process.env.VERCEL_URL, true);
+      if (previewUrl) return previewUrl;
+    }
+    // If VERCEL_URL is missing, fallback to explicit APP_URL or VERCEL_PROJECT_PRODUCTION_URL
+    const rawExplicit = process.env.APP_URL || process.env.SITE_URL;
+    if (rawExplicit) {
+      const validated = validateUrl(rawExplicit, true);
+      if (validated) return validated;
+    }
+    if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+      const prodUrl = validateUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL, true);
+      if (prodUrl) return prodUrl;
+    }
+    return null;
+  }
+
+  // 2. Explicitly configured APP_URL or SITE_URL environment variable (Production & Development)
+  const rawExplicit = process.env.APP_URL || process.env.SITE_URL;
+  if (rawExplicit) {
+    const validated = validateUrl(rawExplicit, isProduction);
+    if (validated) {
+      return validated;
+    }
+    // In production, reject invalid, malformed, non-HTTPS, or localhost APP_URL
+    if (isProduction) {
+      return null;
+    }
+  }
+
+  // 3. Vercel Production environment detection
+  if (isVercel) {
+    // In Vercel Production: Prioritize VERCEL_PROJECT_PRODUCTION_URL
+    if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+      const prodUrl = validateUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL, true);
+      if (prodUrl) return prodUrl;
+    }
+    if (process.env.VERCEL_URL) {
+      const vercelUrl = validateUrl(process.env.VERCEL_URL, true);
+      if (vercelUrl) return vercelUrl;
+    }
+  }
+
+  // 4. For deployed production environments, do NOT derive from untrusted Host headers.
+  // If no canonical APP_URL is configured in production, fail closed by returning null.
+  if (isProduction) {
+    return null;
+  }
+
+  // 5. For local development, default to local server URL
+  const port = process.env.PORT || 3000;
+  return `http://localhost:${port}`;
+}
+
+app.getCanonicalAppUrl = getCanonicalAppUrl;
+
+// ==========================================================================
+// Local UI Preview Gate (Strict Environment Isolation)
+// ==========================================================================
+function isLocalPreviewAllowed(req) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  // Condition 1: NODE_ENV must be exactly 'development' (never in production or Vercel)
+  if (process.env.NODE_ENV !== 'development' || isVercel) {
+    return false;
+  }
+
+  // Condition 2: The application is running on localhost (not a deployed domain or mobile origin)
+  const rawHost = (req ? (req.headers['x-forwarded-host'] || req.headers.host || req.hostname || '') : '').toLowerCase();
+  const hostWithoutPort = rawHost.split(':')[0];
+  const isLocalHost = hostWithoutPort === 'localhost' || hostWithoutPort === '127.0.0.1' || hostWithoutPort === '::1';
+  if (!isLocalHost) {
+    return false;
+  }
+
+  // Condition 3: Preview flag must be explicitly enabled
+  const previewFlagEnabled = process.env.ENABLE_LOCAL_PREVIEW === 'true' || process.env.ALLOW_LOCAL_PREVIEW === 'true' || process.env.LOCAL_PREVIEW === 'true';
+  if (!previewFlagEnabled) {
+    return false;
+  }
+
+  return true;
+}
+
+app.isLocalPreviewAllowed = isLocalPreviewAllowed;
+
+// ==========================================================================
 // Public Client Configuration Discovery (No Secrets Exposed)
 // ==========================================================================
 app.get('/api/config', (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.json({
     supabaseUrl: process.env.SUPABASE_URL || 'https://liucmamlownxfshnaxtc.supabase.co',
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+    appUrl: getCanonicalAppUrl(),
+    previewModeAllowed: isLocalPreviewAllowed(req)
   });
 });
 
@@ -135,7 +267,8 @@ async function authenticateUser(req, res, next) {
       if (parts.length >= 2 && parts[1]) {
         req.user = {
           id: parts[1],
-          email: parts[2] ? decodeURIComponent(parts[2]) : 'dev@taskly.app'
+          email: parts[2] ? decodeURIComponent(parts[2]) : 'dev@taskly.app',
+          email_confirmed_at: new Date().toISOString()
         };
         req.userToken = token;
         return next();
@@ -169,7 +302,23 @@ async function authenticateUser(req, res, next) {
       const user = data ? data.user : null;
 
       if (error || !user) {
+        if (error) {
+          console.warn('[Auth]: Supabase getUser verification rejected token:', error.message || error);
+        }
         return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
+      }
+
+      // Enforce verified email requirement using trusted Supabase Auth user data
+      const isEmailVerified = Boolean(
+        user.email_confirmed_at ||
+        user.confirmed_at ||
+        (user.app_metadata && user.app_metadata.provider && user.app_metadata.provider !== 'email')
+      );
+
+      if (!isEmailVerified) {
+        return res.status(403).json({
+          error: 'Forbidden: Email address is not verified. Please verify your email to access tasks.'
+        });
       }
 
       req.user = user;

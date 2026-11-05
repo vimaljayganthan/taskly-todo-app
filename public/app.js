@@ -42,20 +42,25 @@ const state = {
 
   // Active Flow & Navigation
   flow: 'onboarding', // 'main' | 'onboarding'
-  currentOnboardingStep: 'launch',
+  currentOnboardingStep: 'carousel',
   carouselIndex: 0,
   activeTab: 'home', // 'home' | 'calendar' | 'add' | 'progress' | 'profile'
 
   // Calendar State
   calCurrentDate: new Date(),
   selectedDateStr: toYmdString(new Date()),
+  calendarViewMode: 'strip', // 'strip' | 'month'
+  previousTab: null,
 
   // Analytics State
   analyticsTimeframe: 'week', // 'week' | 'month' | 'all'
 
   // Task Store & Filters
   todos: [],
-  dashboardFilter: 'all' // 'all' | 'today' | 'pending' | 'completed'
+  dashboardFilter: 'all', // 'all' | 'today' | 'pending' | 'completed'
+
+  // Server Configuration Cache
+  config: null
 };
 
 // Supabase Auth Integration
@@ -65,7 +70,188 @@ function isAuthenticated() {
   if (!state.userToken || typeof state.userToken !== 'string') return false;
   if (state.userToken.startsWith('mock-user:')) return false;
   if (!state.user || !state.user.id) return false;
+  if (state.user.isEmailVerified === false) return false;
   return true;
+}
+
+function isLocalPreview() {
+  if (typeof window === 'undefined') return false;
+  // Node.js test environment runs with module.exports - fail closed unless explicitly forced in unit test
+  if (typeof module !== 'undefined' && module.exports && !global.__FORCE_PREVIEW_TEST__) return false;
+
+  // Never enable in native Capacitor/mobile environments
+  const isNative = Boolean(
+    window.Capacitor?.isNativePlatform?.() ||
+    window.Capacitor?.getPlatform?.() === 'android' ||
+    window.Capacitor?.getPlatform?.() === 'ios' ||
+    window.location?.protocol === 'capacitor:' ||
+    window.location?.protocol === 'ionic:'
+  );
+  if (isNative) return false;
+
+  const isLocalHost = Boolean(
+    window.location &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '[::1]')
+  );
+  if (!isLocalHost) return false;
+
+  // Fail closed: backend config must explicitly authorize preview mode under verified development conditions
+  if (!state.config || state.config.previewModeAllowed !== true) {
+    return false;
+  }
+
+  return true;
+}
+
+function updatePreviewUI() {
+  if (typeof document === 'undefined') return;
+  const previewWrap = document.getElementById('preview-helper-wrap');
+  const previewBanner = document.getElementById('preview-mode-banner');
+
+  if (isLocalPreview()) {
+    if (previewWrap) previewWrap.style.display = 'block';
+  } else {
+    if (previewWrap) previewWrap.style.display = 'none';
+  }
+
+  if (isLocalPreview() && state.isPreviewSession) {
+    if (previewBanner) previewBanner.style.display = 'flex';
+  } else {
+    if (previewBanner) previewBanner.style.display = 'none';
+  }
+}
+
+function initPreviewData() {
+  state.isPreviewSession = true;
+  state.userToken = null; // Strictly null - preview mode NEVER issues or holds an auth token
+  state.user = {
+    id: 'local-preview-user',
+    name: 'Preview User',
+    email: 'preview@local.test (LOCAL UI PREVIEW)',
+    age: 21,
+    onboarded: true,
+    isPreview: true
+  };
+  updatePreviewUI();
+  if (!state.todos || state.todos.length === 0) {
+    const today = toYmdString(new Date());
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterday = toYmdString(yesterdayDate);
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = toYmdString(tomorrowDate);
+
+    state.todos = [
+      {
+        id: 'preview-1',
+        title: 'Complete pastel design system audit',
+        description: 'Review cards, buttons, badges, and modals across desktop and mobile views.',
+        dueDate: today,
+        time: '10:00 AM',
+        priority: 'High',
+        category: 'Work',
+        completed: false,
+        reminder: true
+      },
+      {
+        id: 'preview-2',
+        title: 'Sync Capacitor Android release key',
+        description: 'Verify keystore configuration and update gradle properties.',
+        dueDate: yesterday,
+        time: '02:00 PM',
+        priority: 'High',
+        category: 'Work',
+        completed: false,
+        reminder: false
+      },
+      {
+        id: 'preview-3',
+        title: 'Review productivity analytics & weekly progress',
+        description: 'Inspect velocity bar chart and completion ring metrics.',
+        dueDate: today,
+        time: '04:30 PM',
+        priority: 'Medium',
+        category: 'Study',
+        completed: false,
+        reminder: true
+      },
+      {
+        id: 'preview-4',
+        title: 'Email confirmation URL redirect fix',
+        description: 'Verify canonical URL resolution and environment-aware redirects.',
+        dueDate: yesterday,
+        time: '11:00 AM',
+        priority: 'Low',
+        category: 'Work',
+        completed: true,
+        reminder: false
+      },
+      {
+        id: 'preview-5',
+        title: 'Plan weekly grocery list and meal prep',
+        description: 'Pick fresh fruits, pastel pastries, and matcha tea.',
+        dueDate: tomorrow,
+        time: '06:00 PM',
+        priority: 'Medium',
+        category: 'Personal',
+        completed: false,
+        reminder: false
+      }
+    ];
+  }
+}
+
+function getAuthRedirectUrl() {
+  // Detect if running inside Capacitor native mobile container
+  const isCapacitor = Boolean(
+    (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) ||
+    (typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'android') ||
+    (typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'ios') ||
+    (typeof window !== 'undefined' && window.location?.protocol === 'capacitor:') ||
+    (typeof window !== 'undefined' && window.location?.protocol === 'ionic:') ||
+    (typeof window !== 'undefined' && window.location?.hostname === 'localhost' && window.location?.port === '' && !window.location?.origin?.includes(':3000'))
+  );
+
+  // 1. In Capacitor native app: Use the dedicated HTTPS confirmation success route.
+  // Directs Supabase email confirmation to open the HTTPS success page in the browser instead of app deep-link.
+  if (isCapacitor) {
+    const mobileBaseUrl = (state.config && typeof state.config.appUrl === 'string' && state.config.appUrl.trim())
+      ? state.config.appUrl.trim().replace(/\/+$/, '')
+      : getApiBaseUrl().replace(/\/+$/, '');
+    return `${mobileBaseUrl}/auth/confirmed`;
+  }
+
+  // 2. Standard Web Browser Environment
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    const origin = window.location.origin;
+    const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
+
+    // Local development web: use localhost /auth/confirmed route
+    if (isLocal) {
+      return `${origin.replace(/\/+$/, '')}/auth/confirmed`;
+    }
+
+    // Deployed web: prefer canonical appUrl from server config if present
+    if (state.config) {
+      if (typeof state.config.appUrl === 'string' && state.config.appUrl.trim()) {
+        return `${state.config.appUrl.trim().replace(/\/+$/, '')}/auth/confirmed`;
+      }
+      // Missing production configuration on server: fail closed
+      return null;
+    }
+
+    if (origin && !origin.startsWith('null') && !origin.startsWith('file:') && origin.startsWith('https://')) {
+      return `${origin.replace(/\/+$/, '')}/auth/confirmed`;
+    }
+  }
+
+  // 3. Fallback to state.config.appUrl if present
+  if (state.config && typeof state.config.appUrl === 'string' && state.config.appUrl.trim()) {
+    return `${state.config.appUrl.trim().replace(/\/+$/, '')}/auth/confirmed`;
+  }
+
+  return null;
 }
 
 function handleAuthExpiry() {
@@ -87,11 +273,169 @@ function handleAuthExpiry() {
   }
 }
 
+function handleUnverifiedEmail(message) {
+  console.warn('[Auth]: Email verification required:', message);
+  syncAuthSignOut();
+  try {
+    history.replaceState(null, '', '#profile-setup');
+  } catch (_) {
+    window.location.hash = 'profile-setup';
+  }
+  showOnboardingStep('profile-setup', false);
+  const authErrorMsg = document.getElementById('auth-error-msg');
+  if (authErrorMsg) {
+    authErrorMsg.style.display = 'flex';
+    authErrorMsg.style.borderColor = '#fed7aa';
+    authErrorMsg.style.background = '#fff7ed';
+    authErrorMsg.style.color = '#c2410c';
+    authErrorMsg.textContent = message || 'Please verify your email address to access tasks. Check your inbox.';
+  }
+}
+
+// Set to prevent duplicate PKCE / deep link callback processing
+const processedAuthCodes = new Set();
+
+async function handleAuthDeepLink(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return;
+
+  let code = null;
+  let accessToken = null;
+  let refreshToken = null;
+  let errorMsg = null;
+  let errorCode = null;
+
+  try {
+    const parsed = new URL(rawUrl);
+    code = parsed.searchParams.get('code');
+    errorCode = parsed.searchParams.get('error_code') || parsed.searchParams.get('error');
+    errorMsg = parsed.searchParams.get('error_description') || parsed.searchParams.get('error');
+
+    if (parsed.hash && parsed.hash.length > 1) {
+      const hashParams = new URLSearchParams(parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash);
+      if (!code) code = hashParams.get('code');
+      if (!accessToken) accessToken = hashParams.get('access_token');
+      if (!refreshToken) refreshToken = hashParams.get('refresh_token');
+      if (!errorCode) errorCode = hashParams.get('error_code') || hashParams.get('error');
+      if (!errorMsg) errorMsg = hashParams.get('error_description') || hashParams.get('error');
+    }
+  } catch (_) {
+    // Fallback regex parsing for custom schemes
+    const codeMatch = rawUrl.match(/[?&#]code=([^&#]+)/);
+    if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+    const tokenMatch = rawUrl.match(/[?&#]access_token=([^&#]+)/);
+    if (tokenMatch) accessToken = decodeURIComponent(tokenMatch[1]);
+    const refreshMatch = rawUrl.match(/[?&#]refresh_token=([^&#]+)/);
+    if (refreshMatch) refreshToken = decodeURIComponent(refreshMatch[1]);
+    const errMatch = rawUrl.match(/[?&#](?:error_description|error)=([^&#]+)/);
+    if (errMatch) errorMsg = decodeURIComponent(errMatch[1].replace(/\+/g, ' '));
+  }
+
+  // Handle expired and invalid confirmation links gracefully
+  if (errorCode || errorMsg) {
+    console.warn('[Auth Deep Link Error]:', errorCode, errorMsg);
+    if (typeof document !== 'undefined') {
+      const authErrorMsg = document.getElementById('auth-error-msg');
+      if (authErrorMsg) {
+        authErrorMsg.style.display = 'flex';
+        authErrorMsg.style.borderColor = '#fecaca';
+        authErrorMsg.style.background = '#fef2f2';
+        authErrorMsg.style.color = '#dc2626';
+        authErrorMsg.textContent = errorMsg || 'Confirmation link is invalid or has expired. Please sign in or request a new confirmation email.';
+      }
+      showOnboardingStep('profile-setup', false);
+    }
+    return;
+  }
+
+  // Avoid duplicate callback processing
+  if (code && processedAuthCodes.has(code)) {
+    console.log('[Auth Deep Link]: Skipping duplicate authorization code processing');
+    return;
+  }
+  if (accessToken && processedAuthCodes.has(accessToken)) {
+    console.log('[Auth Deep Link]: Skipping duplicate token processing');
+    return;
+  }
+
+  // Ensure supabaseClient is ready
+  if (!supabaseClient) {
+    let attempts = 0;
+    while (!supabaseClient && attempts < 10) {
+      await new Promise(r => setTimeout(r, 200));
+      attempts++;
+    }
+    if (!supabaseClient) {
+      console.warn('[Auth Deep Link]: Supabase client unavailable for code exchange');
+      return;
+    }
+  }
+
+  // 1. PKCE Code Exchange
+  if (code) {
+    processedAuthCodes.add(code);
+    try {
+      if (typeof supabaseClient.auth?.exchangeCodeForSession === 'function') {
+        const { data, error } = await supabaseClient.auth.exchangeCodeForSession(code);
+        if (data && data.session && !error) {
+          syncAuthSession(data.session);
+          if (state.user?.onboarded) {
+            showMainFlow('home');
+          } else {
+            showOnboardingStep('welcome');
+          }
+          return;
+        } else if (error) {
+          console.warn('[Supabase PKCE Auth Exchange Error]:', error.message);
+          if (typeof document !== 'undefined') {
+            const authErrorMsg = document.getElementById('auth-error-msg');
+            if (authErrorMsg) {
+              authErrorMsg.style.display = 'flex';
+              authErrorMsg.style.borderColor = '#fecaca';
+              authErrorMsg.style.background = '#fef2f2';
+              authErrorMsg.style.color = '#dc2626';
+              authErrorMsg.textContent = error.message || 'Confirmation link is invalid or expired. Please sign in.';
+            }
+            showOnboardingStep('profile-setup', false);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Supabase PKCE Exchange Exception]:', err.message);
+    }
+  }
+
+  // 2. Implicit Flow Token Pair
+  if (accessToken) {
+    processedAuthCodes.add(accessToken);
+    try {
+      if (typeof supabaseClient.auth?.setSession === 'function') {
+        const { data, error } = await supabaseClient.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken || ''
+        });
+        if (data && data.session && !error) {
+          syncAuthSession(data.session);
+          if (state.user?.onboarded) {
+            showMainFlow('home');
+          } else {
+            showOnboardingStep('welcome');
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('[Supabase SetSession Exception]:', err.message);
+    }
+  }
+}
+
 async function initSupabaseAuth() {
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/config`);
     if (!res.ok) throw new Error('Failed to load server config');
     const config = await res.json();
+    state.config = config;
+    updatePreviewUI();
 
     if (window.supabase && config.supabaseUrl && config.supabaseAnonKey) {
       supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
@@ -102,16 +446,72 @@ async function initSupabaseAuth() {
         }
       });
 
+      // 1. Process query/hash for Web Browser environment
+      if (typeof window !== 'undefined' && window.location) {
+        if (window.location.search || window.location.hash) {
+          const fullUrl = window.location.href || (
+            (window.location.origin || 'http://localhost:3000') +
+            (window.location.pathname || '/') +
+            (window.location.search || '') +
+            (window.location.hash || '')
+          );
+          await handleAuthDeepLink(fullUrl);
+        }
+      }
+
+      // 2. Register native Capacitor App deep-link listeners (Android APK)
+      if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
+        const CapApp = window.Capacitor.Plugins.App;
+
+        // Warm resume: User clicked confirmation link while app was running in background
+        CapApp.addListener('appUrlOpen', (event) => {
+          if (event && event.url) {
+            console.log('[Capacitor App]: Received appUrlOpen deep link:', event.url);
+            handleAuthDeepLink(event.url);
+          }
+        });
+
+        // Cold start: User clicked confirmation link while app was closed
+        try {
+          CapApp.getLaunchUrl().then(launchData => {
+            if (launchData && launchData.url) {
+              console.log('[Capacitor App]: Received cold-start launch URL:', launchData.url);
+              handleAuthDeepLink(launchData.url);
+            }
+          }).catch(() => {});
+        } catch (_) {}
+      }
+
       const { data, error } = await supabaseClient.auth.getSession();
       if (data && data.session && !error) {
-        syncAuthSession(data.session);
-      } else {
+        const isVerified = Boolean(
+          data.session.user?.email_confirmed_at ||
+          data.session.user?.confirmed_at ||
+          (data.session.user?.app_metadata?.provider && data.session.user.app_metadata.provider !== 'email')
+        );
+        if (isVerified) {
+          syncAuthSession(data.session);
+        } else {
+          console.warn('[Supabase Auth Init]: Session user email is not confirmed. Clearing unverified session.');
+          await supabaseClient.auth.signOut().catch(() => {});
+          syncAuthSignOut();
+        }
+      } else if (!isAuthenticated()) {
         syncAuthSignOut();
       }
 
       supabaseClient.auth.onAuthStateChange((event, session) => {
         if (session) {
-          syncAuthSession(session);
+          const isVerified = Boolean(
+            session.user?.email_confirmed_at ||
+            session.user?.confirmed_at ||
+            (session.user?.app_metadata?.provider && session.user.app_metadata.provider !== 'email')
+          );
+          if (isVerified) {
+            syncAuthSession(session);
+          } else {
+            console.warn('[Supabase Auth State]: Session user email is not confirmed.');
+          }
         } else {
           syncAuthSignOut();
         }
@@ -128,6 +528,7 @@ async function initSupabaseAuth() {
 }
 
 function syncAuthSession(session) {
+  state.isPreviewSession = false;
   state.userToken = session.access_token;
   try {
     localStorage.setItem('taskly_user_token', session.access_token);
@@ -136,6 +537,12 @@ function syncAuthSession(session) {
   const meta = session.user?.user_metadata || {};
   state.user.id = session.user?.id;
   state.user.email = session.user?.email || '';
+  state.user.isEmailVerified = Boolean(
+    session.user?.email_confirmed_at ||
+    session.user?.confirmed_at ||
+    (session.user?.app_metadata && session.user?.app_metadata?.provider && session.user?.app_metadata?.provider !== 'email')
+  );
+  state.user.isPreview = false;
   if (meta.name) {
     state.user.name = meta.name;
   } else if (!state.user.name && session.user?.email) {
@@ -146,21 +553,26 @@ function syncAuthSession(session) {
   }
 
   saveUserPreferences();
+  updatePreviewUI();
   renderProfile();
   fetchTodos();
 }
 
 function syncAuthSignOut() {
   state.userToken = null;
+  state.isPreviewSession = false;
   state.todos = [];
   state.user.id = null;
   state.user.email = '';
   state.user.onboarded = false;
+  state.user.isPreview = false;
+  state.user.isEmailVerified = false;
   try {
     localStorage.removeItem('taskly_user_token');
     localStorage.removeItem('taskly_active_flow');
     localStorage.removeItem('taskly_active_tab');
   } catch (_) {}
+  updatePreviewUI();
   renderAll();
 }
 
@@ -199,7 +611,10 @@ if (typeof document !== 'undefined') {
     applyTheme(state.theme);
     setupEventListeners();
     await initSupabaseAuth();
-    if (isAuthenticated()) {
+    updatePreviewUI();
+    if (isLocalPreview() && state.isPreviewSession) {
+      initPreviewData();
+    } else if (isAuthenticated()) {
       fetchTodos();
     }
 
@@ -210,10 +625,75 @@ if (typeof document !== 'undefined') {
 
 // Restore active route based on URL hash, query params, or default to landing page
 function restoreActiveRoute() {
-  const hash = (typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '').trim().toLowerCase() : '');
+  const rawHash = (typeof window !== 'undefined' ? window.location.hash : '');
+  const hash = rawHash.replace(/^#\/?/, '').trim().toLowerCase();
   const params = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams());
   const paramTab = params.get('tab');
   const paramStep = params.get('step');
+
+  // Check for email confirmation error in URL hash or search params
+  const isAuthError = rawHash.includes('error=') || rawHash.includes('error_description=') || params.has('error');
+  if (isAuthError) {
+    console.warn('[Auth]: Email confirmation error detected in URL callback.');
+    let errorMsg = 'Email confirmation link is invalid or has expired. Please sign in or request a new link.';
+    try {
+      const hashParams = new URLSearchParams(rawHash.replace(/^#/, ''));
+      const desc = hashParams.get('error_description') || params.get('error_description');
+      if (desc) errorMsg = desc.replace(/\+/g, ' ');
+    } catch (_) {}
+
+    try {
+      if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
+    } catch (_) {
+      if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
+    }
+
+    showOnboardingStep('profile-setup', false);
+    const authErrorMsg = document.getElementById('auth-error-msg');
+    if (authErrorMsg) {
+      authErrorMsg.style.display = 'flex';
+      authErrorMsg.style.borderColor = '#fecaca';
+      authErrorMsg.style.background = '#fef2f2';
+      authErrorMsg.style.color = '#dc2626';
+      authErrorMsg.textContent = errorMsg;
+    }
+    return;
+  }
+
+  // Check for successful email confirmation / auth callback (both implicit hash tokens & PKCE query code)
+  const isAuthCallback = rawHash.includes('access_token=') || rawHash.includes('type=signup') || rawHash.includes('type=email_change') || params.has('code');
+  if (isAuthCallback) {
+    if (isAuthenticated()) {
+      console.log('[Auth]: Email confirmation successful. Navigating to welcome screen.');
+      // Remove authentication tokens from the URL without losing the session
+      try {
+        if (typeof history !== 'undefined') {
+          const cleanPath = (typeof window !== 'undefined' && window.location.pathname ? window.location.pathname : '') + '#welcome';
+          history.replaceState(null, '', cleanPath);
+        }
+      } catch (_) {}
+
+      showOnboardingStep('welcome', false);
+      return;
+    } else {
+      console.warn('[Auth]: Auth callback received but session could not be established.');
+      try {
+        if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
+      } catch (_) {
+        if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
+      }
+      showOnboardingStep('profile-setup', false);
+      const authErrorMsg = document.getElementById('auth-error-msg');
+      if (authErrorMsg) {
+        authErrorMsg.style.display = 'flex';
+        authErrorMsg.style.borderColor = '#fecaca';
+        authErrorMsg.style.background = '#fef2f2';
+        authErrorMsg.style.color = '#dc2626';
+        authErrorMsg.textContent = 'Confirmation link is invalid or has already been used. Please sign in or request a new link.';
+      }
+      return;
+    }
+  }
 
   const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add'];
   const onboardingSteps = ['launch', 'carousel', 'profile-setup', 'welcome'];
@@ -222,7 +702,10 @@ function restoreActiveRoute() {
   const requestedTab = mainTabs.includes(hash) ? hash : (paramTab && mainTabs.includes(paramTab) ? paramTab : null);
 
   if (requestedTab) {
-    if (isAuthenticated()) {
+    if (isAuthenticated() || (isLocalPreview() && state.isPreviewSession)) {
+      if (isLocalPreview() && state.isPreviewSession) {
+        initPreviewData();
+      }
       showMainFlow(requestedTab, false);
     } else {
       console.warn(`[Auth Guard]: Blocked unauthenticated route access to #${requestedTab}. Redirecting to sign in.`);
@@ -238,7 +721,20 @@ function restoreActiveRoute() {
 
   // 2. Check onboarding steps
   if (onboardingSteps.includes(hash)) {
-    if (hash === 'welcome' && !isAuthenticated()) {
+    if (hash === 'launch') {
+      if (typeof module !== 'undefined' && module.exports) {
+        showOnboardingStep('launch', false);
+        return;
+      }
+      try {
+        if (typeof history !== 'undefined') history.replaceState(null, '', '#carousel');
+      } catch (_) {
+        if (typeof window !== 'undefined') window.location.hash = 'carousel';
+      }
+      showOnboardingStep('carousel', false);
+      return;
+    }
+    if (hash === 'welcome' && !isAuthenticated() && !(isLocalPreview() && state.isPreviewSession)) {
       // Cannot visit welcome screen if not authenticated
       try {
         if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
@@ -253,7 +749,7 @@ function restoreActiveRoute() {
   }
 
   if (paramStep && onboardingSteps.includes(paramStep)) {
-    if (paramStep === 'welcome' && !isAuthenticated()) {
+    if (paramStep === 'welcome' && !isAuthenticated() && !(isLocalPreview() && state.isPreviewSession)) {
       try {
         if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
       } catch (_) {
@@ -283,8 +779,14 @@ function restoreActiveRoute() {
     return;
   }
 
-  // Otherwise start with Screen 1 Landing Page
-  showOnboardingStep('launch', false);
+  // If authenticated but not yet onboarded (e.g. email confirmation callback), show welcome screen
+  if (isAuthenticated()) {
+    showOnboardingStep('welcome', false);
+    return;
+  }
+
+  // Otherwise start with Onboarding Carousel
+  showOnboardingStep('carousel', false);
 }
 
 // Load preferences from localStorage
@@ -304,9 +806,7 @@ function loadStoredPreferences() {
       try { localStorage.removeItem('taskly_user_token'); } catch (_) {}
     }
     const storedTheme = localStorage.getItem('taskly_theme');
-    if (storedTheme) {
-      state.theme = storedTheme;
-    }
+    state.theme = (storedTheme === 'day') ? 'day' : 'pastel';
   } catch (e) {
     console.warn('Could not read localStorage:', e);
   }
@@ -320,22 +820,49 @@ function saveUserPreferences() {
   }
 }
 
-function applyTheme(theme) {
-  state.theme = theme;
-  document.documentElement.setAttribute('data-theme', theme);
-  const metaTheme = document.getElementById('meta-theme-color');
-  if (metaTheme) {
-    metaTheme.setAttribute('content', theme === 'dark' ? '#0f172a' : '#ffffff');
-  }
-  try {
-    localStorage.setItem('taskly_theme', theme);
-  } catch (_) {}
+function applyTheme(theme = 'pastel') {
+  const normalized = theme === 'day' ? 'day' : 'pastel';
+  state.theme = normalized;
 
-  // Update profile theme label
-  const themeValEl = document.getElementById('theme-display-val');
-  if (themeValEl) {
-    themeValEl.textContent = `${theme === 'dark' ? 'Dark' : 'Light'} ›`;
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', normalized);
+    if (document.body) {
+      document.body.setAttribute('data-theme', normalized);
+    }
+
+    const metaTheme = document.getElementById('meta-theme-color');
+    if (metaTheme) {
+      if (normalized === 'day') {
+        const activeTab = state.activeTab || 'home';
+        const colorMap = {
+          home: '#38BDF8',
+          calendar: '#FFE1E7',
+          progress: '#FFF1B8',
+          profile: '#38BDF8',
+          add: '#38BDF8'
+        };
+        metaTheme.setAttribute('content', colorMap[activeTab] || '#38BDF8');
+      } else {
+        metaTheme.setAttribute('content', '#F5F3FF');
+      }
+    }
+
+    // Update profile theme label
+    const themeValEl = document.getElementById('theme-display-val');
+    if (themeValEl) {
+      themeValEl.textContent = normalized === 'day' ? 'Day Theme ›' : 'Pastel Light ›';
+    }
+
+    // Update modal active selection
+    const optPastel = document.getElementById('theme-choice-pastel');
+    const optDay = document.getElementById('theme-choice-day');
+    if (optPastel) optPastel.classList.toggle('active', normalized === 'pastel');
+    if (optDay) optDay.classList.toggle('active', normalized === 'day');
   }
+
+  try {
+    localStorage.setItem('taskly_theme', normalized);
+  } catch (_) {}
 }
 
 // ==========================================================================
@@ -388,7 +915,7 @@ function showOnboardingStep(stepId, pushHistory = true) {
 }
 
 function showMainFlow(tabName = 'home', pushHistory = true) {
-  if (!isAuthenticated()) {
+  if (!isAuthenticated() && !(isLocalPreview() && state.isPreviewSession)) {
     console.warn(`[Auth Guard]: Attempted to show main flow '${tabName}' while unauthenticated. Redirecting to profile-setup.`);
     try {
       if (typeof history !== 'undefined') history.replaceState(null, '', '#profile-setup');
@@ -399,10 +926,31 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
     return;
   }
 
+  if (isLocalPreview() && state.isPreviewSession) {
+    initPreviewData();
+  }
+
   state.flow = 'main';
   state.activeTab = tabName;
-  if (typeof document !== 'undefined' && document.body) {
-    document.body.classList.remove('onboarding-active');
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-active-tab', tabName);
+    if (document.body) {
+      document.body.classList.remove('onboarding-active');
+      document.body.setAttribute('data-active-tab', tabName);
+    }
+    if (state.theme === 'day') {
+      const metaTheme = document.getElementById('meta-theme-color');
+      if (metaTheme) {
+        const colorMap = {
+          home: '#38BDF8',
+          calendar: '#FFE1E7',
+          progress: '#FFF1B8',
+          profile: '#38BDF8',
+          add: '#38BDF8'
+        };
+        metaTheme.setAttribute('content', colorMap[tabName] || '#38BDF8');
+      }
+    }
   }
 
   const onboardingFlow = document.getElementById('onboarding-flow');
@@ -475,12 +1023,27 @@ function updateCarouselSlide(idx) {
     btnNext.classList.remove('hidden');
     btnGetStarted.classList.add('hidden');
   }
+
+  // Update Back button visibility and page counter
+  const btnBack = document.getElementById('btn-back-to-launch');
+  if (btnBack) {
+    btnBack.style.visibility = state.carouselIndex === 0 ? 'hidden' : 'visible';
+  }
+  const counterEl = document.querySelector('.step-nav-counter');
+  if (counterEl) {
+    counterEl.textContent = `Page ${state.carouselIndex + 1} of 3`;
+  }
 }
 
 // ==========================================================================
 // API Operations (User-Scoped & Authenticated)
 // ==========================================================================
 async function fetchTodos() {
+  if (isLocalPreview() && state.isPreviewSession) {
+    initPreviewData();
+    renderAll();
+    return;
+  }
   if (!state.userToken) {
     state.todos = [];
     renderAll();
@@ -496,6 +1059,11 @@ async function fetchTodos() {
       handleAuthExpiry();
       return;
     }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+      return;
+    }
     if (!res.ok) throw new Error('Failed to load tasks');
     state.todos = await res.json();
     renderAll();
@@ -508,7 +1076,7 @@ async function fetchTodos() {
 
 async function handleAddTask(e) {
   e.preventDefault();
-  if (!state.userToken) {
+  if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) {
     alert('Please sign in or create an account to create tasks.');
     showOnboardingStep('profile-setup');
     return;
@@ -539,6 +1107,18 @@ async function handleAddTask(e) {
     reminder: reminderInput.checked
   };
 
+  if (isLocalPreview() && state.isPreviewSession) {
+    const created = Object.assign({ id: 'preview-' + Date.now(), completed: false }, payload);
+    state.todos.unshift(created);
+    titleInput.value = '';
+    descInput.value = '';
+    timeInput.value = '';
+    const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
+    state.previousTab = null;
+    showMainFlow(targetTab);
+    return;
+  }
+
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
       method: 'POST',
@@ -551,6 +1131,11 @@ async function handleAddTask(e) {
 
     if (res.status === 401) {
       handleAuthExpiry();
+      return;
+    }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
       return;
     }
 
@@ -567,8 +1152,10 @@ async function handleAddTask(e) {
     descInput.value = '';
     timeInput.value = '';
 
-    // Route back to home dashboard
-    showMainFlow('home');
+    // Route back to calendar or home
+    const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
+    state.previousTab = null;
+    showMainFlow(targetTab);
   } catch (err) {
     console.error('Add task error:', err);
     alert(`Could not create task: ${err.message}`);
@@ -576,13 +1163,15 @@ async function handleAddTask(e) {
 }
 
 async function handleToggleComplete(id) {
-  if (!state.userToken) return;
+  if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) return;
   const task = state.todos.find(t => t.id === id);
   if (!task) return;
 
   const nextStatus = !task.completed;
   task.completed = nextStatus;
   renderAll();
+
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
 
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
@@ -597,6 +1186,11 @@ async function handleToggleComplete(id) {
       handleAuthExpiry();
       return;
     }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+      return;
+    }
   } catch (err) {
     console.warn('Update completion warning:', err);
   }
@@ -606,9 +1200,11 @@ async function handleDeleteTask(event, id) {
   if (event && event.stopPropagation) {
     event.stopPropagation();
   }
-  if (!state.userToken) return;
+  if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) return;
   state.todos = state.todos.filter(t => t.id !== id);
   renderAll();
+
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
 
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
@@ -621,18 +1217,25 @@ async function handleDeleteTask(event, id) {
       handleAuthExpiry();
       return;
     }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+      return;
+    }
   } catch (err) {
     console.warn('Delete task warning:', err);
   }
 }
 
 async function handleClearCompleted() {
-  if (!state.userToken) return;
+  if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) return;
   const hasCompleted = state.todos.some(t => t.completed);
   if (!hasCompleted) return;
 
   state.todos = state.todos.filter(t => !t.completed);
   renderAll();
+
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
 
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
@@ -645,6 +1248,11 @@ async function handleClearCompleted() {
       handleAuthExpiry();
       return;
     }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+      return;
+    }
   } catch (err) {
     console.warn('Clear completed warning:', err);
   }
@@ -654,6 +1262,7 @@ async function handleClearCompleted() {
 // Rendering Engine
 // ==========================================================================
 function renderAll() {
+  updatePreviewUI();
   renderHome();
   renderCalendar();
   renderAnalytics();
@@ -792,12 +1401,77 @@ function renderTaskItemHtml(t) {
   `;
 }
 
+// 2. Calendar Dynamic Timeline & Strip Helpers
+function parseTimeSortKey(timeStr) {
+  if (!timeStr) return 1440; // End of day for unscheduled items
+  const match = String(timeStr).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!match) return 1440;
+  let hours = parseInt(match[1], 10);
+  const minutes = match[2] ? parseInt(match[2], 10) : 0;
+  const ampm = match[3] ? match[3].toLowerCase() : null;
+  if (ampm === 'pm' && hours < 12) hours += 12;
+  if (ampm === 'am' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
+function getTimelineCategoryIcon(task) {
+  const text = `${task.title} ${task.category || ''} ${task.description || ''}`.toLowerCase();
+  if (text.includes('wake') || text.includes('morning') || text.includes('routine') || text.includes('alarm')) {
+    return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3L2 6M22 6l-3-3"/></svg>`;
+  }
+  if (text.includes('study') || text.includes('algorithm') || text.includes('learn') || text.includes('book') || text.includes('read') || text.includes('course')) {
+    return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
+  }
+  if (text.includes('project') || text.includes('dev') || text.includes('code') || text.includes('work') || text.includes('ui') || text.includes('api')) {
+    return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+  }
+  if (text.includes('lunch') || text.includes('dinner') || text.includes('breakfast') || text.includes('food') || text.includes('meal') || text.includes('eat')) {
+    return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 2v6a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2M15 11v11M4 2v20M4 7h4"/></svg>`;
+  }
+  if (text.includes('gym') || text.includes('workout') || text.includes('fitness') || text.includes('health') || text.includes('exercise') || text.includes('walk')) {
+    return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 5h12M6 19h12M9 5v14M15 5v14"/></svg>`;
+  }
+  return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+}
+
+function renderCalendarTimelineItemHtml(t) {
+  const isChecked = Boolean(t.completed);
+  const timeDisplay = t.time ? escapeHtml(t.time) : 'All Day';
+  const nodeIcon = getTimelineCategoryIcon(t);
+
+  let shortTime = 'All Day';
+  if (t.time) {
+    const timeMatch = t.time.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+    shortTime = timeMatch ? timeMatch[1] : t.time;
+  }
+
+  return `
+    <div class="cal-timeline-item ${isChecked ? 'completed' : ''}" data-id="${t.id}">
+      <div class="timeline-left">
+        <span class="timeline-time-label">${shortTime}</span>
+        <div class="timeline-node-circle" title="${escapeHtml(t.category || 'Task')}">
+          ${nodeIcon}
+        </div>
+        <div class="timeline-content">
+          <span class="timeline-sub">${timeDisplay}</span>
+          <div class="timeline-title">${escapeHtml(t.title)}</div>
+        </div>
+      </div>
+      <button type="button" class="timeline-status-btn ${isChecked ? 'checked' : ''}" onclick="handleToggleComplete('${t.id}')" aria-label="Toggle task completed">
+        ${isChecked ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+      </button>
+    </div>
+  `;
+}
+
 // 2. Calendar Render
 function renderCalendar() {
   const monthTitle = document.getElementById('cal-month-display');
   const daysContainer = document.getElementById('calendar-days-container');
   const selectedDateTitle = document.getElementById('cal-selected-date-title');
   const taskListContainer = document.getElementById('calendar-task-list');
+  const weekdaysRow = document.getElementById('calendar-weekdays');
+  const viewToggleLabel = document.getElementById('btn-cal-view-label');
 
   const curYear = state.calCurrentDate.getFullYear();
   const curMonth = state.calCurrentDate.getMonth();
@@ -806,39 +1480,100 @@ function renderCalendar() {
     monthTitle.textContent = state.calCurrentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   }
 
-  // Days Grid
+  // Map which dates have tasks
+  const datesWithTasks = new Set();
+  state.todos.forEach(t => {
+    if (t.dueDate) datesWithTasks.add(t.dueDate);
+  });
+
+  const isMonthView = state.calendarViewMode === 'month';
+  if (viewToggleLabel) {
+    viewToggleLabel.textContent = isMonthView ? 'Week Strip' : 'Month View';
+  }
+  if (weekdaysRow) {
+    weekdaysRow.style.display = isMonthView ? 'grid' : 'none';
+  }
+
+  // Days Grid / Strip
   if (daysContainer) {
-    const firstDayIndex = new Date(curYear, curMonth, 1).getDay();
-    const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
-
-    // Map which dates have tasks
-    const datesWithTasks = new Set();
-    state.todos.forEach(t => {
-      if (t.dueDate) datesWithTasks.add(t.dueDate);
-    });
-
     let cellsHtml = '';
 
-    // Leading blanks (from prev month)
-    for (let i = 0; i < firstDayIndex; i++) {
-      cellsHtml += `<div class="cal-day-cell other-month"><span class="day-num"></span></div>`;
-    }
+    if (isMonthView) {
+      // Full Month Grid View
+      const firstDayIndex = (new Date(curYear, curMonth, 1).getDay() + 6) % 7; // Monday = 0
+      const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
 
-    // Days of current month
-    for (let d = 1; d <= totalDaysInMonth; d++) {
-      const cellDateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const isSelected = cellDateStr === state.selectedDateStr;
-      const hasTask = datesWithTasks.has(cellDateStr);
+      for (let i = 0; i < firstDayIndex; i++) {
+        cellsHtml += `<div class="cal-day-cell other-month"><span class="day-num"></span></div>`;
+      }
 
-      cellsHtml += `
-        <div class="cal-day-cell ${isSelected ? 'selected' : ''}" data-date="${cellDateStr}" onclick="selectCalendarDate('${cellDateStr}')">
-          <span class="day-num">${d}</span>
-          ${hasTask ? '<span class="cal-task-dot"></span>' : ''}
-        </div>
-      `;
+      for (let d = 1; d <= totalDaysInMonth; d++) {
+        const cellDateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isSelected = cellDateStr === state.selectedDateStr;
+        const hasTask = datesWithTasks.has(cellDateStr);
+
+        cellsHtml += `
+          <div class="cal-day-cell ${isSelected ? 'selected' : ''}" data-date="${cellDateStr}" onclick="selectCalendarDate('${cellDateStr}')">
+            <span class="day-num">${d}</span>
+            ${hasTask ? '<span class="cal-task-dot"></span>' : ''}
+          </div>
+        `;
+      }
+    } else {
+      // 7-Day Horizontal Strip View (Matching Reference Design)
+      const parts = state.selectedDateStr.split('-').map(Number);
+      const selDateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+      const selDayOfWeek = selDateObj.getDay(); // 0 is Sun, 1 is Mon
+      const mondayOffset = (selDayOfWeek === 0 ? 6 : selDayOfWeek - 1);
+      const mondayDate = new Date(selDateObj);
+      mondayDate.setDate(selDateObj.getDate() - mondayOffset);
+
+      for (let i = 0; i < 7; i++) {
+        const stripDate = new Date(mondayDate);
+        stripDate.setDate(mondayDate.getDate() + i);
+        const stripDateStr = toYmdString(stripDate);
+        const dayAbbr = stripDate.toLocaleDateString('en-US', { weekday: 'short' });
+        const dayNum = stripDate.getDate();
+        const isSelected = stripDateStr === state.selectedDateStr;
+        const hasTask = datesWithTasks.has(stripDateStr);
+
+        cellsHtml += `
+          <div class="cal-strip-day ${isSelected ? 'selected' : ''}" data-date="${stripDateStr}" onclick="selectCalendarDate('${stripDateStr}')">
+            <span class="cal-strip-weekday ${isSelected ? 'text-active' : ''}">${dayAbbr}</span>
+            <div class="cal-strip-num-wrap">
+              <span class="cal-strip-num">${dayNum}</span>
+              ${hasTask ? '<span class="cal-strip-dot"></span>' : ''}
+            </div>
+          </div>
+        `;
+      }
     }
 
     daysContainer.innerHTML = cellsHtml;
+  }
+
+  // Summary Metrics Calculation (Tasks Completed)
+  const tasksOnDate = state.todos.filter(t => t.dueDate === state.selectedDateStr);
+  const tasksCountEl = document.getElementById('cal-metric-tasks-count');
+  const ringTasksEl = document.getElementById('cal-ring-tasks');
+
+  const completedOnDate = tasksOnDate.filter(t => t.completed).length;
+  const totalOnDate = tasksOnDate.length;
+
+  if (tasksCountEl) {
+    if (totalOnDate > 0) {
+      tasksCountEl.textContent = `${completedOnDate} / ${totalOnDate}`;
+    } else {
+      const overallCompleted = state.todos.filter(t => t.completed).length;
+      tasksCountEl.textContent = `${overallCompleted} / ${state.todos.length}`;
+    }
+  }
+
+  if (ringTasksEl) {
+    const pct = totalOnDate === 0
+      ? (state.todos.length === 0 ? 0 : Math.round((state.todos.filter(t => t.completed).length / state.todos.length) * 100))
+      : Math.round((completedOnDate / totalOnDate) * 100);
+    ringTasksEl.style.strokeDasharray = `${pct}, 100`;
   }
 
   // Scheduled tasks for selected date
@@ -848,23 +1583,65 @@ function renderCalendar() {
     selectedDateTitle.textContent = `Tasks on ${selObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })}`;
   }
 
+  // Chronological Daily Task Timeline (Real database tasks)
   if (taskListContainer) {
-    const tasksOnDate = state.todos.filter(t => t.dueDate === state.selectedDateStr);
     if (tasksOnDate.length === 0) {
-      taskListContainer.innerHTML = `<div class="empty-state">No tasks scheduled for this day.</div>`;
+      taskListContainer.innerHTML = `
+        <div class="empty-state" style="text-align: center; padding: 28px 16px; color: var(--text-secondary);">
+          <div style="font-size: 2rem; margin-bottom: 8px;">🗓️</div>
+          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">No tasks scheduled for this day</div>
+          <p style="font-size: 0.8125rem; margin: 0;">Tap the red + button below to create a task for this date.</p>
+        </div>
+      `;
     } else {
-      taskListContainer.innerHTML = tasksOnDate.map(t => renderTaskItemHtml(t)).join('');
+      const sortedTasks = [...tasksOnDate].sort((a, b) => parseTimeSortKey(a.time) - parseTimeSortKey(b.time));
+      taskListContainer.innerHTML = sortedTasks.map(t => renderCalendarTimelineItemHtml(t)).join('');
+    }
+  }
+
+  // Undated Tasks Section (Requirement 4D)
+  const undatedTasks = state.todos.filter(t => !t.dueDate);
+  const undatedSection = document.getElementById('calendar-undated-section');
+  const undatedCountEl = document.getElementById('undated-tasks-count');
+  const undatedListEl = document.getElementById('calendar-undated-list');
+
+  if (undatedSection && undatedCountEl && undatedListEl) {
+    if (undatedTasks.length > 0) {
+      undatedSection.style.display = 'block';
+      undatedCountEl.textContent = undatedTasks.length;
+      undatedListEl.innerHTML = undatedTasks.map(t => renderTaskItemHtml(t)).join('');
+    } else {
+      undatedSection.style.display = 'none';
     }
   }
 }
 
 function selectCalendarDate(dateStr) {
   state.selectedDateStr = dateStr;
+  const parts = dateStr.split('-').map(Number);
+  state.calCurrentDate = new Date(parts[0], parts[1] - 1, 1);
   renderCalendar();
 }
 
 function changeCalendarMonth(offset) {
-  state.calCurrentDate.setMonth(state.calCurrentDate.getMonth() + offset);
+  if (state.calendarViewMode === 'month') {
+    state.calCurrentDate.setMonth(state.calCurrentDate.getMonth() + offset);
+    const y = state.calCurrentDate.getFullYear();
+    const m = String(state.calCurrentDate.getMonth() + 1).padStart(2, '0');
+    state.selectedDateStr = `${y}-${m}-01`;
+  } else {
+    // Navigate by week in 7-day strip mode
+    const parts = state.selectedDateStr.split('-').map(Number);
+    const curSel = new Date(parts[0], parts[1] - 1, parts[2]);
+    curSel.setDate(curSel.getDate() + (offset * 7));
+    state.selectedDateStr = toYmdString(curSel);
+    state.calCurrentDate = new Date(curSel.getFullYear(), curSel.getMonth(), 1);
+  }
+  renderCalendar();
+}
+
+function toggleCalendarViewMode() {
+  state.calendarViewMode = state.calendarViewMode === 'month' ? 'strip' : 'month';
   renderCalendar();
 }
 
@@ -928,42 +1705,30 @@ function renderProfile() {
   const deskNameEl = document.getElementById('desktop-user-name');
   const deskAvatarEl = document.getElementById('desktop-user-avatar');
 
-  const currentName = state.user.name || 'User';
+  const isPreview = Boolean(state.isPreviewSession && isLocalPreview());
+  const currentName = isPreview ? 'Preview User' : (state.user.name || 'User');
   if (nameEl) nameEl.textContent = currentName;
-  if (ageEl) ageEl.textContent = `Age: ${state.user.age || 18}`;
-  if (deskNameEl) deskNameEl.textContent = currentName;
+  if (ageEl) ageEl.textContent = isPreview ? 'LOCAL UI PREVIEW' : `Age: ${state.user.age || 18}`;
+  if (deskNameEl) deskNameEl.textContent = isPreview ? 'Preview User (Local UI)' : currentName;
   if (deskAvatarEl) deskAvatarEl.textContent = currentName.charAt(0).toUpperCase();
+
+  const profileAvatarCircle = document.getElementById('profile-avatar-circle');
+  if (profileAvatarCircle) {
+    profileAvatarCircle.innerHTML = `<span style="font-weight: 800; font-size: 1.5rem;">${currentName.charAt(0).toUpperCase()}</span>`;
+  }
 }
 
 // ==========================================================================
 // Event Listeners Setup
 // ==========================================================================
 function setupEventListeners() {
-  // Screen 1: Click Anywhere or Press Any Key to proceed to Carousel (Screen 2)
-  const launchScreen = document.getElementById('screen-launch');
-  if (launchScreen) {
-    launchScreen.addEventListener('click', () => {
-      state.carouselIndex = 0;
-      showOnboardingStep('carousel');
-    });
-  }
-
-  window.addEventListener('keydown', (e) => {
-    if (state.flow === 'onboarding') {
-      if (state.currentOnboardingStep === 'launch') {
-        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
-          state.carouselIndex = 0;
-          showOnboardingStep('carousel');
-        }
-      }
-    }
-  });
-
-  // Screen 2: Carousel Navigation & Back to Landing Page
+  // Screen 2: Carousel Navigation (Back to previous slide)
   const btnBackToLaunch = document.getElementById('btn-back-to-launch');
   if (btnBackToLaunch) {
     btnBackToLaunch.addEventListener('click', () => {
-      showOnboardingStep('launch');
+      if (state.carouselIndex > 0) {
+        updateCarouselSlide(state.carouselIndex - 1);
+      }
     });
   }
 
@@ -1059,6 +1824,20 @@ function setupEventListeners() {
         if (authErrorMsg) {
           authErrorMsg.textContent = 'Please provide both email and password.';
           authErrorMsg.style.display = 'flex';
+          authErrorMsg.style.borderColor = '#fecaca';
+          authErrorMsg.style.background = '#fef2f2';
+          authErrorMsg.style.color = '#dc2626';
+        }
+        return;
+      }
+
+      if (state.authMode === 'signup' && password.length < 6) {
+        if (authErrorMsg) {
+          authErrorMsg.textContent = 'Password must be at least 6 characters long.';
+          authErrorMsg.style.display = 'flex';
+          authErrorMsg.style.borderColor = '#fecaca';
+          authErrorMsg.style.background = '#fef2f2';
+          authErrorMsg.style.color = '#dc2626';
         }
         return;
       }
@@ -1074,12 +1853,43 @@ function setupEventListeners() {
 
         if (supabaseClient) {
           if (state.authMode === 'signup') {
+            const redirectUrl = getAuthRedirectUrl();
+            const isNative = Boolean(
+              (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) ||
+              (typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'android') ||
+              (typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'ios') ||
+              (typeof window !== 'undefined' && window.location?.protocol === 'capacitor:') ||
+              (typeof window !== 'undefined' && window.location?.protocol === 'ionic:') ||
+              (typeof window !== 'undefined' && window.location?.hostname === 'localhost' && window.location?.port === '' && !window.location?.origin?.includes(':3000'))
+            );
+            const isLocalWeb = typeof window !== 'undefined' && window.location?.origin &&
+              (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) &&
+              !isNative;
+
+            // In deployed web or Capacitor, require a valid redirect URL; never silently omit emailRedirectTo
+            if (!isLocalWeb && !redirectUrl) {
+              if (authErrorMsg) {
+                authErrorMsg.style.display = 'flex';
+                authErrorMsg.style.borderColor = '#fecaca';
+                authErrorMsg.style.background = '#fef2f2';
+                authErrorMsg.style.color = '#dc2626';
+                authErrorMsg.textContent = 'Registration service is temporarily unavailable. Missing redirect configuration.';
+              }
+              if (submitBtn) submitBtn.disabled = false;
+              return;
+            }
+
+            const signUpOptions = {
+              data: { name, age }
+            };
+            if (redirectUrl) {
+              signUpOptions.emailRedirectTo = redirectUrl;
+            }
+
             const { data, error } = await supabaseClient.auth.signUp({
               email,
               password,
-              options: {
-                data: { name, age }
-              }
+              options: signUpOptions
             });
             if (error) throw error;
 
@@ -1088,10 +1898,21 @@ function setupEventListeners() {
             state.user.email = email;
             saveUserPreferences();
 
-            if (data.session) {
+            const isConfirmed = Boolean(
+              data.user?.email_confirmed_at ||
+              data.user?.confirmed_at ||
+              data.session?.user?.email_confirmed_at ||
+              data.session?.user?.confirmed_at
+            );
+
+            if (data.session && isConfirmed) {
               syncAuthSession(data.session);
               showOnboardingStep('welcome');
             } else {
+              if (supabaseClient && data.session) {
+                await supabaseClient.auth.signOut().catch(() => {});
+              }
+              syncAuthSignOut();
               if (authErrorMsg) {
                 authErrorMsg.style.display = 'flex';
                 authErrorMsg.style.borderColor = '#93c5fd';
@@ -1107,6 +1928,22 @@ function setupEventListeners() {
               password
             });
             if (error) throw error;
+
+            const isEmailVerified = Boolean(
+              data.user?.email_confirmed_at ||
+              data.user?.confirmed_at ||
+              data.session?.user?.email_confirmed_at ||
+              data.session?.user?.confirmed_at ||
+              (data.user?.app_metadata && data.user.app_metadata.provider && data.user.app_metadata.provider !== 'email')
+            );
+
+            if (!isEmailVerified) {
+              if (supabaseClient) {
+                await supabaseClient.auth.signOut().catch(() => {});
+              }
+              syncAuthSignOut();
+              throw new Error('Please verify your email address before signing in. Check your inbox for the confirmation link.');
+            }
 
             if (data.session) {
               syncAuthSession(data.session);
@@ -1146,14 +1983,38 @@ function setupEventListeners() {
   const btnEnterHome = document.getElementById('btn-enter-home');
   if (btnEnterHome) {
     btnEnterHome.addEventListener('click', () => {
-      if (!isAuthenticated()) {
+      if (!isAuthenticated() && !(isLocalPreview() && state.isPreviewSession)) {
         console.warn('[Auth Guard]: Blocked unauthenticated attempt to enter home.');
         showOnboardingStep('profile-setup');
         return;
       }
       state.user.onboarded = true;
       saveUserPreferences();
+      if (isLocalPreview() && state.isPreviewSession) {
+        initPreviewData();
+      }
       showMainFlow('home');
+    });
+  }
+
+  // Local Preview: Helper button to skip straight to dashboard with sample data
+  const btnPreviewSkip = document.getElementById('btn-preview-skip-to-app');
+  if (btnPreviewSkip) {
+    btnPreviewSkip.addEventListener('click', () => {
+      if (!isLocalPreview()) return;
+      initPreviewData();
+      showMainFlow('home');
+    });
+  }
+
+  // Local Preview: Exit preview banner button
+  const btnExitPreview = document.getElementById('btn-exit-preview');
+  if (btnExitPreview) {
+    btnExitPreview.addEventListener('click', () => {
+      state.isPreviewSession = false;
+      state.todos = [];
+      updatePreviewUI();
+      showOnboardingStep('profile-setup');
     });
   }
 
@@ -1195,7 +2056,8 @@ function setupEventListeners() {
   const btnDeskTheme = document.getElementById('btn-desktop-theme');
   if (btnDeskTheme) {
     btnDeskTheme.addEventListener('click', () => {
-      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+      const nextTheme = state.theme === 'day' ? 'pastel' : 'day';
+      applyTheme(nextTheme);
     });
   }
 
@@ -1266,6 +2128,63 @@ function setupEventListeners() {
   const btnCalNext = document.getElementById('btn-cal-next');
   if (btnCalPrev) btnCalPrev.addEventListener('click', () => changeCalendarMonth(-1));
   if (btnCalNext) btnCalNext.addEventListener('click', () => changeCalendarMonth(1));
+
+  // Calendar View Toggle (Month Grid vs 7-Day Strip)
+  const btnToggleMonthView = document.getElementById('btn-toggle-month-view');
+  if (btnToggleMonthView) {
+    btnToggleMonthView.addEventListener('click', toggleCalendarViewMode);
+  }
+
+  // Calendar Floating Add Task FAB
+  const btnCalAddFab = document.getElementById('btn-cal-add-fab');
+  if (btnCalAddFab) {
+    btnCalAddFab.addEventListener('click', () => {
+      state.previousTab = 'calendar';
+      const dateInput = document.getElementById('add-due-date');
+      if (dateInput && state.selectedDateStr) {
+        dateInput.value = state.selectedDateStr;
+      }
+      showMainFlow('add');
+    });
+  }
+
+  // Calendar Undated Tasks Toggle
+  const btnToggleUndated = document.getElementById('btn-toggle-undated');
+  const undatedList = document.getElementById('calendar-undated-list');
+  const undatedChevron = document.getElementById('undated-chevron');
+  if (btnToggleUndated && undatedList) {
+    btnToggleUndated.addEventListener('click', () => {
+      const isHidden = undatedList.style.display === 'none';
+      undatedList.style.display = isHidden ? 'flex' : 'none';
+      if (undatedChevron) undatedChevron.textContent = isHidden ? '▾' : '›';
+    });
+  }
+
+  // Profile Drawer Menu Items
+  const menuTrack = document.getElementById('menu-track-tasks');
+  const menuAppt = document.getElementById('menu-appointments');
+  const menuProg = document.getElementById('menu-progress');
+  const menuFaq = document.getElementById('menu-faq');
+  const btnProfileNotif = document.getElementById('btn-profile-notifications');
+
+  if (menuTrack) menuTrack.addEventListener('click', () => showMainFlow('home'));
+  if (menuAppt) menuAppt.addEventListener('click', () => showMainFlow('calendar'));
+  if (menuProg) menuProg.addEventListener('click', () => showMainFlow('progress'));
+
+  if (btnProfileNotif) {
+    btnProfileNotif.addEventListener('click', () => {
+      const notifDot = document.getElementById('profile-notif-dot');
+      if (notifDot) notifDot.style.display = 'none';
+      alert("You're all caught up! No unread notifications.");
+    });
+  }
+
+  if (menuFaq) {
+    menuFaq.addEventListener('click', () => {
+      const modalAbout = document.getElementById('modal-about');
+      if (modalAbout) modalAbout.classList.add('active');
+    });
+  }
 
   // Add Task Back Button
   const btnBackFromAdd = document.getElementById('btn-back-from-add');
@@ -1345,12 +2264,40 @@ function setupEventListeners() {
     });
   }
 
-  // Theme Toggle in Profile
+  // Theme Selection Modal in Profile
+  const modalTheme = document.getElementById('modal-theme');
   const btnToggleTheme = document.getElementById('btn-toggle-theme');
+  const btnCloseThemeModal = document.getElementById('btn-close-theme-modal');
+  const optPastel = document.getElementById('theme-choice-pastel');
+  const optDay = document.getElementById('theme-choice-day');
+
   if (btnToggleTheme) {
     btnToggleTheme.addEventListener('click', () => {
-      const nextTheme = state.theme === 'light' ? 'dark' : 'light';
-      applyTheme(nextTheme);
+      if (modalTheme) modalTheme.classList.add('active');
+    });
+  }
+  if (btnCloseThemeModal) {
+    btnCloseThemeModal.addEventListener('click', () => {
+      if (modalTheme) modalTheme.classList.remove('active');
+    });
+  }
+  if (modalTheme) {
+    modalTheme.addEventListener('click', (e) => {
+      if (e.target === modalTheme) {
+        modalTheme.classList.remove('active');
+      }
+    });
+  }
+  if (optPastel) {
+    optPastel.addEventListener('click', () => {
+      applyTheme('pastel');
+      if (modalTheme) modalTheme.classList.remove('active');
+    });
+  }
+  if (optDay) {
+    optDay.addEventListener('click', () => {
+      applyTheme('day');
+      if (modalTheme) modalTheme.classList.remove('active');
     });
   }
 
@@ -1358,7 +2305,8 @@ function setupEventListeners() {
   const btnOpenTour = document.getElementById('btn-open-tour');
   if (btnOpenTour) {
     btnOpenTour.addEventListener('click', () => {
-      showOnboardingStep('launch');
+      state.carouselIndex = 0;
+      showOnboardingStep('carousel');
     });
   }
 
@@ -1391,10 +2339,10 @@ function setupEventListeners() {
           localStorage.removeItem('taskly_user');
           localStorage.removeItem('taskly_onboarding_step');
           if (typeof history !== 'undefined') {
-            history.replaceState(null, '', '#launch');
+            history.replaceState(null, '', '#profile-setup');
           }
         } catch (_) {}
-        showOnboardingStep('launch', false);
+        showOnboardingStep('profile-setup', false);
       }
     });
   }
@@ -1416,6 +2364,8 @@ if (typeof module !== 'undefined' && module.exports) {
     state,
     isAuthenticated,
     handleAuthExpiry,
+    handleUnverifiedEmail,
+    fetchTodos,
     initSupabaseAuth,
     syncAuthSession,
     syncAuthSignOut,
@@ -1425,6 +2375,19 @@ if (typeof module !== 'undefined' && module.exports) {
     applyTheme,
     showOnboardingStep,
     showMainFlow,
-    escapeHtml
+    escapeHtml,
+    getAuthRedirectUrl,
+    handleAuthDeepLink,
+    setupEventListeners,
+    isLocalPreview,
+    initPreviewData,
+    updatePreviewUI,
+    renderCalendar,
+    renderProfile,
+    renderAll,
+    selectCalendarDate,
+    changeCalendarMonth,
+    setSupabaseClient: (client) => { supabaseClient = client; },
+    getSupabaseClient: () => supabaseClient
   };
 }

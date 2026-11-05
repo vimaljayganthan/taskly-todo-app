@@ -435,6 +435,7 @@ class FirestoreStorageAdapter {
 // ==============================================================================
 let activeAdapter = null;
 let activeStoreType = 'file';
+let isExplicitlySet = false;
 
 function getSupabaseAnonKey() {
   // Normal application storage must never use SUPABASE_SERVICE_ROLE_KEY
@@ -458,12 +459,12 @@ async function initializeStorage() {
     console.log('[Storage] Validating Supabase PostgreSQL configuration...');
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      if (isProduction || isVercel) {
-        console.error('[Storage FATAL] Missing Supabase configuration in production/Vercel.');
+      if (forceSupabase || isProduction || isVercel) {
+        console.error('[Storage FATAL] Missing Supabase configuration when Supabase storage is requested.');
         throw new Error(
           'Missing SUPABASE_URL and SUPABASE_ANON_KEY in environment variables. ' +
-          'In Vercel serverless production, ephemeral file storage is disabled. ' +
-          'Please configure Supabase credentials in your Vercel Project Settings.'
+          (forceSupabase ? 'DATA_STORE is explicitly set to "supabase" but credentials are missing.' : 'In Vercel serverless production, ephemeral file storage is disabled.') +
+          ' Please configure Supabase credentials.'
         );
       }
     } else {
@@ -571,6 +572,10 @@ function getStorage() {
       }
     }
 
+    if (process.env.DATA_STORE === 'supabase') {
+      throw new Error('DATA_STORE is set to "supabase" but SUPABASE_URL or SUPABASE_ANON_KEY is missing or invalid.');
+    }
+
     activeAdapter = new FileStorageAdapter(getDataFile());
     activeStoreType = 'file';
   }
@@ -580,6 +585,7 @@ function getStorage() {
 function setStorage(adapter, type = 'file') {
   activeAdapter = adapter;
   activeStoreType = type;
+  isExplicitlySet = true;
 }
 
 function getStorageType() {
@@ -589,6 +595,7 @@ function getStorageType() {
 function resetStorage() {
   activeAdapter = null;
   activeStoreType = 'file';
+  isExplicitlySet = false;
 }
 
 /**
@@ -654,17 +661,21 @@ function getScopedStorage(req = null) {
   }
 
   // 2. Non-production environments (test & development):
-  // Test injection: honor activeAdapter if explicitly set by test runner
-  if (activeAdapter) {
+  // Test injection: honor activeAdapter if explicitly set by test runner (e.g. mock adapters in unit tests)
+  if (isExplicitlySet && activeAdapter) {
     return activeAdapter;
   }
 
   // If userToken is present and Supabase is configured in dev, create scoped client
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseAnonKey = getSupabaseAnonKey();
-  if (supabaseUrl && supabaseAnonKey && req && req.userToken) {
+  if (supabaseUrl && supabaseAnonKey && req && req.userToken && !req.userToken.startsWith('mock-user:')) {
     const scopedClient = createScopedSupabaseClient(req.userToken);
     return new SupabaseStorageAdapter(scopedClient);
+  }
+
+  if (activeAdapter) {
+    return activeAdapter;
   }
 
   // Default to development storage

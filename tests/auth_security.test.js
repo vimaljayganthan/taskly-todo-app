@@ -184,6 +184,7 @@ describe('Authentication Security Enforcement Suite', () => {
     const validUser = {
       id: '8fdf606c-4746-49ef-bbde-e38d85ed5797',
       email: 'verified.user@taskly.app',
+      email_confirmed_at: '2026-11-05T00:00:00Z',
       role: 'authenticated'
     };
 
@@ -208,6 +209,43 @@ describe('Authentication Security Enforcement Suite', () => {
 
     assert.strictEqual(res.status, 200);
     assert.ok(Array.isArray(res.body));
+  });
+
+  // 4b. Unverified Supabase User Is Denied with HTTP 403
+  test('4b. Unverified Supabase user (null email_confirmed_at) is denied access with HTTP 403', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.SUPABASE_URL = 'https://liucmamlownxfshnaxtc.supabase.co';
+    process.env.SUPABASE_ANON_KEY = 'valid-test-anon-key';
+
+    const unverifiedUser = {
+      id: 'unverified-uuid-4444',
+      email: 'unconfirmed@taskly.app',
+      email_confirmed_at: null,
+      confirmed_at: null,
+      role: 'authenticated'
+    };
+
+    app.locals.mockAuthClient = {
+      auth: {
+        getUser: async (token) => {
+          if (token === 'unverified-supabase-jwt') {
+            return { data: { user: unverifiedUser }, error: null };
+          }
+          return { data: { user: null }, error: { message: 'Invalid JWT' } };
+        }
+      }
+    };
+
+    const res = await mockRequest(app, {
+      method: 'GET',
+      url: '/api/todos',
+      headers: {
+        authorization: 'Bearer unverified-supabase-jwt'
+      }
+    });
+
+    assert.strictEqual(res.status, 403);
+    assert.match(res.body.error, /Email address is not verified/i);
   });
 
   // 5. Invalid and Expired JWTs Are Rejected with HTTP 401

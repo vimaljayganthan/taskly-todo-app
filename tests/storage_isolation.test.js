@@ -353,4 +353,33 @@ describe('Storage Isolation & RLS Security Regression Suite', () => {
     await assert.rejects(() => adapter.clearCompleted(''), /Mandatory userId is missing/i);
     assert.strictEqual(queryIssued, false, 'No database query must be issued when userId is missing');
   });
+
+  test('13. In development mode with Supabase configured, real JWTs receive a request-scoped client forwarding the Bearer token', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.SUPABASE_URL = 'https://liucmamlownxfshnaxtc.supabase.co';
+    process.env.SUPABASE_ANON_KEY = 'public-anon-key-123';
+    resetStorage();
+
+    // 1. initializeStorage creates devClient (activeAdapter)
+    const initAdapter = await initializeStorage();
+    assert.ok(initAdapter instanceof SupabaseStorageAdapter);
+
+    // 2. Authenticated request with real JWT must receive a request-scoped client with Authorization header
+    const scopedUserA = getScopedStorage({ userToken: 'real-user-A-jwt' });
+    assert.ok(scopedUserA instanceof SupabaseStorageAdapter);
+    assert.notStrictEqual(scopedUserA.client, initAdapter.client, 'Scoped client must be distinct from unauthenticated dev client');
+
+    const authHeader = scopedUserA.client.headers.Authorization || scopedUserA.client.rest?.headers?.get('Authorization');
+    assert.strictEqual(authHeader, 'Bearer real-user-A-jwt', 'User A Bearer JWT must be forwarded to Supabase');
+
+    // 3. Unauthenticated request in dev falls back to default adapter
+    const unscopedStorage = getScopedStorage(null);
+    assert.strictEqual(unscopedStorage.client, initAdapter.client);
+
+    // 4. Test injection with setStorage is honored
+    const mockInjected = { isTestInjected: true };
+    setStorage(mockInjected, 'supabase');
+    const fromInjected = getScopedStorage({ userToken: 'any-token' });
+    assert.strictEqual(fromInjected, mockInjected);
+  });
 });

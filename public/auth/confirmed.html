@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>Email Confirmation — Taskly</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 50%, #f0fdf4 100%);
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
+      --success-icon: #059669;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --error-icon: #dc2626;
+      --warning-bg: #fffbeb;
+      --warning-border: #fde68a;
+      --warning-icon: #d97706;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-gradient);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      color: var(--text-main);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      object-fit: cover;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+    }
+
+    .brand-title {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #1e1b4b;
+    }
+
+    .confirmation-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
+      max-width: 480px;
+      width: 100%;
+      padding: 40px 32px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .state-panel {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .state-panel.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Icon Bubbles */
+    .icon-bubble {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+    }
+
+    .icon-bubble.loading {
+      background: #eef2ff;
+    }
+
+    .icon-bubble.success {
+      background: var(--success-bg);
+      border: 2px solid var(--success-border);
+      color: var(--success-icon);
+    }
+
+    .icon-bubble.error {
+      background: var(--error-bg);
+      border: 2px solid var(--error-border);
+      color: var(--error-icon);
+    }
+
+    .icon-bubble.warning {
+      background: var(--warning-bg);
+      border: 2px solid var(--warning-border);
+      color: var(--warning-icon);
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #e0e7ff;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Typography */
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      line-height: 1.3;
+      margin-bottom: 12px;
+      color: #0f172a;
+    }
+
+    h1.success-headline {
+      color: #047857;
+    }
+
+    h1.error-headline {
+      color: #b91c1c;
+    }
+
+    h1.warning-headline {
+      color: #b45309;
+    }
+
+    p.subtitle {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .detail-box {
+      width: 100%;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.5;
+      text-align: left;
+      margin-bottom: 24px;
+    }
+
+    .detail-box strong {
+      color: #0f172a;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* Action Buttons */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 14px 20px;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: none;
+      width: 100%;
+    }
+
+    .btn-primary {
+      background: #4f46e5;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+    }
+
+    .btn-primary:hover {
+      background: #4338ca;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #f1f5f9;
+      color: #334155;
+    }
+
+    .btn-secondary:hover {
+      background: #e2e8f0;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="brand-header">
+    <img src="/logo.png" alt="Taskly Logo" class="brand-logo" onerror="this.style.display='none'">
+    <span class="brand-title">Taskly</span>
+  </div>
+
+  <main class="confirmation-card" id="confirmation-card">
+    <!-- State 1: Verifying (Loading) -->
+    <div class="state-panel active" id="panel-loading">
+      <div class="icon-bubble loading">
+        <div class="spinner"></div>
+      </div>
+      <h1>Verifying Confirmation Token...</h1>
+      <p class="subtitle">Please wait a moment while we securely verify your email address with Taskly.</p>
+    </div>
+
+    <!-- State 2: Success -->
+    <div class="state-panel" id="panel-success">
+      <div class="icon-bubble success">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+      <h1 class="success-headline">✓ Your email has been confirmed!!!</h1>
+      <p class="subtitle">You can now sign in to Taskly.</p>
+      <div class="detail-box">
+        <strong>What should I do next?</strong>
+        If you registered using the Taskly Android app, you can switch back to the app and sign in with your email and password.
+      </div>
+      <div class="btn-group">
+        <a href="https://taskly-todo-app-git-feature-mu-aaec2c-vimaljayganthans-projects.vercel.app/#profile-setup" class="btn btn-primary" id="btn-web-signin">Sign in on Web</a>
+        <a href="com.taskly.app://" class="btn btn-secondary" id="btn-app-open">Open Taskly App</a>
+      </div>
+    </div>
+
+    <!-- State 3: Expired / Already Used -->
+    <div class="state-panel" id="panel-expired">
+      <div class="icon-bubble warning">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+      </div>
+      <h1 class="warning-headline">Link Expired or Already Used</h1>
+      <p class="subtitle" id="expired-message">This confirmation link has expired or has already been used.</p>
+      <div class="detail-box">
+        If you have already confirmed your email previously, your account is active and you can sign in directly. Otherwise, sign in to request a fresh confirmation link.
+      </div>
+      <div class="btn-group">
+        <a href="/#profile-setup" class="btn btn-primary">Go to Taskly Sign In</a>
+      </div>
+    </div>
+
+    <!-- State 4: Invalid / Missing Parameters -->
+    <div class="state-panel" id="panel-error">
+      <div class="icon-bubble error">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+      </div>
+      <h1 class="error-headline">Invalid Confirmation Link</h1>
+      <p class="subtitle" id="error-message">The link is missing required verification parameters.</p>
+      <div class="detail-box">
+        For your security, email verification requires a valid token issued by Taskly. Please click the confirmation link sent to your email inbox.
+      </div>
+      <div class="btn-group">
+        <a href="/#profile-setup" class="btn btn-secondary">Go to Taskly Sign In</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer-note">
+    &copy; Taskly. Protected by Supabase PostgreSQL Authentication.
+  </footer>
+
+  <!-- Supabase JS Client for secure token verification -->
+  <script src="/vendor/supabase.js"></script>
+  <script>
+    (function () {
+      function showPanel(panelId) {
+        var panels = ['panel-loading', 'panel-success', 'panel-expired', 'panel-error'];
+        panels.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.toggle('active', id === panelId);
+        });
+      }
+
+      function parseParams() {
+        var searchParams = new URLSearchParams(window.location.search || '');
+        var hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+
+        return {
+          token_hash: searchParams.get('token_hash') || hashParams.get('token_hash'),
+          type: searchParams.get('type') || hashParams.get('type') || 'signup',
+          code: searchParams.get('code') || hashParams.get('code'),
+          accessToken: hashParams.get('access_token') || searchParams.get('access_token'),
+          refreshToken: hashParams.get('refresh_token') || searchParams.get('refresh_token'),
+          error: searchParams.get('error') || hashParams.get('error'),
+          errorCode: searchParams.get('error_code') || hashParams.get('error_code'),
+          errorDescription: searchParams.get('error_description') || hashParams.get('error_description')
+        };
+      }
+
+      async function verifyConfirmation() {
+        var params = parseParams();
+
+        // 1. Check for explicit Supabase Auth error parameters (e.g. otp_expired)
+        if (params.error || params.errorCode || params.errorDescription) {
+          console.warn('[Confirmation Error in URL]:', params.errorCode, params.errorDescription);
+          var isExpired = params.errorCode === 'otp_expired' ||
+                          (params.errorDescription && params.errorDescription.toLowerCase().includes('expired')) ||
+                          (params.error && params.error.toLowerCase().includes('expired'));
+          if (isExpired) {
+            var msgEl = document.getElementById('expired-message');
+            if (msgEl && params.errorDescription) {
+              msgEl.textContent = params.errorDescription.replace(/\+/g, ' ');
+            }
+            showPanel('panel-expired');
+          } else {
+            var errMsgEl = document.getElementById('error-message');
+            if (errMsgEl && params.errorDescription) {
+              errMsgEl.textContent = params.errorDescription.replace(/\+/g, ' ');
+            }
+            showPanel('panel-error');
+          }
+          return;
+        }
+
+        // 2. Strict Requirement: Never display success without verifying a token
+        if (!params.token_hash && !params.code && !params.accessToken) {
+          var errEl = document.getElementById('error-message');
+          if (errEl) {
+            errEl.textContent = 'No confirmation token or code was provided in the URL. Please use the verification link sent to your email.';
+          }
+          showPanel('panel-error');
+          return;
+        }
+
+        // 3. Fetch public Supabase configuration from /api/config
+        var supabaseUrl = 'https://liucmamlownxfshnaxtc.supabase.co';
+        var supabaseAnonKey = '';
+        try {
+          var configRes = await fetch('/api/config');
+          if (configRes.ok) {
+            var config = await configRes.json();
+            if (config.supabaseUrl) supabaseUrl = config.supabaseUrl;
+            if (config.supabaseAnonKey) supabaseAnonKey = config.supabaseAnonKey;
+          }
+        } catch (e) {
+          console.warn('[Config Warning]: Could not fetch /api/config, falling back to defaults:', e.message);
+        }
+
+        if (!supabaseAnonKey) {
+          // In development or if anon key not exposed, check if window.supabase is available
+          console.warn('[Config]: Missing anon key for client verification.');
+        }
+
+        var client = null;
+        if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function' && supabaseUrl && supabaseAnonKey) {
+          client = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+              detectSessionInUrl: false
+            }
+          });
+        }
+
+        // --- Verification Branch A: Token Hash (verifyOtp) ---
+        // Cross-context safe: Does not require PKCE verifier from Android WebView!
+        if (params.token_hash) {
+          try {
+            var verified = false;
+
+            if (client && client.auth && typeof client.auth.verifyOtp === 'function') {
+              var otpRes = await client.auth.verifyOtp({
+                token_hash: params.token_hash,
+                type: params.type || 'signup'
+              });
+
+              if (!otpRes.error) {
+                verified = true;
+              } else if (params.type !== 'email') {
+                // Retry with fallback type 'email'
+                var retryRes = await client.auth.verifyOtp({
+                  token_hash: params.token_hash,
+                  type: 'email'
+                });
+                if (!retryRes.error) verified = true;
+              }
+
+              if (otpRes.error && !verified) {
+                var isExpiredErr = (otpRes.error.message && otpRes.error.message.toLowerCase().includes('expired')) ||
+                                   otpRes.error.status === 401 || otpRes.error.status === 403;
+                if (isExpiredErr) {
+                  var expMsg = document.getElementById('expired-message');
+                  if (expMsg) expMsg.textContent = otpRes.error.message || 'This confirmation link has expired or has already been used.';
+                  showPanel('panel-expired');
+                  return;
+                }
+                throw otpRes.error;
+              }
+            } else {
+              // Fallback direct REST request to Supabase /auth/v1/verify
+              var verifyUrl = supabaseUrl.replace(/\/+$/, '') + '/auth/v1/verify';
+              var restRes = await fetch(verifyUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': supabaseAnonKey
+                },
+                body: JSON.stringify({
+                  token_hash: params.token_hash,
+                  type: params.type || 'signup'
+                })
+              });
+
+              if (restRes.ok) {
+                verified = true;
+              } else {
+                var errJson = await restRes.json().catch(function () { return {}; });
+                throw new Error(errJson.msg || errJson.error_description || errJson.message || 'Verification token rejected');
+              }
+            }
+
+            if (verified) {
+              showPanel('panel-success');
+              return;
+            }
+          } catch (err) {
+            console.error('[Token Hash Verification Failed]:', err);
+            var isExp = err.message && (err.message.toLowerCase().includes('expired') || err.message.toLowerCase().includes('used'));
+            if (isExp) {
+              var expEl = document.getElementById('expired-message');
+              if (expEl) expEl.textContent = err.message;
+              showPanel('panel-expired');
+            } else {
+              var msg = document.getElementById('error-message');
+              if (msg) msg.textContent = err.message || 'Invalid or malformed confirmation token.';
+              showPanel('panel-error');
+            }
+            return;
+          }
+        }
+
+        // --- Verification Branch B: PKCE Authorization Code Exchange ---
+        if (params.code) {
+          try {
+            if (client && client.auth && typeof client.auth.exchangeCodeForSession === 'function') {
+              var codeRes = await client.auth.exchangeCodeForSession(params.code);
+              if (codeRes.data && codeRes.data.user && !codeRes.error) {
+                showPanel('panel-success');
+                return;
+              }
+              if (codeRes.error) {
+                throw codeRes.error;
+              }
+            }
+          } catch (err) {
+            console.warn('[PKCE Code Exchange Failed]:', err.message);
+            // If code exchange failed because verifier was in Android WebView, explain gracefully
+            var isVerifierMissing = err.message && err.message.toLowerCase().includes('verifier');
+            if (isVerifierMissing) {
+              var expEl = document.getElementById('expired-message');
+              if (expEl) {
+                expEl.textContent = 'This link was opened in a different browser than where you signed up. Please sign in directly if already confirmed, or use the token link.';
+              }
+              showPanel('panel-expired');
+              return;
+            }
+            var msg = document.getElementById('error-message');
+            if (msg) msg.textContent = err.message || 'Authorization code could not be verified.';
+            showPanel('panel-error');
+            return;
+          }
+        }
+
+        // --- Verification Branch C: Implicit Access Token ---
+        if (params.accessToken) {
+          try {
+            if (client && client.auth) {
+              var sessionRes = await client.auth.setSession({
+                access_token: params.accessToken,
+                refresh_token: params.refreshToken || ''
+              });
+              if (sessionRes.data && sessionRes.data.user && !sessionRes.error) {
+                showPanel('panel-success');
+                return;
+              }
+            }
+          } catch (err) {
+            console.error('[Session Verification Failed]:', err);
+          }
+        }
+
+        // If none verified successfully:
+        showPanel('panel-error');
+      }
+
+      // Execute on DOM load
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', verifyConfirmation);
+      } else {
+        verifyConfirmation();
+      }
+    })();
+  </script>
+</body>
+</html>
+
