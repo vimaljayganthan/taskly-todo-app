@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="pastel">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
   <title>Taskly — Plan • Organize • Get Things Done</title>
   <meta name="description" content="A modern, intuitive task manager to organize your life, track productivity, and never miss deadlines.">
-  <meta name="theme-color" content="#ffffff" id="meta-theme-color">
+  <meta name="theme-color" content="#F5F3FF" id="meta-theme-color">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   
@@ -17,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
-  <link rel="stylesheet" href="/styles.css?v=2.3">
+  <link rel="stylesheet" href="/styles.css?v=2.7">
 </head>
 <body class="onboarding-active">
 
@@ -28,6 +29,13 @@
     <!-- 1. MAIN APPLICATION TABS (DEFAULT VIEW)                              -->
     <!-- ==================================================================== -->
     <div id="main-flow" class="screen-flow">
+
+      <!-- Prominent Local UI Preview Banner (Visible strictly in verified local preview mode) -->
+      <div id="preview-mode-banner" class="preview-mode-banner" style="display: none;">
+        <span class="preview-badge-chip">LOCAL UI PREVIEW</span>
+        <span class="preview-mode-text">Inspection Mode (Sample Data). No real authentication session is active.</span>
+        <button type="button" id="btn-exit-preview" class="btn-exit-preview" title="Exit preview and go to Sign In">Sign In</button>
+      </div>
 
       <!-- Desktop Global Top Navigation Header (Visible on Desktop >= 768px in Main App) -->
       <header class="desktop-header">
@@ -59,12 +67,12 @@
         </nav>
 
         <div class="desktop-header-right">
+          <button type="button" class="btn-desktop-theme" id="btn-desktop-theme" title="Toggle Appearance Theme" aria-label="Toggle Theme" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-primary); cursor: pointer; margin-right: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          </button>
           <button type="button" class="btn-desktop-add" id="btn-desktop-add-task">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span>Add Task</span>
-          </button>
-          <button type="button" class="btn-desktop-theme" id="btn-desktop-theme" title="Toggle Theme" aria-label="Toggle Theme">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           </button>
         </div>
       </header>
@@ -213,48 +221,96 @@
           </div>
         </section>
 
-        <!-- Screen 6: Calendar Page (WHOLE RED THEME) -->
-        <section id="tab-calendar" class="tab-view theme-red-screen">
-          <!-- Themed Top Banner Card (Red Theme) -->
-          <div class="page-themed-banner banner-theme-red">
-            <div class="banner-pill-badge pill-red">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              <span>Calendar</span>
+        <!-- Screen 6: Calendar Page -->
+        <section id="tab-calendar" class="tab-view">
+          <!-- Calendar Screen Top / Header Section -->
+          <div class="calendar-header-section">
+            <!-- Themed Top Banner Card (Red Theme - preserved for Pastel Light) -->
+            <div class="page-themed-banner banner-theme-red cal-banner-legacy">
+              <div class="banner-pill-badge pill-red">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span>Calendar</span>
+              </div>
+              <p class="banner-subtext">View tasks by date, plan ahead, and manage deadlines.</p>
             </div>
-            <p class="banner-subtext">View tasks by date, plan ahead, and manage deadlines.</p>
+
+            <!-- Month Navigation Row -->
+            <div class="calendar-month-nav">
+              <button id="btn-cal-prev" class="btn-cal-arrow" aria-label="Previous month">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <div class="cal-month-title" id="cal-month-display">November 2026</div>
+              <button id="btn-cal-next" class="btn-cal-arrow" aria-label="Next month">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+
+            <!-- Day of Week Headers (for month grid view) -->
+            <div class="calendar-weekdays" id="calendar-weekdays" style="display: none;">
+              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+
+            <!-- 7-Day Horizontal Date Strip or Month Grid Container -->
+            <div class="calendar-strip-wrap">
+              <div class="calendar-days-grid" id="calendar-days-container">
+                <!-- Dynamically generated days strip or grid -->
+              </div>
+            </div>
           </div>
 
-          <!-- Calendar Desktop Grid Container -->
-          <div class="calendar-desktop-wrap">
-            <!-- Interactive Month Navigator Card -->
-            <div class="calendar-card">
-              <div class="calendar-month-nav">
-                <button id="btn-cal-prev" class="btn-cal-arrow" aria-label="Previous month">‹</button>
-                <div class="cal-month-title" id="cal-month-display">November 2026</div>
-                <button id="btn-cal-next" class="btn-cal-arrow" aria-label="Next month">›</button>
-              </div>
+          <!-- White Calendar Content Sheet with Rounded Top Corners -->
+          <div class="calendar-content-sheet">
+            <!-- Sheet Drag Pill -->
+            <div class="sheet-drag-handle"></div>
 
-              <!-- Day of Week Headers -->
-              <div class="calendar-weekdays">
-                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
-              </div>
-
-              <!-- Interactive Date Strip / Grid -->
-              <div class="calendar-days-grid" id="calendar-days-container">
-                <!-- Dynamically generated days -->
+            <!-- Summary Metrics Card (Tasks Completed) -->
+            <div class="calendar-metrics-row">
+              <div class="cal-metric-card metric-tasks">
+                <div class="cal-metric-ring-wrap">
+                  <svg viewBox="0 0 36 36" class="circular-chart">
+                    <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path id="cal-ring-tasks" class="circle-stroke-red" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  </svg>
+                  <div class="cal-ring-icon text-red">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  </div>
+                </div>
+                <div class="cal-metric-info">
+                  <span class="cal-metric-val" id="cal-metric-tasks-count">0 / 0</span>
+                  <span class="cal-metric-label">Tasks Completed</span>
+                </div>
               </div>
             </div>
 
-            <!-- Tasks on Selected Date -->
-            <div class="section-block">
-              <div class="section-head">
-                <h2 class="section-title" id="cal-selected-date-title">Tasks on Mon, 2 Nov</h2>
-              </div>
+            <!-- Date Heading Row & View Toggle -->
+            <div class="calendar-timeline-header">
+              <h3 class="cal-timeline-title" id="cal-selected-date-title">Tasks on Today</h3>
+              <button type="button" id="btn-toggle-month-view" class="btn-cal-view-toggle" title="Toggle Month Grid or 7-Day Strip">
+                <span id="btn-cal-view-label">Month View</span>
+              </button>
+            </div>
 
-              <div class="task-list" id="calendar-task-list">
-                <!-- Dynamically rendered tasks for selected date -->
+            <!-- Chronological Daily Task Timeline (Driven by real database tasks) -->
+            <div class="calendar-timeline-wrap">
+              <div class="cal-timeline-line"></div>
+              <div class="calendar-timeline-list" id="calendar-task-list">
+                <!-- Dynamically rendered chronological tasks for selected date -->
               </div>
             </div>
+
+            <!-- Undated Tasks Section (Requirement 4D) -->
+            <div class="calendar-undated-section" id="calendar-undated-section" style="display: none;">
+              <button type="button" class="undated-header" id="btn-toggle-undated">
+                <span class="undated-title">Undated Tasks (<span id="undated-tasks-count">0</span>)</span>
+                <span class="undated-chevron" id="undated-chevron">›</span>
+              </button>
+              <div class="undated-tasks-list" id="calendar-undated-list" style="display: none;"></div>
+            </div>
+
+            <!-- Floating Red Add Task Action Button inside Calendar -->
+            <button type="button" class="btn-cal-floating-add" id="btn-cal-add-fab" aria-label="Add Task on Selected Date" title="Add Task on this date">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
           </div>
         </section>
 
@@ -312,11 +368,11 @@
             </div>
 
             <!-- Priority Selector -->
-            <div class="form-row-card">
+            <div class="form-row-card form-row-pill-card">
               <div class="row-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
               </div>
-              <div class="row-content flex-between">
+              <div class="row-content flex-between-pill">
                 <span class="row-label">Priority</span>
                 <div class="pill-selector" id="add-priority-selector">
                   <button type="button" class="pill-opt opt-high active" data-val="High">High</button>
@@ -327,11 +383,11 @@
             </div>
 
             <!-- Category Selector -->
-            <div class="form-row-card">
+            <div class="form-row-card form-row-pill-card">
               <div class="row-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
               </div>
-              <div class="row-content flex-between">
+              <div class="row-content flex-between-pill">
                 <span class="row-label">Category</span>
                 <div class="pill-selector" id="add-category-selector">
                   <button type="button" class="pill-opt opt-cat active" data-val="Project">Project</button>
@@ -361,8 +417,8 @@
           </form>
         </section>
 
-        <!-- Screen 8: Progress Analytics Page (WARM YELLOW THEME) -->
-        <section id="tab-progress" class="tab-view theme-yellow-screen">
+        <!-- Screen 8: Progress Analytics Page -->
+        <section id="tab-progress" class="tab-view">
           <!-- Themed Top Banner Card (Warm Yellow / Amber Theme) -->
           <div class="page-themed-banner banner-theme-yellow">
             <div class="banner-pill-badge pill-yellow">
@@ -398,7 +454,7 @@
             </div>
 
             <!-- Task Overview Breakdown -->
-            <div class="overview-card card-yellow-accent">
+            <div class="overview-card">
               <h3 class="overview-title">Task Overview</h3>
               <div class="overview-list">
                 <div class="overview-item">
@@ -420,7 +476,7 @@
             </div>
 
             <!-- Productivity (Last 7 Days) Bar Chart -->
-            <div class="barchart-card card-yellow-accent">
+            <div class="barchart-card">
               <h3 class="barchart-title">Productivity (Last 7 Days)</h3>
               <div class="barchart-container" id="barchart-bars">
                 <!-- Dynamically populated 7 bars -->
@@ -429,75 +485,115 @@
           </div>
         </section>
 
-        <!-- Screen 9: Profile Page (WHOLE GREEN THEME) -->
-        <section id="tab-profile" class="tab-view theme-green-screen">
-          <!-- Themed Top Banner Card (Green Theme) -->
-          <div class="page-themed-banner banner-theme-green">
-            <div class="banner-pill-badge pill-green">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <span>Profile</span>
+        <!-- Screen 9: Profile Page -->
+        <section id="tab-profile" class="tab-view">
+          <!-- Sky Blue Outer Shell & Header -->
+          <div class="profile-sky-wrapper">
+            <!-- Top Right Notification Bell Bar -->
+            <div class="profile-top-bar">
+              <button type="button" class="btn-profile-notif" id="btn-profile-notifications" aria-label="Notifications" title="Notifications">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+                <span class="notif-badge-dot" id="profile-notif-dot"></span>
+              </button>
             </div>
-            <p class="banner-subtext">View and update your personal details and preferences.</p>
-          </div>
 
-          <!-- Profile Bio Card -->
-          <div class="profile-card">
-            <div class="profile-avatar-wrap">
-              <div class="profile-avatar-circle">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <!-- Large White Rounded Drawer Card -->
+            <div class="profile-drawer-card">
+              <!-- User Bio Header -->
+              <div class="profile-user-header">
+                <div class="profile-avatar-wrap" id="profile-avatar-wrap">
+                  <div class="profile-avatar-circle" id="profile-avatar-circle">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                  <button id="btn-edit-avatar" class="avatar-edit-pencil" aria-label="Edit Profile">✎</button>
+                </div>
+
+                <div class="profile-user-details">
+                  <h3 class="profile-name" id="profile-display-name">User</h3>
+                  <button type="button" class="profile-view-link" id="btn-open-edit-modal">
+                    <span>View profile</span>
+                    <span class="view-chevron">›</span>
+                  </button>
+                  <p class="profile-age" id="profile-display-age" style="display: none;">Age: 18</p>
+                </div>
               </div>
-              <button id="btn-edit-avatar" class="avatar-edit-pencil" aria-label="Edit Profile">✎</button>
+
+              <!-- Thin Blue Divider -->
+              <div class="profile-divider"></div>
+
+              <!-- 8 Profile Menu Items -->
+              <div class="profile-menu-list">
+                <!-- 1. Track Tasks -->
+                <button type="button" class="profile-menu-item" id="menu-track-tasks">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    </div>
+                    <span class="menu-item-label">Track Tasks</span>
+                  </div>
+                  <span class="menu-chevron">›</span>
+                </button>
+
+                <!-- 2. Appointments -->
+                <button type="button" class="profile-menu-item" id="menu-appointments">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    </div>
+                    <span class="menu-item-label">Appointments</span>
+                  </div>
+                  <span class="menu-chevron">›</span>
+                </button>
+
+                <!-- 3. Progress -->
+                <button type="button" class="profile-menu-item" id="menu-progress">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    </div>
+                    <span class="menu-item-label">Progress</span>
+                  </div>
+                  <span class="menu-chevron">›</span>
+                </button>
+
+                <!-- 4. FAQ -->
+                <button type="button" class="profile-menu-item" id="menu-faq">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </div>
+                    <span class="menu-item-label">FAQ</span>
+                  </div>
+                  <span class="menu-chevron">›</span>
+                </button>
+
+                <!-- Theme Selection Item -->
+                <button type="button" class="profile-menu-item" id="btn-toggle-theme" aria-label="Select Theme">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    </div>
+                    <span class="menu-item-label">Theme</span>
+                  </div>
+                  <span class="menu-item-val" id="theme-display-val">Pastel Light ›</span>
+                </button>
+
+                <!-- Hidden bridge buttons to guarantee tour & about listeners work -->
+                <button type="button" id="btn-open-tour" style="display: none;"></button>
+                <button type="button" id="btn-open-about" style="display: none;"></button>
+              </div>
+
+              <!-- Bottom Log Out Button -->
+              <div class="profile-logout-wrap">
+                <button type="button" class="profile-logout-btn" id="btn-logout">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  <span>Log out</span>
+                </button>
+              </div>
             </div>
-            <h3 class="profile-name" id="profile-display-name">User</h3>
-            <p class="profile-age" id="profile-display-age">Age: 18</p>
-          </div>
-
-          <!-- Settings List Group -->
-          <div class="settings-group">
-            <!-- Edit Details -->
-            <button class="settings-item" id="btn-open-edit-modal">
-              <div class="settings-item-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </div>
-              <span class="settings-item-label">Edit Details</span>
-              <span class="settings-chevron">›</span>
-            </button>
-
-            <!-- Theme Switcher -->
-            <button class="settings-item" id="btn-toggle-theme">
-              <div class="settings-item-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-              </div>
-              <span class="settings-item-label">Theme</span>
-              <span class="settings-item-val" id="theme-display-val">Light ›</span>
-            </button>
-
-            <!-- Onboarding Tour -->
-            <button class="settings-item" id="btn-open-tour">
-              <div class="settings-item-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              </div>
-              <span class="settings-item-label">View Onboarding Tour</span>
-              <span class="settings-chevron">›</span>
-            </button>
-
-            <!-- About Taskly -->
-            <button class="settings-item" id="btn-open-about">
-              <div class="settings-item-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              </div>
-              <span class="settings-item-label">About Taskly</span>
-              <span class="settings-chevron">›</span>
-            </button>
-
-            <!-- Log Out / Reset -->
-            <button class="settings-item item-logout" id="btn-logout">
-              <div class="settings-item-icon text-red">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              </div>
-              <span class="settings-item-label text-red">Log Out</span>
-              <span class="settings-chevron text-red">›</span>
-            </button>
           </div>
         </section>
 
@@ -546,23 +642,18 @@
       </div>
 
       <!-- ==================================================================== -->
-      <!-- 2. ONBOARDING & SETUP FLOW (LAUNCH, CAROUSEL, SETUP, WELCOME)        -->
+      <!-- 2. ONBOARDING & SETUP FLOW (CAROUSEL, SETUP, WELCOME)                -->
       <!-- ==================================================================== -->
       <div id="onboarding-flow" class="screen-flow active">
 
-        <!-- Screen 1: App Launch / Full-Page Landing Page -->
-        <section id="screen-launch" class="onboard-step active" aria-label="Taskly Landing Page">
-          <img src="/landing-cover.png?v=red" alt="Taskly - Plan • Organize • Get Things Done" class="landing-fullscreen-img">
-        </section>
-
         <!-- Screen 2: Carousel Slides (2a, 2b, 2c) -->
-        <section id="screen-carousel" class="onboard-step">
+        <section id="screen-carousel" class="onboard-step active">
           <div class="step-nav-bar">
-            <button type="button" id="btn-back-to-launch" class="btn-step-nav" aria-label="Back to Landing Page">
+            <button type="button" id="btn-back-to-launch" class="btn-step-nav" aria-label="Previous Slide" style="visibility: hidden;">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
               <span>Back</span>
             </button>
-            <div class="step-nav-counter">Page 2 of 4</div>
+            <div class="step-nav-counter">Page 1 of 3</div>
             <button id="btn-skip-onboarding" class="btn-text">Skip</button>
           </div>
 
@@ -713,6 +804,12 @@
                 <span id="btn-auth-text">Sign In</span>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               </button>
+
+              <div id="preview-helper-wrap" style="display: none; text-align: center; margin-top: 10px;">
+                <button type="button" id="btn-preview-skip-to-app" class="btn-text" style="font-size: 0.8125rem; font-weight: 700; color: var(--text-secondary); cursor: pointer;">
+                  👀 Preview Dashboard with sample data →
+                </button>
+              </div>
             </form>
           </div>
         </section>
@@ -806,9 +903,40 @@
         </div>
       </div>
 
+      <!-- Modal: Appearance Theme Selection -->
+      <div id="modal-theme" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 class="modal-title">Select Appearance</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-theme-modal" aria-label="Close">×</button>
+          </div>
+          <div class="theme-options-wrap">
+            <p class="about-desc">Choose between Pastel Light and the new Day Theme.</p>
+            <div class="theme-picker-list">
+              <button type="button" class="theme-choice-btn active" id="theme-choice-pastel" data-theme-val="pastel">
+                <div class="theme-choice-icon">🌸</div>
+                <div class="theme-choice-text">
+                  <span class="theme-choice-title">Pastel Light</span>
+                  <span class="theme-choice-sub">Soft lavender canvas & pastel accents (Default)</span>
+                </div>
+                <span class="theme-choice-check">✓</span>
+              </button>
+              <button type="button" class="theme-choice-btn" id="theme-choice-day" data-theme-val="day">
+                <div class="theme-choice-icon">☀️</div>
+                <div class="theme-choice-text">
+                  <span class="theme-choice-title">Day Theme</span>
+                  <span class="theme-choice-sub">70% Section Color + 30% White Cards (Sky Blue, Red, Yellow)</span>
+                </div>
+                <span class="theme-choice-check">✓</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div> <!-- /.app-viewport -->
 
   <script src="/vendor/supabase.js"></script>
-  <script src="/app.js?v=2.4"></script>
+  <script src="/app.js?v=2.7"></script>
 </body>
 </html>

@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taskly — Theme Switcher & Visual Comparison Preview</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      box-sizing: border-box;
+    }
+    
+    /* Theme Transition */
+    .theme-transition {
+      transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                  border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                  color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                  box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Screen Phone Frame Shadow */
+    .phone-shadow {
+      box-shadow: 0 20px 40px -12px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(15, 23, 42, 0.06);
+    }
+    .card-shadow {
+      box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.06);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen p-4 md:p-8 antialiased">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Top Controller Bar -->
+    <header class="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm sticky top-4 z-50">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        
+        <!-- App Title & Subtitle -->
+        <div class="flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-400 to-indigo-400 flex items-center justify-center text-white text-2xl shadow-sm">
+            ✨
+          </div>
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h1 class="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight">Taskly Theme Studio</h1>
+              <span id="active-theme-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200">
+                Pastel Light
+              </span>
+            </div>
+            <p class="text-xs md:text-sm text-slate-500 mt-0.5">
+              Toggle between <strong>Pastel Light</strong> and <strong>Day Theme (70% Section Color / 30% White)</strong>
+            </p>
+          </div>
+        </div>
+
+        <!-- Theme Switcher Controls -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex items-center gap-1.5">
+            <button id="btn-theme-pastel" onclick="switchTheme('pastel')" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all bg-white text-purple-700 shadow-sm">
+              <span>🌸</span>
+              <span>Pastel Light</span>
+            </button>
+            <button id="btn-theme-day" onclick="switchTheme('day')" class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all text-slate-600 hover:text-slate-900">
+              <span>☀️</span>
+              <span>Day Theme</span>
+            </button>
+          </div>
+
+          <!-- View Mode Toggle -->
+          <div class="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex items-center gap-1">
+            <button id="btn-view-grid" onclick="setViewMode('grid')" class="px-3 py-2 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm">
+              All 4 Screens
+            </button>
+            <button id="btn-view-interactive" onclick="setViewMode('interactive')" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900">
+              Interactive Phone
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Color Palette Guide Pill Bar -->
+      <div id="palette-guide" class="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <!-- Will be dynamically populated with tokens -->
+      </div>
+    </header>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW MODE 1: ALL 4 SCREENS GRID                                       -->
+    <!-- ===================================================================== -->
+    <main id="view-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+
+      <!-- 1. DASHBOARD SCREEN -->
+      <div class="flex flex-col">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">1. Dashboard</span>
+          <span id="dash-ratio-tag" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Soft Lavender</span>
+        </div>
+        
+        <div id="screen-dashboard" class="theme-transition rounded-[28px] overflow-hidden phone-shadow flex flex-col min-h-[640px] border">
+          <!-- Screen Header -->
+          <div id="dash-header" class="theme-transition p-5 pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p id="dash-date" class="text-xs font-semibold">Thursday, Nov 5</p>
+                <h2 id="dash-greeting" class="text-lg font-black tracking-tight mt-0.5">Good Morning, Vimal! ✨</h2>
+              </div>
+              <div id="dash-avatar" class="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm border shadow-sm">
+                VJ
+              </div>
+            </div>
+
+            <!-- Dashboard Mini Stats (4 Pills / Cards) -->
+            <div class="grid grid-cols-2 gap-2.5 mt-4">
+              <div id="dash-stat-1" class="theme-transition p-3 rounded-2xl border flex flex-col justify-between">
+                <span class="text-[11px] font-semibold opacity-75">Total Tasks</span>
+                <span class="text-xl font-black mt-1">5</span>
+              </div>
+              <div id="dash-stat-2" class="theme-transition p-3 rounded-2xl border flex flex-col justify-between">
+                <span class="text-[11px] font-semibold opacity-75">Completed</span>
+                <span class="text-xl font-black mt-1">3</span>
+              </div>
+              <div id="dash-stat-3" class="theme-transition p-3 rounded-2xl border flex flex-col justify-between">
+                <span class="text-[11px] font-semibold opacity-75">In Progress</span>
+                <span class="text-xl font-black mt-1">2</span>
+              </div>
+              <div id="dash-stat-4" class="theme-transition p-3 rounded-2xl border flex flex-col justify-between">
+                <span class="text-[11px] font-semibold opacity-75">Due Today</span>
+                <span class="text-xl font-black mt-1">2</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Screen Content Area (White Cards Area) -->
+          <div id="dash-body" class="theme-transition flex-1 p-5 space-y-3.5">
+            <!-- Weekly Completion Card -->
+            <div id="dash-progress-card" class="theme-transition p-4 rounded-2xl border card-shadow">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-slate-800">Weekly Completion</span>
+                <span id="dash-pct-badge" class="text-xs font-extrabold px-2 py-0.5 rounded-full">75%</span>
+              </div>
+              <div class="w-full h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div id="dash-progress-bar" class="theme-transition h-full rounded-full" style="width: 75%;"></div>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-2 font-medium">4 of 5 tasks completed on schedule this week</p>
+            </div>
+
+            <!-- Task List Header -->
+            <div class="flex items-center justify-between pt-1">
+              <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700">Today's Tasks</h3>
+              <span class="text-[11px] font-bold text-slate-400">2 remaining</span>
+            </div>
+
+            <!-- Task Card 1 -->
+            <div class="dash-task-card theme-transition p-3.5 rounded-2xl border bg-white card-shadow flex items-start gap-3">
+              <div class="task-check w-5 h-5 rounded-lg border-2 mt-0.5 flex items-center justify-center cursor-pointer">
+                <span class="hidden text-xs font-bold">✓</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-slate-800 truncate">Finalize Day Theme specifications</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">Work</span>
+                  <span class="text-[10px] text-slate-400 font-semibold">10:00 AM</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Task Card 2 (Completed) -->
+            <div class="dash-task-card theme-transition p-3.5 rounded-2xl border bg-white card-shadow flex items-start gap-3 opacity-80">
+              <div class="task-check w-5 h-5 rounded-lg border-2 mt-0.5 flex items-center justify-center cursor-pointer bg-emerald-400 border-emerald-400 text-white">
+                <span class="text-xs font-bold">✓</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-slate-400 line-through truncate">Deploy auth callback validation</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-50 text-purple-700 border border-purple-200">Release</span>
+                  <span class="text-[10px] text-slate-400 font-semibold">Completed</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Task Card 3 -->
+            <div class="dash-task-card theme-transition p-3.5 rounded-2xl border bg-white card-shadow flex items-start gap-3">
+              <div class="task-check w-5 h-5 rounded-lg border-2 mt-0.5 flex items-center justify-center cursor-pointer">
+                <span class="hidden text-xs font-bold">✓</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-slate-800 truncate">Test Capacitor Android key on mobile</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-50 text-amber-700 border border-amber-200">QA</span>
+                  <span class="text-[10px] text-slate-400 font-semibold">03:30 PM</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation Bar -->
+          <div class="nav-bar theme-transition p-3 border-t bg-white flex items-center justify-around">
+            <div class="nav-item-active flex flex-col items-center gap-1 cursor-pointer">
+              <span class="text-base">📋</span>
+              <span class="text-[10px] font-bold">Home</span>
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📅</span>
+              <span class="text-[10px] font-semibold">Calendar</span>
+            </div>
+            <div class="nav-add-btn w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm">
+              +
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📊</span>
+              <span class="text-[10px] font-semibold">Progress</span>
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">👤</span>
+              <span class="text-[10px] font-semibold">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. CALENDAR SCREEN -->
+      <div class="flex flex-col">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">2. Calendar</span>
+          <span id="cal-ratio-tag" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Soft Lavender</span>
+        </div>
+
+        <div id="screen-calendar" class="theme-transition rounded-[28px] overflow-hidden phone-shadow flex flex-col min-h-[640px] border">
+          <!-- Calendar Top Banner -->
+          <div id="cal-header" class="theme-transition p-5 pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span id="cal-pill-badge" class="px-3 py-1 rounded-full text-xs font-extrabold inline-block">
+                  📅 Calendar Schedule
+                </span>
+                <p id="cal-subtext" class="text-xs mt-1.5 font-medium opacity-80">Track scheduled events and deadlines</p>
+              </div>
+            </div>
+
+            <!-- Month Navigator Header inside header section -->
+            <div id="cal-month-nav" class="theme-transition flex items-center justify-between mt-4 p-3 rounded-2xl border bg-white/70">
+              <button class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs bg-white border shadow-xs">‹</button>
+              <span class="text-xs font-extrabold text-slate-800">November 2026</span>
+              <button class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs bg-white border shadow-xs">›</button>
+            </div>
+          </div>
+
+          <!-- Calendar Body & Grid (White Cards Area) -->
+          <div id="cal-body" class="theme-transition flex-1 p-5 space-y-4">
+            <!-- Mini Month Grid Card -->
+            <div class="bg-white rounded-2xl p-3.5 border cal-card-border card-shadow">
+              <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-2">
+                <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+              </div>
+              <div class="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-700">
+                <span class="py-1.5 text-slate-300">28</span>
+                <span class="py-1.5 text-slate-300">29</span>
+                <span class="py-1.5 text-slate-300">30</span>
+                <span class="py-1.5">1</span>
+                <span class="py-1.5">2</span>
+                <span class="py-1.5">3</span>
+                <span class="py-1.5">4</span>
+                <span id="cal-selected-day" class="py-1.5 rounded-xl font-black text-white shadow-sm">5</span>
+                <span class="py-1.5 relative">6<span class="w-1 h-1 rounded-full bg-red-400 absolute bottom-0.5 left-1/2 -translate-x-1/2"></span></span>
+                <span class="py-1.5">7</span>
+                <span class="py-1.5">8</span>
+                <span class="py-1.5 relative">9<span class="w-1 h-1 rounded-full bg-blue-400 absolute bottom-0.5 left-1/2 -translate-x-1/2"></span></span>
+                <span class="py-1.5">10</span>
+                <span class="py-1.5">11</span>
+              </div>
+            </div>
+
+            <!-- Selected Day Tasks Header -->
+            <div class="flex items-center justify-between pt-1">
+              <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700">Tasks for Nov 5</h3>
+              <span class="text-[11px] font-bold text-slate-400">2 tasks</span>
+            </div>
+
+            <!-- Scheduled Task 1 -->
+            <div class="theme-transition p-3.5 rounded-2xl border bg-white cal-card-border card-shadow flex items-start gap-3">
+              <div class="w-2.5 h-2.5 rounded-full mt-1.5 cal-dot-accent"></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-slate-800">Team Sprint Planning & Demo</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] text-slate-500 font-medium">11:00 AM – 12:00 PM</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700">Google Meet</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Scheduled Task 2 -->
+            <div class="theme-transition p-3.5 rounded-2xl border bg-white cal-card-border card-shadow flex items-start gap-3">
+              <div class="w-2.5 h-2.5 rounded-full mt-1.5 cal-dot-accent"></div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-slate-800">Productivity Analytics Review</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="text-[10px] text-slate-500 font-medium">04:30 PM – 05:15 PM</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700">Internal</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation Bar -->
+          <div class="nav-bar theme-transition p-3 border-t bg-white flex items-center justify-around">
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📋</span>
+              <span class="text-[10px] font-semibold">Home</span>
+            </div>
+            <div class="cal-nav-active flex flex-col items-center gap-1 cursor-pointer">
+              <span class="text-base">📅</span>
+              <span class="text-[10px] font-bold">Calendar</span>
+            </div>
+            <div class="nav-add-btn w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm">
+              +
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📊</span>
+              <span class="text-[10px] font-semibold">Progress</span>
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">👤</span>
+              <span class="text-[10px] font-semibold">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. PROGRESS SCREEN -->
+      <div class="flex flex-col">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">3. Progress</span>
+          <span id="prog-ratio-tag" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Soft Lavender</span>
+        </div>
+
+        <div id="screen-progress" class="theme-transition rounded-[28px] overflow-hidden phone-shadow flex flex-col min-h-[640px] border">
+          <!-- Progress Top Banner -->
+          <div id="prog-header" class="theme-transition p-5 pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span id="prog-pill-badge" class="px-3 py-1 rounded-full text-xs font-extrabold inline-block">
+                  📊 Productivity Analytics
+                </span>
+                <p id="prog-subtext" class="text-xs mt-1.5 font-medium opacity-80">Track completion velocity & streak</p>
+              </div>
+            </div>
+
+            <!-- Segmented Timeframe Switcher -->
+            <div id="prog-timeframe" class="theme-transition flex items-center justify-between mt-4 p-1.5 rounded-2xl border bg-white/70">
+              <button id="prog-tab-week" class="flex-1 py-1.5 text-center text-xs font-bold rounded-xl shadow-xs">This Week</button>
+              <button class="flex-1 py-1.5 text-center text-xs font-semibold text-slate-500">This Month</button>
+              <button class="flex-1 py-1.5 text-center text-xs font-semibold text-slate-500">All Time</button>
+            </div>
+          </div>
+
+          <!-- Progress Body (White Cards Area) -->
+          <div id="prog-body" class="theme-transition flex-1 p-5 space-y-4">
+            <!-- Circular Completion Ring Card -->
+            <div class="bg-white rounded-2xl p-4 border prog-card-border card-shadow flex items-center justify-between">
+              <div>
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Completion Rate</p>
+                <h4 class="text-2xl font-black text-slate-900 mt-0.5">80%</h4>
+                <p class="text-[11px] text-slate-500 mt-1 font-semibold">4 of 5 tasks completed</p>
+                <span class="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 mt-2">
+                  ↑ +20% vs last week
+                </span>
+              </div>
+              <div class="relative w-20 h-20 flex items-center justify-center">
+                <!-- SVG Progress Ring -->
+                <svg class="w-20 h-20 -rotate-90" viewBox="0 0 36 36">
+                  <path class="text-slate-100" stroke-width="3.5" stroke="currentColor" fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path id="prog-svg-ring" stroke-width="3.5" stroke-dasharray="80, 100" stroke-linecap="round" fill="none"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+                <span class="absolute text-sm font-black text-slate-800">80%</span>
+              </div>
+            </div>
+
+            <!-- Velocity Bar Chart Card -->
+            <div class="bg-white rounded-2xl p-4 border prog-card-border card-shadow">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold text-slate-800">Weekly Activity</span>
+                <span class="text-[11px] font-bold text-slate-500">5-Day Streak 🔥</span>
+              </div>
+              <!-- Bar Chart Visual -->
+              <div class="flex items-end justify-between h-24 pt-2 px-1">
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div id="bar-1" class="w-4 rounded-full h-12"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">M</span>
+                </div>
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div id="bar-2" class="w-4 rounded-full h-14"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">T</span>
+                </div>
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div id="bar-3" class="w-4 rounded-full h-16"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">W</span>
+                </div>
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div id="bar-4" class="w-4 rounded-full h-10"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">T</span>
+                </div>
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div id="bar-5" class="w-4 rounded-full h-15"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">F</span>
+                </div>
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div class="w-4 rounded-full h-4 bg-slate-200"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">S</span>
+                </div>
+                <div class="flex flex-col items-center gap-1 flex-1">
+                  <div class="w-4 rounded-full bg-slate-100 h-16 flex items-end">
+                    <div class="w-4 rounded-full h-2 bg-slate-200"></div>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-400">S</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation Bar -->
+          <div class="nav-bar theme-transition p-3 border-t bg-white flex items-center justify-around">
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📋</span>
+              <span class="text-[10px] font-semibold">Home</span>
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📅</span>
+              <span class="text-[10px] font-semibold">Calendar</span>
+            </div>
+            <div class="nav-add-btn w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm">
+              +
+            </div>
+            <div class="prog-nav-active flex flex-col items-center gap-1 cursor-pointer">
+              <span class="text-base">📊</span>
+              <span class="text-[10px] font-bold">Progress</span>
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">👤</span>
+              <span class="text-[10px] font-semibold">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. PROFILE SCREEN -->
+      <div class="flex flex-col">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">4. Profile</span>
+          <span id="prof-ratio-tag" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Soft Lavender</span>
+        </div>
+
+        <div id="screen-profile" class="theme-transition rounded-[28px] overflow-hidden phone-shadow flex flex-col min-h-[640px] border">
+          <!-- Profile Top Banner -->
+          <div id="prof-header" class="theme-transition p-5 pb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span id="prof-pill-badge" class="px-3 py-1 rounded-full text-xs font-extrabold inline-block">
+                  👤 Account & Settings
+                </span>
+                <p id="prof-subtext" class="text-xs mt-1.5 font-medium opacity-80">Manage preferences and theme</p>
+              </div>
+            </div>
+
+            <!-- User Info Card -->
+            <div id="prof-user-card" class="theme-transition flex items-center gap-3.5 mt-4 p-3.5 rounded-2xl border bg-white/80">
+              <div id="prof-avatar" class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base shadow-xs">
+                VJ
+              </div>
+              <div class="flex-1 min-w-0">
+                <h3 class="text-sm font-extrabold text-slate-800 truncate">Vimal Jayganthan</h3>
+                <p class="text-xs text-slate-500 truncate">vimal@taskly.app • Age 21</p>
+              </div>
+              <button id="prof-edit-btn" class="px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs">
+                Edit
+              </button>
+            </div>
+          </div>
+
+          <!-- Profile Body (White Settings List Area) -->
+          <div id="prof-body" class="theme-transition flex-1 p-5 space-y-3">
+            <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-1">Preferences</span>
+
+            <!-- Theme Switcher Option Item -->
+            <div onclick="toggleCurrentTheme()" class="bg-white rounded-2xl p-3.5 border prof-card-border card-shadow flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center text-sm">
+                  🎨
+                </div>
+                <div>
+                  <p class="text-xs font-bold text-slate-800">Application Theme</p>
+                  <p class="text-[11px] text-slate-400">Switch Pastel Light / Day Theme</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span id="prof-theme-label" class="text-xs font-extrabold text-purple-700">Pastel Light</span>
+                <span class="text-slate-400 font-bold">›</span>
+              </div>
+            </div>
+
+            <!-- Tour Option Item -->
+            <div class="bg-white rounded-2xl p-3.5 border prof-card-border card-shadow flex items-center justify-between cursor-pointer">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center text-sm">
+                  🧭
+                </div>
+                <div>
+                  <p class="text-xs font-bold text-slate-800">Onboarding Tour</p>
+                  <p class="text-[11px] text-slate-400">Revisit feature highlights</p>
+                </div>
+              </div>
+              <span class="text-slate-400 font-bold">›</span>
+            </div>
+
+            <!-- About Taskly Item -->
+            <div class="bg-white rounded-2xl p-3.5 border prof-card-border card-shadow flex items-center justify-between cursor-pointer">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center text-sm">
+                  ℹ️
+                </div>
+                <div>
+                  <p class="text-xs font-bold text-slate-800">About Taskly</p>
+                  <p class="text-[11px] text-slate-400">Version 2.5 (Pastel & Day)</p>
+                </div>
+              </div>
+              <span class="text-slate-400 font-bold">›</span>
+            </div>
+
+            <!-- Log Out Button -->
+            <button class="w-full mt-2 py-3 rounded-2xl border border-red-200 bg-red-50 text-red-600 text-xs font-extrabold hover:bg-red-100 transition-colors">
+              Log Out
+            </button>
+          </div>
+
+          <!-- Bottom Navigation Bar -->
+          <div class="nav-bar theme-transition p-3 border-t bg-white flex items-center justify-around">
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📋</span>
+              <span class="text-[10px] font-semibold">Home</span>
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📅</span>
+              <span class="text-[10px] font-semibold">Calendar</span>
+            </div>
+            <div class="nav-add-btn w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm">
+              +
+            </div>
+            <div class="nav-item flex flex-col items-center gap-1 text-slate-400 cursor-pointer">
+              <span class="text-base">📊</span>
+              <span class="text-[10px] font-semibold">Progress</span>
+            </div>
+            <div class="prof-nav-active flex flex-col items-center gap-1 cursor-pointer">
+              <span class="text-base">👤</span>
+              <span class="text-[10px] font-bold">Profile</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW MODE 2: INTERACTIVE PHONE PREVIEW                                -->
+    <!-- ===================================================================== -->
+    <div id="view-interactive" class="hidden flex flex-col items-center justify-center py-6">
+      <div class="w-full max-w-sm rounded-[36px] p-2 bg-slate-800 shadow-2xl border-4 border-slate-700">
+        <!-- Interactive Frame Inner -->
+        <div id="interactive-phone-screen" class="theme-transition rounded-[28px] overflow-hidden min-h-[640px] flex flex-col bg-white">
+          <!-- Dynamically cloned active tab will be rendered here -->
+          <div id="interactive-content" class="flex-1 flex flex-col"></div>
+          
+          <!-- Bottom Navigation with Clickable Tabs -->
+          <div class="nav-bar theme-transition p-3 border-t bg-white flex items-center justify-around">
+            <button onclick="setInteractiveTab('dash')" id="tab-btn-dash" class="flex flex-col items-center gap-1 font-bold text-xs">
+              <span class="text-base">📋</span>
+              <span class="text-[10px]">Dashboard</span>
+            </button>
+            <button onclick="setInteractiveTab('cal')" id="tab-btn-cal" class="flex flex-col items-center gap-1 text-slate-400 text-xs">
+              <span class="text-base">📅</span>
+              <span class="text-[10px]">Calendar</span>
+            </button>
+            <button class="nav-add-btn w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm">
+              +
+            </button>
+            <button onclick="setInteractiveTab('prog')" id="tab-btn-prog" class="flex flex-col items-center gap-1 text-slate-400 text-xs">
+              <span class="text-base">📊</span>
+              <span class="text-[10px]">Progress</span>
+            </button>
+            <button onclick="setInteractiveTab('prof')" id="tab-btn-prof" class="flex flex-col items-center gap-1 text-slate-400 text-xs">
+              <span class="text-base">👤</span>
+              <span class="text-[10px]">Profile</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-500 mt-4 font-semibold">
+        💡 Click any tab on the bottom bar to switch screens, or toggle themes above!
+      </p>
+    </div>
+
+    <!-- Comparative Tokens Explanatory Matrix -->
+    <section class="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
+      <h3 class="text-base font-extrabold text-slate-900 tracking-tight">Theme Comparison & Architecture Blueprint</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        
+        <!-- Pastel Light Spec -->
+        <div class="p-4 rounded-2xl bg-purple-50/60 border border-purple-100 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="font-extrabold text-purple-900 text-sm">🌸 Pastel Light (Default)</span>
+            <span class="px-2 py-0.5 rounded-full font-bold bg-purple-200 text-purple-800 text-[10px]">Unified Soft Theme</span>
+          </div>
+          <p class="text-slate-600">
+            Soft lavender app canvas (<code class="bg-purple-100 px-1 py-0.5 rounded text-purple-900">#F5F3FF</code>) with crisp white cards, lavender buttons (<code class="bg-purple-100 px-1 py-0.5 rounded text-purple-900">#C4B5FD</code>), mint completed indicators, and peach pending highlights.
+          </p>
+          <div class="flex flex-wrap gap-1 pt-1 font-mono text-[10px]">
+            <span class="px-2 py-0.5 rounded bg-white border border-purple-200">Canvas: #F5F3FF</span>
+            <span class="px-2 py-0.5 rounded bg-white border border-purple-200">Primary: #C4B5FD</span>
+            <span class="px-2 py-0.5 rounded bg-white border border-purple-200">Mint: #A7E8D0</span>
+            <span class="px-2 py-0.5 rounded bg-white border border-purple-200">Peach: #FFD6C9</span>
+          </div>
+        </div>
+
+        <!-- Day Theme Spec -->
+        <div class="p-4 rounded-2xl bg-sky-50/60 border border-sky-100 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="font-extrabold text-sky-900 text-sm">☀️ Day Theme (New)</span>
+            <span class="px-2 py-0.5 rounded-full font-bold bg-sky-200 text-sky-800 text-[10px]">70% Color / 30% White</span>
+          </div>
+          <p class="text-slate-600">
+            High-contrast daytime section coloring. Dashboard & Profile use vibrant Sky Blue (<code class="bg-sky-100 px-1 py-0.5 rounded text-sky-900">#38BDF8</code>), Calendar uses Light Red (<code class="bg-rose-100 px-1 py-0.5 rounded text-rose-900">#FFE1E7</code>), and Progress uses Warm Yellow (<code class="bg-amber-100 px-1 py-0.5 rounded text-amber-900">#FFF1B8</code>), all with crisp white cards and dark navy typography.
+          </p>
+          <div class="flex flex-wrap gap-1 pt-1 font-mono text-[10px]">
+            <span class="px-2 py-0.5 rounded bg-white border border-sky-200">Dash/Prof: #38BDF8</span>
+            <span class="px-2 py-0.5 rounded bg-white border border-rose-200">Cal: #FFE1E7</span>
+            <span class="px-2 py-0.5 rounded bg-white border border-amber-200">Prog: #FFF1B8</span>
+            <span class="px-2 py-0.5 rounded bg-white border border-slate-200">Text: #0F172A</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- JavaScript Theme State Engine -->
+  <script>
+    let currentTheme = 'pastel'; // 'pastel' | 'day'
+    let currentInteractiveTab = 'dash';
+
+    function toggleCurrentTheme() {
+      switchTheme(currentTheme === 'pastel' ? 'day' : 'pastel');
+    }
+
+    function switchTheme(theme) {
+      currentTheme = theme;
+      
+      const btnPastel = document.getElementById('btn-theme-pastel');
+      const btnDay = document.getElementById('btn-theme-day');
+      const badge = document.getElementById('active-theme-badge');
+      const palette = document.getElementById('palette-guide');
+      const profThemeLabel = document.getElementById('prof-theme-label');
+
+      if (theme === 'pastel') {
+        // Switch buttons active state
+        btnPastel.className = "flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all bg-white text-purple-700 shadow-sm";
+        btnDay.className = "flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all text-slate-600 hover:text-slate-900";
+        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200";
+        badge.textContent = "Pastel Light";
+        if (profThemeLabel) {
+          profThemeLabel.textContent = "Pastel Light";
+          profThemeLabel.className = "text-xs font-extrabold text-purple-700";
+        }
+
+        // Palette Guide
+        palette.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-700">Pastel Tokens:</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#F5F3FF] border border-[#E9E5F5] font-semibold text-slate-700">#F5F3FF Canvas</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#C4B5FD] font-semibold text-purple-900">#C4B5FD Primary</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#A7E8D0] font-semibold text-emerald-900">#A7E8D0 Mint</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#FFD6C9] font-semibold text-orange-900">#FFD6C9 Peach</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#BDE0FE] font-semibold text-blue-900">#BDE0FE Sky</span>
+          </div>
+          <span class="text-slate-500 font-semibold">Ratio: Soft uniform background with clean white cards</span>
+        `;
+
+        // Apply styles to 1. Dashboard
+        document.getElementById('dash-ratio-tag').textContent = "Soft Lavender";
+        document.getElementById('dash-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700";
+        document.getElementById('screen-dashboard').style.backgroundColor = "#F5F3FF";
+        document.getElementById('screen-dashboard').style.borderColor = "#E9E5F5";
+        document.getElementById('dash-header').style.backgroundColor = "transparent";
+        document.getElementById('dash-greeting').style.color = "#263247";
+        document.getElementById('dash-date').style.color = "#64748B";
+        document.getElementById('dash-avatar').style.backgroundColor = "#FFFFFF";
+        document.getElementById('dash-avatar').style.borderColor = "#E9E5F5";
+        document.getElementById('dash-avatar').style.color = "#64748B";
+
+        // Dashboard stat pills
+        setPastelStat('dash-stat-1', '#FFFFFF', '#E9E5F5', '#263247');
+        setPastelStat('dash-stat-2', '#FFFFFF', '#E9E5F5', '#263247');
+        setPastelStat('dash-stat-3', '#FFFFFF', '#E9E5F5', '#263247');
+        setPastelStat('dash-stat-4', '#FFFFFF', '#E9E5F5', '#263247');
+        document.getElementById('dash-progress-card').style.backgroundColor = "#FFFFFF";
+        document.getElementById('dash-progress-card').style.borderColor = "#E9E5F5";
+        document.getElementById('dash-pct-badge').className = "text-xs font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700";
+        document.getElementById('dash-progress-bar').style.backgroundColor = "#C4B5FD";
+
+        // Apply styles to 2. Calendar
+        document.getElementById('cal-ratio-tag').textContent = "Soft Lavender";
+        document.getElementById('cal-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700";
+        document.getElementById('screen-calendar').style.backgroundColor = "#F5F3FF";
+        document.getElementById('screen-calendar').style.borderColor = "#E9E5F5";
+        document.getElementById('cal-header').style.backgroundColor = "transparent";
+        document.getElementById('cal-pill-badge').className = "px-3 py-1 rounded-full text-xs font-extrabold inline-block bg-[#BDE0FE] text-[#1e3a8a] border border-[#BDE0FE]";
+        document.getElementById('cal-subtext').style.color = "#64748B";
+        document.getElementById('cal-selected-day').style.backgroundColor = "#C4B5FD";
+        document.getElementById('cal-selected-day').style.color = "#263247";
+        document.querySelectorAll('.cal-dot-accent').forEach(el => el.style.backgroundColor = "#C4B5FD");
+        document.querySelectorAll('.cal-card-border').forEach(el => el.style.borderColor = "#E9E5F5");
+
+        // Apply styles to 3. Progress
+        document.getElementById('prog-ratio-tag').textContent = "Soft Lavender";
+        document.getElementById('prog-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700";
+        document.getElementById('screen-progress').style.backgroundColor = "#F5F3FF";
+        document.getElementById('screen-progress').style.borderColor = "#E9E5F5";
+        document.getElementById('prog-header').style.backgroundColor = "transparent";
+        document.getElementById('prog-pill-badge').className = "px-3 py-1 rounded-full text-xs font-extrabold inline-block bg-[#FFD6C9] text-[#7c2d12] border border-[#FFD6C9]";
+        document.getElementById('prog-subtext').style.color = "#64748B";
+        document.getElementById('prog-tab-week').className = "flex-1 py-1.5 text-center text-xs font-bold rounded-xl bg-[#C4B5FD] text-[#263247] shadow-xs";
+        document.getElementById('prog-svg-ring').setAttribute("stroke", "#C4B5FD");
+        document.querySelectorAll('.prog-card-border').forEach(el => el.style.borderColor = "#E9E5F5");
+        ['bar-1','bar-2','bar-3','bar-4','bar-5'].forEach(id => {
+          document.getElementById(id).style.backgroundColor = "#C4B5FD";
+        });
+
+        // Apply styles to 4. Profile
+        document.getElementById('prof-ratio-tag').textContent = "Soft Lavender";
+        document.getElementById('prof-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700";
+        document.getElementById('screen-profile').style.backgroundColor = "#F5F3FF";
+        document.getElementById('screen-profile').style.borderColor = "#E9E5F5";
+        document.getElementById('prof-header').style.backgroundColor = "transparent";
+        document.getElementById('prof-pill-badge').className = "px-3 py-1 rounded-full text-xs font-extrabold inline-block bg-[#A7E8D0] text-[#1b4332] border border-[#A7E8D0]";
+        document.getElementById('prof-subtext').style.color = "#64748B";
+        document.getElementById('prof-user-card').style.backgroundColor = "#FFFFFF";
+        document.getElementById('prof-user-card').style.borderColor = "#E9E5F5";
+        document.getElementById('prof-avatar').style.backgroundColor = "#A7E8D0";
+        document.getElementById('prof-avatar').style.color = "#1b4332";
+        document.getElementById('prof-edit-btn').style.backgroundColor = "#F5F3FF";
+        document.getElementById('prof-edit-btn').style.borderColor = "#E9E5F5";
+        document.getElementById('prof-edit-btn').style.color = "#263247";
+        document.querySelectorAll('.prof-card-border').forEach(el => el.style.borderColor = "#E9E5F5");
+
+        // Nav active colors
+        document.querySelectorAll('.nav-add-btn').forEach(btn => btn.style.backgroundColor = "#C4B5FD");
+        document.querySelectorAll('.nav-item-active span:last-child').forEach(s => s.style.color = "#A78BFA");
+
+      } else {
+        // DAY THEME: 70% SECTION COLOR / 30% WHITE
+        btnDay.className = "flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all bg-white text-sky-700 shadow-sm";
+        btnPastel.className = "flex items-center gap-2 px-4 py-2 rounded-xl text-xs md:text-sm font-bold transition-all text-slate-600 hover:text-slate-900";
+        badge.className = "px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-200";
+        badge.textContent = "Day Theme (70% Color)";
+        if (profThemeLabel) {
+          profThemeLabel.textContent = "Day Theme";
+          profThemeLabel.className = "text-xs font-extrabold text-sky-700";
+        }
+
+        // Palette Guide
+        palette.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-700">Day Theme Tokens:</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#38BDF8] font-bold text-white">#38BDF8 Dash/Prof (70%)</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#FFE1E7] font-bold text-rose-900 border border-rose-200">#FFE1E7 Cal (70%)</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#FFF1B8] font-bold text-amber-900 border border-amber-200">#FFF1B8 Prog (70%)</span>
+            <span class="px-2 py-0.5 rounded-md bg-white border border-slate-300 font-bold text-slate-900">#FFFFFF Cards (30%)</span>
+            <span class="px-2 py-0.5 rounded-md bg-[#0F172A] font-bold text-white">#0F172A Text</span>
+          </div>
+          <span class="text-sky-800 font-semibold">Strict 70% Section Color + 30% White Balance</span>
+        `;
+
+        // Apply styles to 1. Dashboard (Sky Blue: #38BDF8, #7DD3FC, #0284C7)
+        document.getElementById('dash-ratio-tag').textContent = "70% Sky Blue (#38BDF8)";
+        document.getElementById('dash-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800";
+        document.getElementById('screen-dashboard').style.backgroundColor = "#38BDF8";
+        document.getElementById('screen-dashboard').style.borderColor = "#0284C7";
+        document.getElementById('dash-header').style.backgroundColor = "#7DD3FC";
+        document.getElementById('dash-greeting').style.color = "#0F172A";
+        document.getElementById('dash-date').style.color = "#0369A1";
+        document.getElementById('dash-avatar').style.backgroundColor = "#FFFFFF";
+        document.getElementById('dash-avatar').style.borderColor = "#BAE6FD";
+        document.getElementById('dash-avatar').style.color = "#0284C7";
+
+        // Dashboard stat pills in Day Theme
+        setPastelStat('dash-stat-1', '#FFFFFF', '#BAE6FD', '#0F172A');
+        setPastelStat('dash-stat-2', '#FFFFFF', '#BAE6FD', '#0F172A');
+        setPastelStat('dash-stat-3', '#FFFFFF', '#BAE6FD', '#0F172A');
+        setPastelStat('dash-stat-4', '#FFFFFF', '#BAE6FD', '#0F172A');
+        document.getElementById('dash-progress-card').style.backgroundColor = "#FFFFFF";
+        document.getElementById('dash-progress-card').style.borderColor = "#BAE6FD";
+        document.getElementById('dash-pct-badge').className = "text-xs font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800";
+        document.getElementById('dash-progress-bar').style.backgroundColor = "#0284C7";
+
+        // Apply styles to 2. Calendar (Light Red: #FFE1E7, #FFC6D1, #F04455)
+        document.getElementById('cal-ratio-tag').textContent = "70% Light Red (#FFE1E7)";
+        document.getElementById('cal-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800";
+        document.getElementById('screen-calendar').style.backgroundColor = "#FFE1E7";
+        document.getElementById('screen-calendar').style.borderColor = "#FFC6D1";
+        document.getElementById('cal-header').style.backgroundColor = "#FFC6D1";
+        document.getElementById('cal-pill-badge').className = "px-3 py-1 rounded-full text-xs font-extrabold inline-block bg-white text-[#F04455] border border-[#FFC3CE] shadow-xs";
+        document.getElementById('cal-subtext').style.color = "#0F172A";
+        document.getElementById('cal-selected-day').style.backgroundColor = "#F04455";
+        document.getElementById('cal-selected-day').style.color = "#FFFFFF";
+        document.querySelectorAll('.cal-dot-accent').forEach(el => el.style.backgroundColor = "#F04455");
+        document.querySelectorAll('.cal-card-border').forEach(el => el.style.borderColor = "#FFC3CE");
+
+        // Apply styles to 3. Progress (Yellow: #FFF1B8, #FFE28A, #FFAD00)
+        document.getElementById('prog-ratio-tag').textContent = "70% Yellow (#FFF1B8)";
+        document.getElementById('prog-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800";
+        document.getElementById('screen-progress').style.backgroundColor = "#FFF1B8";
+        document.getElementById('screen-progress').style.borderColor = "#FFE08A";
+        document.getElementById('prog-header').style.backgroundColor = "#FFE28A";
+        document.getElementById('prog-pill-badge').className = "px-3 py-1 rounded-full text-xs font-extrabold inline-block bg-white text-[#B45309] border border-[#FFE08A] shadow-xs";
+        document.getElementById('prog-subtext').style.color = "#0F172A";
+        document.getElementById('prog-tab-week').className = "flex-1 py-1.5 text-center text-xs font-bold rounded-xl bg-[#FFAD00] text-slate-900 shadow-xs";
+        document.getElementById('prog-svg-ring').setAttribute("stroke", "#FFAD00");
+        document.querySelectorAll('.prog-card-border').forEach(el => el.style.borderColor = "#FFE08A");
+        ['bar-1','bar-2','bar-3','bar-4','bar-5'].forEach(id => {
+          document.getElementById(id).style.backgroundColor = "#FFAD00";
+        });
+
+        // Apply styles to 4. Profile (Sky Blue: #38BDF8, #7DD3FC, #0EA5E9)
+        document.getElementById('prof-ratio-tag').textContent = "70% Sky Blue (#38BDF8)";
+        document.getElementById('prof-ratio-tag').className = "text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800";
+        document.getElementById('screen-profile').style.backgroundColor = "#38BDF8";
+        document.getElementById('screen-profile').style.borderColor = "#0EA5E9";
+        document.getElementById('prof-header').style.backgroundColor = "#7DD3FC";
+        document.getElementById('prof-pill-badge').className = "px-3 py-1 rounded-full text-xs font-extrabold inline-block bg-white text-[#0284C7] border border-[#BAE6FD] shadow-xs";
+        document.getElementById('prof-subtext').style.color = "#0F172A";
+        document.getElementById('prof-user-card').style.backgroundColor = "#FFFFFF";
+        document.getElementById('prof-user-card').style.borderColor = "#BAE6FD";
+        document.getElementById('prof-avatar').style.backgroundColor = "#38BDF8";
+        document.getElementById('prof-avatar').style.color = "#FFFFFF";
+        document.getElementById('prof-edit-btn').style.backgroundColor = "#0EA5E9";
+        document.getElementById('prof-edit-btn').style.borderColor = "#0284C7";
+        document.getElementById('prof-edit-btn').style.color = "#FFFFFF";
+        document.querySelectorAll('.prof-card-border').forEach(el => el.style.borderColor = "#BAE6FD");
+
+        // Nav active colors
+        document.querySelectorAll('.nav-add-btn').forEach(btn => btn.style.backgroundColor = "#0284C7");
+        document.querySelectorAll('.nav-item-active span:last-child').forEach(s => s.style.color = "#0284C7");
+        document.querySelectorAll('.cal-nav-active span:last-child').forEach(s => s.style.color = "#F04455");
+        document.querySelectorAll('.prog-nav-active span:last-child').forEach(s => s.style.color = "#B45309");
+        document.querySelectorAll('.prof-nav-active span:last-child').forEach(s => s.style.color = "#0284C7");
+      }
+
+      if (document.getElementById('view-interactive').classList.contains('flex')) {
+        updateInteractiveContent();
+      }
+    }
+
+    function setPastelStat(id, bg, border, color) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.style.backgroundColor = bg;
+        el.style.borderColor = border;
+        el.style.color = color;
+      }
+    }
+
+    // View Mode Switcher
+    function setViewMode(mode) {
+      const viewGrid = document.getElementById('view-grid');
+      const viewInteractive = document.getElementById('view-interactive');
+      const btnGrid = document.getElementById('btn-view-grid');
+      const btnInteractive = document.getElementById('btn-view-interactive');
+
+      if (mode === 'grid') {
+        viewGrid.classList.remove('hidden');
+        viewInteractive.classList.add('hidden');
+        viewInteractive.classList.remove('flex');
+        btnGrid.className = "px-3 py-2 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm";
+        btnInteractive.className = "px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900";
+      } else {
+        viewGrid.classList.add('hidden');
+        viewInteractive.classList.remove('hidden');
+        viewInteractive.classList.add('flex');
+        btnInteractive.className = "px-3 py-2 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm";
+        btnGrid.className = "px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900";
+        updateInteractiveContent();
+      }
+    }
+
+    // Interactive Phone Content Renderer
+    function setInteractiveTab(tab) {
+      currentInteractiveTab = tab;
+      ['dash','cal','prog','prof'].forEach(t => {
+        const btn = document.getElementById('tab-btn-' + t);
+        if (t === tab) {
+          btn.className = "flex flex-col items-center gap-1 font-bold text-xs text-slate-900";
+        } else {
+          btn.className = "flex flex-col items-center gap-1 text-slate-400 text-xs";
+        }
+      });
+      updateInteractiveContent();
+    }
+
+    function updateInteractiveContent() {
+      const targetScreenId = currentInteractiveTab === 'dash' ? 'screen-dashboard' :
+                             currentInteractiveTab === 'cal' ? 'screen-calendar' :
+                             currentInteractiveTab === 'prog' ? 'screen-progress' : 'screen-profile';
+      
+      const sourceScreen = document.getElementById(targetScreenId);
+      const container = document.getElementById('interactive-content');
+      
+      // Clone header and body (excluding bottom nav)
+      const clonedHeader = sourceScreen.children[0].cloneNode(true);
+      const clonedBody = sourceScreen.children[1].cloneNode(true);
+      
+      container.innerHTML = '';
+      container.style.backgroundColor = sourceScreen.style.backgroundColor;
+      container.appendChild(clonedHeader);
+      container.appendChild(clonedBody);
+    }
+
+    // Initialize Default
+    switchTheme('pastel');
+  </script>
+</body>
+</html>
