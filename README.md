@@ -122,16 +122,49 @@ ToDo/
 
 In your [Vercel Project Dashboard](https://vercel.com/dashboard):
 1. Navigate to **Settings** -> **Environment Variables**.
-2. Add the following two variables (for `Production`, `Preview`, and `Development` environments):
+2. Add the following variables:
 
-| Variable Name | Value | Purpose |
-| :--- | :--- | :--- |
-| `SUPABASE_URL` | `https://<your-project-ref>.supabase.co` | Supabase API URL |
-| `SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1Ni...` | Supabase Public / Anon API Key |
+| Variable Name | Scope | Value | Purpose |
+| :--- | :--- | :--- | :--- |
+| `SUPABASE_URL` | Production, Preview, Development | `https://<your-project-ref>.supabase.co` | Supabase API URL |
+| `SUPABASE_ANON_KEY` | Production, Preview, Development | `eyJhbGciOiJIUzI1Ni...` | Supabase Public / Anon API Key |
+| `APP_URL` | Production | `https://taskly-todo-app-4z1c.vercel.app` | Canonical production URL for auth email redirects |
 
-*(Optional)* You can also set `DATA_STORE=supabase`, though Taskly automatically detects Supabase when deployed on Vercel.
+#### Environment Configuration Guidelines:
+- **Production**: Configure `APP_URL` to your canonical production domain (e.g., `https://taskly-todo-app-4z1c.vercel.app`).
+- **Preview Deployments**: Do not set `APP_URL` for Preview environments. Taskly automatically prioritizes the deployment-specific `VERCEL_URL` (e.g., `https://<branch>-<team>.vercel.app`) on preview branches.
+- **Local Development**: Automatically defaults to `http://localhost:3000`. No `APP_URL` configuration is required.
+- **Security Rule**: Deployed environments must use an absolute `https://` URL. Localhost (`http://localhost:*`, `127.0.0.1`) and plain HTTP URLs are rejected in production to prevent mobile confirmation failure.
 
-### Step 3: (Optional) Migrate Local Tasks to Supabase
+### Step 3: Configure Supabase Authentication Redirect Allowlist
+
+In your [Supabase Dashboard](https://supabase.com/dashboard) under **Authentication** -> **URL Configuration**:
+1. **Site URL**:
+   Set to your canonical production domain:
+   `https://taskly-todo-app-4z1c.vercel.app`
+2. **Redirect URLs (Allowlist)**:
+   Add the following patterns so the browser confirmation success page, Android native deep linking, local development, and deployed previews/production are permitted:
+   - `https://taskly-todo-app-4z1c.vercel.app/auth/confirmed`
+   - `https://*-<team-slug>.vercel.app/auth/confirmed`
+   - `https://taskly-todo-app-4z1c.vercel.app/**`
+   - `http://localhost:3000/auth/confirmed`
+   - `http://localhost:3000/**`
+   - `http://localhost:3000`
+   - `com.taskly.app://auth/callback`
+
+3. **Email Templates (Cross-Context Android APK -> Browser Confirmation)**:
+   Under **Authentication** -> **Email Templates** -> **Confirm signup**:
+   To allow users who registered in the Android APK to verify their email in any mobile or desktop browser without PKCE storage mismatch:
+   ```html
+   <h2>Confirm your signup</h2>
+   <p>Follow this link to confirm your account:</p>
+   <p><a href="{{ .SiteURL }}/auth/confirmed?token_hash={{ .TokenHash }}&type=signup">Confirm your email</a></p>
+   ```
+
+> [!WARNING]
+> Supabase strictly rejects authentication redirects if `emailRedirectTo` is not on this allowlist. Never use localhost for deployed applications.
+
+### Step 4: (Optional) Migrate Local Tasks to Supabase
 
 To copy your initial tasks from `data/todos.json` into your Supabase database:
 
@@ -145,7 +178,7 @@ SUPABASE_URL="https://<ref>.supabase.co" SUPABASE_ANON_KEY="..." npm run migrate
 
 *Note: The migration script checks document IDs before inserting and never overwrites existing records.*
 
-### Step 4: Deploy to Vercel
+### Step 5: Deploy to Vercel
 
 Push your code to your GitHub repository connected to Vercel, or deploy using the Vercel CLI:
 
@@ -166,6 +199,7 @@ Vercel will build the project using [`vercel.json`](vercel.json) and serve API r
 | `DATA_STORE` | `file` | Storage adapter mode: `file`, `supabase`, or `firestore` |
 | `SUPABASE_URL` | None | Supabase project URL (Required in Vercel production) |
 | `SUPABASE_ANON_KEY` | None | Supabase anon key (Required in Vercel production) |
+| `APP_URL` | None (Local: `http://localhost:3000`) | Canonical HTTPS production domain for Supabase email confirmation redirects |
 | `GOOGLE_CLOUD_PROJECT` | `taskly-prod-202611` | GCP Project ID (Only needed if using Cloud Run) |
 
 ---
