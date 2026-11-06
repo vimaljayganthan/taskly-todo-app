@@ -38,7 +38,12 @@ const state = {
   },
   userToken: null,
   authMode: 'login', // 'login' | 'signup'
-  theme: 'light',
+  passwordVisibility: {
+    login: false,
+    signup: false
+  },
+  theme: 'pet',
+  quickNotes: [],
 
   // Active Flow & Navigation
   flow: 'onboarding', // 'main' | 'onboarding'
@@ -610,12 +615,19 @@ if (typeof document !== 'undefined') {
     loadStoredPreferences();
     applyTheme(state.theme);
     setupEventListeners();
+    initAddTaskDateTime();
+    await TasklyNotifications.init();
+    renderQuickNotes();
     await initSupabaseAuth();
     updatePreviewUI();
     if (isLocalPreview() && state.isPreviewSession) {
       initPreviewData();
     } else if (isAuthenticated()) {
       fetchTodos();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', updateCalendarTimelineRope);
     }
 
     // Restore the active screen/route on reload or initial visit
@@ -806,7 +818,30 @@ function loadStoredPreferences() {
       try { localStorage.removeItem('taskly_user_token'); } catch (_) {}
     }
     const storedTheme = localStorage.getItem('taskly_theme');
-    state.theme = (storedTheme === 'day') ? 'day' : 'pastel';
+    if (storedTheme === 'day') {
+      state.theme = 'day';
+    } else if (storedTheme === 'pastel' || storedTheme === 'light') {
+      state.theme = 'pastel';
+    } else {
+      state.theme = 'pet';
+    }
+
+    try {
+      const storedQc = localStorage.getItem('taskly_quick_notes');
+      if (storedQc) {
+        state.quickNotes = JSON.parse(storedQc);
+      } else {
+        state.quickNotes = [
+          { id: 1, text: "Buy cat & dog treats" },
+          { id: 2, text: "Review mobile release v1.4" }
+        ];
+      }
+    } catch (_) {
+      state.quickNotes = [
+        { id: 1, text: "Buy cat & dog treats" },
+        { id: 2, text: "Review mobile release v1.4" }
+      ];
+    }
   } catch (e) {
     console.warn('Could not read localStorage:', e);
   }
@@ -820,8 +855,11 @@ function saveUserPreferences() {
   }
 }
 
-function applyTheme(theme = 'pastel') {
-  const normalized = theme === 'day' ? 'day' : 'pastel';
+function applyTheme(theme = 'pet') {
+  let normalized = 'pet';
+  if (theme === 'day') normalized = 'day';
+  else if (theme === 'pastel' || theme === 'light') normalized = 'pastel';
+  else normalized = 'pet';
   state.theme = normalized;
 
   if (typeof document !== 'undefined') {
@@ -842,20 +880,30 @@ function applyTheme(theme = 'pastel') {
           add: '#38BDF8'
         };
         metaTheme.setAttribute('content', colorMap[activeTab] || '#38BDF8');
-      } else {
+      } else if (normalized === 'pastel') {
         metaTheme.setAttribute('content', '#F5F3FF');
+      } else {
+        metaTheme.setAttribute('content', '#FDF1EA');
       }
     }
 
     // Update profile theme label
     const themeValEl = document.getElementById('theme-display-val');
     if (themeValEl) {
-      themeValEl.textContent = normalized === 'day' ? 'Day Theme ›' : 'Pastel Light ›';
+      if (normalized === 'pet') {
+        themeValEl.textContent = 'Pet Theme ›';
+      } else if (normalized === 'day') {
+        themeValEl.textContent = 'Day Theme ›';
+      } else {
+        themeValEl.textContent = 'Pastel Light ›';
+      }
     }
 
     // Update modal active selection
+    const optPet = document.getElementById('theme-choice-pet');
     const optPastel = document.getElementById('theme-choice-pastel');
     const optDay = document.getElementById('theme-choice-day');
+    if (optPet) optPet.classList.toggle('active', normalized === 'pet');
     if (optPastel) optPastel.classList.toggle('active', normalized === 'pastel');
     if (optDay) optDay.classList.toggle('active', normalized === 'day');
   }
@@ -863,6 +911,1076 @@ function applyTheme(theme = 'pastel') {
   try {
     localStorage.setItem('taskly_theme', normalized);
   } catch (_) {}
+}
+
+// ==========================================================================
+// Time & Deadline Helpers for Notifications
+// ==========================================================================
+// Converts any time string ("18:30", "6:30 PM", "06:30 PM", "9:05 AM") into "HH:mm" 24-hour format
+function formatTimeTo24Hour(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return '';
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+  if (!match) return '';
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const mer = match[3] ? match[3].toUpperCase() : null;
+  if (mer === 'PM' && h < 12) h += 12;
+  if (mer === 'AM' && h === 12) h = 0;
+  return `${String(Math.min(23, Math.max(0, h))).padStart(2, '0')}:${String(Math.min(59, Math.max(0, m))).padStart(2, '0')}`;
+}
+
+// Converts "HH:mm" (or 12h string) into friendly "hh:mm A" (e.g. "06:30 PM")
+function formatTime24To12(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return '';
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+  if (!match) return timeStr;
+  let h = parseInt(match[1], 10);
+  const m = String(match[2]).padStart(2, '0');
+  const mer = match[3] ? match[3].toUpperCase() : (h >= 12 ? 'PM' : 'AM');
+
+  if (!match[3]) {
+    h = h % 12;
+    if (h === 0) h = 12;
+  }
+  return `${String(h).padStart(2, '0')}:${m} ${mer}`;
+}
+
+// Rounds a Date object up to the next 5-minute interval and returns "HH:mm"
+function getRoundedLocalTime(date = new Date(), intervalMinutes = 5) {
+  const d = new Date(date);
+  const ms = 1000 * 60 * intervalMinutes;
+  const rounded = new Date(Math.ceil(d.getTime() / ms) * ms);
+  const hh = String(rounded.getHours()).padStart(2, '0');
+  const mm = String(rounded.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function initAddTaskDateTime() {
+  if (typeof document === 'undefined') return;
+  const dateInput = document.getElementById('add-due-date');
+  const timeInput = document.getElementById('add-time');
+  const timeDisplay = document.getElementById('add-time-display');
+
+  if (dateInput && !dateInput.value) {
+    dateInput.value = state.selectedDateStr || toYmdString(new Date());
+  }
+
+  const roundedTime24 = getRoundedLocalTime();
+  if (timeInput) {
+    if (!timeInput.value) {
+      timeInput.value = roundedTime24;
+    }
+    if (timeDisplay) {
+      timeDisplay.textContent = formatTime24To12(timeInput.value || roundedTime24);
+    }
+  }
+}
+
+function parseTaskDeadline(dueDate, timeStr) {
+  if (!dueDate || typeof dueDate !== 'string') return null;
+  const parts = dueDate.split('-').map(Number);
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return null;
+  const [year, month, day] = parts;
+
+  let hours = 18; // Default fallback if no time specified
+  let minutes = 0;
+
+  if (timeStr && typeof timeStr === 'string') {
+    const trimmed = timeStr.trim();
+    // Match 12-hour or 24-hour format: e.g. "6:00 PM", "06:30 PM", "18:30"
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+    if (match) {
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const mer = match[3] ? match[3].toUpperCase() : null;
+      if (mer === 'PM' && h < 12) h += 12;
+      if (mer === 'AM' && h === 12) h = 0;
+      hours = Math.min(23, Math.max(0, h));
+      minutes = Math.min(59, Math.max(0, m));
+    }
+  }
+
+  const deadline = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  return isNaN(deadline.getTime()) ? null : deadline;
+}
+
+function formatTimeAgo(isoStr) {
+  if (!isoStr) return '';
+  const date = new Date(isoStr);
+  if (isNaN(date.getTime())) return '';
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSec < 60) return 'Just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+  if (diffSec < 172800) return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDateTimeFriendly(dateObj) {
+  if (!dateObj || isNaN(new Date(dateObj).getTime())) return '';
+  const d = new Date(dateObj);
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+
+  const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  if (toYmdString(d) === toYmdString(today)) return `Today, ${timePart}`;
+  if (toYmdString(d) === toYmdString(tomorrow)) return `Tomorrow, ${timePart}`;
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}, ${timePart}`;
+}
+
+// ==========================================================================
+// Taskly Notification System (Native Capacitor & In-App Notification Centre)
+// ==========================================================================
+const TasklyNotifications = {
+  CHANNEL_ID: 'taskly-reminders',
+  STORAGE_KEY_PREFIX: 'taskly_notifications_',
+  SCHEDULE_REGISTRY_KEY: 'taskly_scheduled_reminders',
+
+  isNative() {
+    return Boolean(
+      typeof window !== 'undefined' &&
+      (window.Capacitor?.isNativePlatform?.() ||
+       window.Capacitor?.getPlatform?.() === 'android' ||
+       window.Capacitor?.getPlatform?.() === 'ios') &&
+      window.Capacitor?.Plugins?.LocalNotifications
+    );
+  },
+
+  getPlugin() {
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.LocalNotifications) {
+      return window.Capacitor.Plugins.LocalNotifications;
+    }
+    return null;
+  },
+
+  async init() {
+    this.loadHistory();
+    this.updateBadges();
+
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        await plugin.createChannel({
+          id: this.CHANNEL_ID,
+          name: 'Taskly Reminders & Tasks',
+          description: 'Task deadlines, updates, and Quick Note reminders',
+          importance: 4,
+          visibility: 1,
+          sound: 'beep.wav',
+          vibration: true,
+          lights: true,
+          lightColor: '#F88438'
+        }).catch(err => console.warn('[Notifications] createChannel warning:', err));
+
+        const check = await plugin.checkPermissions().catch(() => ({ display: 'prompt' }));
+        if (check.display !== 'granted') {
+          await plugin.requestPermissions().catch(err => console.warn('[Notifications] requestPermissions error:', err));
+        }
+
+        plugin.addListener('localNotificationActionPerformed', (notificationAction) => {
+          this.handleNotificationTap(notificationAction);
+        });
+
+        plugin.addListener('localNotificationReceived', (notification) => {
+          this.handleNotificationReceived(notification);
+        });
+      } catch (err) {
+        console.warn('[Notifications] Plugin initialization warning:', err);
+      }
+    }
+
+    await this.reconcileScheduledReminders();
+  },
+
+  async requestPermission() {
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        const res = await plugin.requestPermissions();
+        return res.display === 'granted';
+      } catch (e) {
+        return false;
+      }
+    }
+    const NotifAPI = (typeof window !== 'undefined' && window.Notification) || (typeof Notification !== 'undefined' ? Notification : null);
+    if (NotifAPI) {
+      try {
+        const res = await NotifAPI.requestPermission();
+        return res === 'granted';
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  },
+
+  getStableId(sourceId, type = 0) {
+    const str = `${sourceId}_${type}`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = hash & 0x7fffffff;
+    }
+    return hash === 0 ? 1 : hash;
+  },
+
+  getStorageKey() {
+    const userId = (state.user && state.user.id) ? state.user.id : 'guest';
+    return `${this.STORAGE_KEY_PREFIX}${userId}`;
+  },
+
+  loadHistory() {
+    try {
+      if (typeof localStorage === 'undefined') {
+        state.notifications = [];
+        return;
+      }
+      const raw = localStorage.getItem(this.getStorageKey());
+      state.notifications = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(state.notifications)) state.notifications = [];
+    } catch (_) {
+      state.notifications = [];
+    }
+    this.updateBadges();
+  },
+
+  saveHistory() {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.getStorageKey(), JSON.stringify((state.notifications || []).slice(0, 50)));
+      }
+    } catch (_) {}
+    this.updateBadges();
+  },
+
+  addInAppNotification({ title, description, type = 'system', icon = '🔔', sourceId = null, sourceType = null, actionUrl = null }) {
+    const entry = {
+      id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+      title,
+      description,
+      timestamp: new Date().toISOString(),
+      read: false,
+      type,
+      icon,
+      sourceId,
+      sourceType,
+      actionUrl
+    };
+
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    state.notifications.unshift(entry);
+    if (state.notifications.length > 50) state.notifications = state.notifications.slice(0, 50);
+
+    this.saveHistory();
+    this.renderNotificationList();
+
+    if (!this.isNative() && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          body: description,
+          icon: '/logo.png'
+        });
+      } catch (_) {}
+    }
+
+    return entry;
+  },
+
+  async notifyImmediate({ title, description, type, icon = '🔔', sourceId = null, sourceType = null, actionUrl = null }) {
+    this.addInAppNotification({ title, description, type, icon, sourceId, sourceType, actionUrl });
+
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        const id = this.getStableId(`immediate_${Date.now()}`, Math.floor(Math.random() * 1000));
+        await plugin.schedule({
+          notifications: [
+            {
+              id,
+              title,
+              body: description,
+              schedule: { at: new Date(Date.now() + 100) },
+              channelId: this.CHANNEL_ID,
+              smallIcon: 'ic_launcher_round',
+              iconColor: '#F88438',
+              extra: { sourceId, sourceType, actionUrl }
+            }
+          ]
+        });
+      } catch (err) {
+        console.warn('[Notifications] Immediate schedule warning:', err);
+      }
+    }
+  },
+
+  async scheduleTaskDeadlines(task) {
+    if (!task || !task.dueDate || task.completed) return;
+
+    const deadline = parseTaskDeadline(task.dueDate, task.time);
+    if (!deadline || isNaN(deadline.getTime())) return;
+
+    const now = Date.now();
+    const leadMinutes = state.notificationSettings?.reminderLeadMinutes || 30;
+    const leadMs = leadMinutes * 60 * 1000;
+
+    const approachingTime = new Date(deadline.getTime() - leadMs);
+    const reachedTime = deadline;
+    const overdueTime = new Date(deadline.getTime() + (60 * 60 * 1000));
+
+    const plugin = this.getPlugin();
+    const notificationsToSchedule = [];
+
+    // 1. Approaching
+    if (approachingTime.getTime() > now) {
+      const notifId = this.getStableId(task.id, 'approaching');
+      notificationsToSchedule.push({
+        id: notifId,
+        title: 'Task deadline approaching',
+        body: `"${task.title}" is due in ${leadMinutes} minutes`,
+        schedule: { at: approachingTime, allowWhileIdle: true },
+        channelId: this.CHANNEL_ID,
+        smallIcon: 'ic_launcher_round',
+        iconColor: '#F88438',
+        extra: { taskId: task.id, type: 'deadline_approaching' }
+      });
+      this.recordScheduled(notifId, 'task', task.id, 'Task deadline approaching', `"${task.title}" is due in ${leadMinutes} minutes`, approachingTime.toISOString(), 'deadline_approaching');
+    }
+
+    // 2. Reached
+    if (reachedTime.getTime() > now) {
+      const notifId = this.getStableId(task.id, 'reached');
+      notificationsToSchedule.push({
+        id: notifId,
+        title: 'Task deadline reached',
+        body: `"${task.title}" deadline has arrived`,
+        schedule: { at: reachedTime, allowWhileIdle: true },
+        channelId: this.CHANNEL_ID,
+        smallIcon: 'ic_launcher_round',
+        iconColor: '#F88438',
+        extra: { taskId: task.id, type: 'deadline_reached' }
+      });
+      this.recordScheduled(notifId, 'task', task.id, 'Task deadline reached', `"${task.title}" deadline has arrived`, reachedTime.toISOString(), 'deadline_reached');
+    }
+
+    // 3. Overdue
+    if (overdueTime.getTime() > now) {
+      const notifId = this.getStableId(task.id, 'overdue');
+      notificationsToSchedule.push({
+        id: notifId,
+        title: 'Your task is still in progress',
+        body: `"${task.title}" is now past its deadline`,
+        schedule: { at: overdueTime, allowWhileIdle: true },
+        channelId: this.CHANNEL_ID,
+        smallIcon: 'ic_launcher_round',
+        iconColor: '#F88438',
+        extra: { taskId: task.id, type: 'task_overdue' }
+      });
+      this.recordScheduled(notifId, 'task', task.id, 'Your task is still in progress', `"${task.title}" is now past its deadline`, overdueTime.toISOString(), 'task_overdue');
+    }
+
+    if (plugin && notificationsToSchedule.length > 0) {
+      try {
+        await plugin.schedule({ notifications: notificationsToSchedule });
+      } catch (err) {
+        console.warn('[Notifications] Error scheduling task deadlines:', err);
+      }
+    }
+  },
+
+  async cancelTaskReminders(taskId) {
+    if (!taskId) return;
+    const ids = [
+      this.getStableId(taskId, 'approaching'),
+      this.getStableId(taskId, 'reached'),
+      this.getStableId(taskId, 'overdue')
+    ];
+
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        await plugin.cancel({ notifications: ids.map(id => ({ id })) });
+      } catch (_) {}
+    }
+
+    this.removeScheduledBySource('task', taskId);
+  },
+
+  async scheduleQuickNoteReminder(note, reminderDate) {
+    if (!note || !reminderDate) return;
+    const atDate = new Date(reminderDate);
+    if (isNaN(atDate.getTime()) || atDate.getTime() <= Date.now()) return;
+
+    const notifId = this.getStableId(note.id, 'quicknote');
+    const title = 'Taskly – Quick Note Reminder';
+    const body = `You wanted to remember: ${note.text}`;
+
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        await plugin.schedule({
+          notifications: [
+            {
+              id: notifId,
+              title,
+              body,
+              schedule: { at: atDate, allowWhileIdle: true },
+              channelId: this.CHANNEL_ID,
+              smallIcon: 'ic_launcher_round',
+              iconColor: '#F88438',
+              extra: { noteId: note.id, type: 'quick_note_reminder' }
+            }
+          ]
+        });
+      } catch (err) {
+        console.warn('[Notifications] Quick Note reminder schedule warning:', err);
+      }
+    }
+
+    this.recordScheduled(notifId, 'quick_note', note.id, title, body, atDate.toISOString(), 'quick_note_reminder');
+  },
+
+  async cancelQuickNoteReminder(noteId) {
+    if (!noteId) return;
+    const notifId = this.getStableId(noteId, 'quicknote');
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        await plugin.cancel({ notifications: [{ id: notifId }] });
+      } catch (_) {}
+    }
+    this.removeScheduledBySource('quick_note', noteId);
+  },
+
+  getScheduledRegistry() {
+    try {
+      if (typeof localStorage === 'undefined') return [];
+      const raw = localStorage.getItem(this.SCHEDULE_REGISTRY_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (_) {
+      return [];
+    }
+  },
+
+  saveScheduledRegistry(registry) {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.SCHEDULE_REGISTRY_KEY, JSON.stringify(registry));
+      }
+    } catch (_) {}
+  },
+
+  recordScheduled(id, sourceType, sourceId, title, body, scheduledAt, type) {
+    const reg = this.getScheduledRegistry().filter(r => r.id !== id);
+    reg.push({ id, sourceType, sourceId, title, body, scheduledAt, type });
+    this.saveScheduledRegistry(reg);
+  },
+
+  removeScheduledBySource(sourceType, sourceId) {
+    const reg = this.getScheduledRegistry().filter(r => !(r.sourceType === sourceType && String(r.sourceId) === String(sourceId)));
+    this.saveScheduledRegistry(reg);
+  },
+
+  async reconcileScheduledReminders() {
+    const reg = this.getScheduledRegistry();
+    const now = Date.now();
+    const activeTasks = state.todos || [];
+    const activeNotes = state.quickNotes || [];
+
+    const surviving = [];
+    const idsToCancel = [];
+
+    for (const item of reg) {
+      if (item.sourceType === 'task') {
+        const task = activeTasks.find(t => String(t.id) === String(item.sourceId));
+        if (!task || task.completed) {
+          idsToCancel.push(item.id);
+          continue;
+        }
+      } else if (item.sourceType === 'quick_note') {
+        const note = activeNotes.find(n => String(n.id) === String(item.sourceId));
+        if (!note || !note.reminderDate) {
+          idsToCancel.push(item.id);
+          continue;
+        }
+      }
+
+      if (new Date(item.scheduledAt).getTime() <= now) {
+        this.addInAppNotification({
+          title: item.title,
+          description: item.body,
+          type: item.type,
+          icon: item.sourceType === 'quick_note' ? '📌' : '⏰',
+          sourceId: item.sourceId,
+          sourceType: item.sourceType
+        });
+      } else {
+        surviving.push(item);
+      }
+    }
+
+    if (idsToCancel.length > 0) {
+      const plugin = this.getPlugin();
+      if (plugin) {
+        try {
+          await plugin.cancel({ notifications: idsToCancel.map(id => ({ id })) });
+        } catch (_) {}
+      }
+    }
+
+    this.saveScheduledRegistry(surviving);
+
+    for (const task of activeTasks) {
+      if (!task.completed && task.dueDate) {
+        const hasScheduled = surviving.some(r => r.sourceType === 'task' && String(r.sourceId) === String(task.id));
+        if (!hasScheduled) {
+          await this.scheduleTaskDeadlines(task);
+        }
+      }
+    }
+
+    for (const note of activeNotes) {
+      if (note.reminderDate && new Date(note.reminderDate).getTime() > now) {
+        const hasScheduled = surviving.some(r => r.sourceType === 'quick_note' && String(r.sourceId) === String(note.id));
+        if (!hasScheduled) {
+          await this.scheduleQuickNoteReminder(note, note.reminderDate);
+        }
+      }
+    }
+  },
+
+  updateBadges() {
+    if (typeof document === 'undefined') return;
+    const unread = (state.notifications || []).filter(n => !n.read).length;
+    state.unreadNotificationsCount = unread;
+
+    const profileDot = document.getElementById('profile-notif-dot');
+    const homeDot = document.getElementById('home-notif-dot');
+    const homeCount = document.getElementById('home-notif-count');
+    const desktopDot = document.getElementById('desktop-notif-dot');
+    const modalBadge = document.getElementById('notif-modal-unread-count');
+
+    if (profileDot) profileDot.style.display = unread > 0 ? 'block' : 'none';
+    if (homeDot) homeDot.style.display = unread > 0 ? 'block' : 'none';
+    if (desktopDot) desktopDot.style.display = unread > 0 ? 'block' : 'none';
+    if (homeCount) {
+      homeCount.textContent = unread > 99 ? '99+' : String(unread);
+      homeCount.style.display = unread > 0 ? 'inline-flex' : 'none';
+    }
+    if (modalBadge) {
+      modalBadge.textContent = unread === 1 ? '1 unread' : `${unread} unread`;
+      modalBadge.style.display = unread > 0 ? 'inline-block' : 'none';
+    }
+  },
+
+  markAsRead(id) {
+    const notif = (state.notifications || []).find(n => n.id === id);
+    if (notif) {
+      notif.read = true;
+      this.saveHistory();
+      this.renderNotificationList();
+    }
+  },
+
+  markAllAsRead() {
+    (state.notifications || []).forEach(n => { n.read = true; });
+    this.saveHistory();
+    this.renderNotificationList();
+  },
+
+  clearHistory() {
+    state.notifications = [];
+    this.saveHistory();
+    this.renderNotificationList();
+  },
+
+  deleteNotification(id) {
+    state.notifications = (state.notifications || []).filter(n => n.id !== id);
+    this.saveHistory();
+    this.renderNotificationList();
+  },
+
+  handleNotificationTap(action) {
+    const extra = action?.notification?.extra || {};
+    if (extra.taskId) {
+      showMainFlow('home');
+      setTimeout(() => {
+        const el = document.querySelector(`[data-task-id="${extra.taskId}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.transition = 'outline 0.3s';
+          el.style.outline = '2px solid #F88438';
+          setTimeout(() => { el.style.outline = 'none'; }, 2000);
+        }
+      }, 300);
+    } else if (extra.noteId) {
+      showMainFlow('home');
+      setTimeout(() => {
+        const sec = document.getElementById('section-quick-notes');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
+  },
+
+  handleNotificationReceived(notification) {
+    const extra = notification?.extra || {};
+    this.addInAppNotification({
+      title: notification.title || 'Notification',
+      description: notification.body || '',
+      type: extra.type || 'system',
+      icon: extra.sourceType === 'quick_note' ? '📌' : '⏰',
+      sourceId: extra.taskId || extra.noteId,
+      sourceType: extra.sourceType
+    });
+  },
+
+  renderNotificationList() {
+    if (typeof document === 'undefined') return;
+    const listEl = document.getElementById('notifications-list');
+    const emptyEl = document.getElementById('notifications-empty');
+    if (!listEl) return;
+
+    const notifs = state.notifications || [];
+    if (notifs.length === 0) {
+      listEl.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = 'flex';
+      return;
+    }
+
+    if (emptyEl) emptyEl.style.display = 'none';
+    listEl.innerHTML = notifs.map(n => {
+      const timeAgo = formatTimeAgo(n.timestamp);
+      return `
+        <div class="notif-card ${n.read ? 'read' : 'unread'}" data-notif-id="${n.id}" onclick="TasklyNotifications.handleItemClick('${n.id}')">
+          <div class="notif-icon-col">${n.icon || '🔔'}</div>
+          <div class="notif-body-col">
+            <div class="notif-head-row">
+              <span class="notif-title">${escapeHtml(n.title)}</span>
+              <span class="notif-time">${escapeHtml(timeAgo)}</span>
+            </div>
+            <div class="notif-desc">${escapeHtml(n.description)}</div>
+          </div>
+          <div class="notif-actions-col">
+            ${!n.read ? `<span class="notif-unread-dot" title="Unread"></span>` : ''}
+            <button type="button" class="btn-notif-dismiss" onclick="event.stopPropagation(); TasklyNotifications.deleteNotification('${n.id}')" title="Dismiss">×</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+
+  handleItemClick(id) {
+    const notif = (state.notifications || []).find(n => n.id === id);
+    if (!notif) return;
+    this.markAsRead(id);
+    this.closeModal();
+
+    if (notif.sourceType === 'task' || notif.type?.includes('task') || notif.type?.includes('deadline')) {
+      showMainFlow('home');
+      if (notif.sourceId) {
+        setTimeout(() => {
+          const el = document.querySelector(`[data-task-id="${notif.sourceId}"]`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
+    } else if (notif.sourceType === 'quick_note' || notif.type === 'quick_note_reminder') {
+      showMainFlow('home');
+      setTimeout(() => {
+        const sec = document.getElementById('section-quick-notes');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    }
+  },
+
+  openModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-notifications');
+    if (modal) {
+      this.renderNotificationList();
+      modal.classList.add('active');
+    }
+  },
+
+  closeModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-notifications');
+    if (modal) modal.classList.remove('active');
+  }
+};
+
+// ==========================================================================
+// Quick Notes & Quick Share Reminders Management (Part 5)
+// ==========================================================================
+function saveQuickNote() {
+  if (typeof document === 'undefined') return;
+  const input = document.getElementById('qc-input-text');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  const newNote = {
+    id: Date.now(),
+    text,
+    createdAt: new Date().toISOString(),
+    reminderDate: null,
+    reminderTimeStr: null
+  };
+
+  if (!Array.isArray(state.quickNotes)) state.quickNotes = [];
+  state.quickNotes.unshift(newNote);
+  input.value = '';
+  saveQuickNotesToStorage();
+  renderQuickNotes();
+
+  // Prompt the user to set a reminder
+  openQuickReminderPromptModal(newNote.id);
+}
+
+function saveQuickNotesToStorage() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('taskly_quick_notes', JSON.stringify(state.quickNotes));
+    }
+  } catch (_) {}
+}
+
+function deleteQuickNote(id) {
+  if (!Array.isArray(state.quickNotes)) return;
+  const noteToDelete = state.quickNotes.find(n => n.id === id);
+  TasklyNotifications.cancelQuickNoteReminder(id);
+  state.quickNotes = state.quickNotes.filter(n => n.id !== id);
+  saveQuickNotesToStorage();
+  renderQuickNotes();
+  if (noteToDelete) {
+    TasklyNotifications.addInAppNotification({
+      title: 'Quick Note Removed',
+      description: `"${noteToDelete.text}" was dismissed.`,
+      type: 'quick_note_deleted',
+      icon: '🗑️',
+      sourceId: id,
+      sourceType: 'quick_note'
+    });
+  }
+}
+
+function renderQuickNotes() {
+  if (typeof document === 'undefined') return;
+  const listEl = document.getElementById('qc-notes-list');
+  const countBadge = document.getElementById('quick-notes-counter-badge');
+  if (!listEl) return;
+
+  const notes = state.quickNotes || [];
+  if (countBadge) {
+    countBadge.textContent = notes.length === 1 ? '1 Note' : `${notes.length} Notes`;
+  }
+
+  if (notes.length === 0) {
+    listEl.innerHTML = `
+      <div class="qn-empty-card">
+        <div class="qn-empty-icon">📝</div>
+        <div class="qn-empty-title">No quick notes yet</div>
+        <div class="qn-empty-sub">Jot down quick thoughts or reminders using Quick Capture above!</div>
+      </div>
+    `;
+    return;
+  }
+
+  listEl.innerHTML = notes.map(n => {
+    const createdStr = n.createdAt ? formatTimeAgo(n.createdAt) : 'Recently';
+    const isScheduled = Boolean(n.reminderDate && new Date(n.reminderDate).getTime() > Date.now());
+    return `
+      <div class="quick-note-card" data-note-id="${n.id}">
+        <div class="qn-card-top">
+          <span class="qn-date-tag">${escapeHtml(createdStr)}</span>
+          <div class="qn-card-actions">
+            <button type="button" class="btn-qn-action btn-qn-edit" onclick="openEditQuickNoteModal(${n.id})" title="Edit Note">✎</button>
+            <button type="button" class="btn-qn-action btn-qn-delete" onclick="deleteQuickNote(${n.id})" title="Delete Note">×</button>
+          </div>
+        </div>
+        <div class="qn-content-text">${escapeHtml(n.text)}</div>
+        <div class="qn-card-bottom">
+          ${isScheduled ? `
+            <div class="qn-reminder-pill scheduled" onclick="openEditQuickNoteModal(${n.id})" title="Edit reminder">
+              <span class="qn-pill-icon">⏰</span>
+              <span>${escapeHtml(n.reminderTimeStr || 'Reminder Scheduled')}</span>
+            </div>
+          ` : `
+            <div class="qn-reminder-pill empty" onclick="openQuickReminderPicker(${n.id})" title="Set reminder">
+              <span class="qn-pill-icon">🔔</span>
+              <span>Set Reminder</span>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openQuickReminderPromptModal(noteId) {
+  if (typeof document === 'undefined') return;
+  const note = (state.quickNotes || []).find(n => n.id === noteId);
+  if (!note) return;
+  state.pendingReminderNoteId = noteId;
+
+  const previewEl = document.getElementById('prompt-note-preview-text');
+  if (previewEl) previewEl.textContent = `"${note.text}"`;
+
+  const modal = document.getElementById('modal-quick-reminder-prompt');
+  if (modal) modal.classList.add('active');
+}
+
+function closeQuickReminderPromptModal() {
+  if (typeof document === 'undefined') return;
+  const modal = document.getElementById('modal-quick-reminder-prompt');
+  if (modal) modal.classList.remove('active');
+  state.pendingReminderNoteId = null;
+}
+
+function openQuickReminderPicker(noteId) {
+  if (typeof document === 'undefined') return;
+  const note = (state.quickNotes || []).find(n => n.id === noteId);
+  if (!note) return;
+
+  const targetIdInput = document.getElementById('reminder-target-note-id');
+  const dateInput = document.getElementById('reminder-picker-date');
+  const timeInput = document.getElementById('reminder-picker-time');
+
+  if (targetIdInput) targetIdInput.value = noteId;
+
+  const now = new Date();
+  if (dateInput) dateInput.value = toYmdString(now);
+  const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
+  const hh = String(nextHour.getHours()).padStart(2, '0');
+  const mm = String(nextHour.getMinutes()).padStart(2, '0');
+  if (timeInput) timeInput.value = `${hh}:${mm}`;
+
+  const modal = document.getElementById('modal-quick-reminder-picker');
+  if (modal) modal.classList.add('active');
+}
+
+function closeQuickReminderPicker() {
+  if (typeof document === 'undefined') return;
+  const modal = document.getElementById('modal-quick-reminder-picker');
+  if (modal) modal.classList.remove('active');
+}
+
+async function handleConfirmQuickReminder(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (typeof document === 'undefined') return;
+
+  const targetIdInput = document.getElementById('reminder-target-note-id');
+  const dateInput = document.getElementById('reminder-picker-date');
+  const timeInput = document.getElementById('reminder-picker-time');
+
+  const noteId = targetIdInput ? Number(targetIdInput.value) : null;
+  const note = (state.quickNotes || []).find(n => n.id === noteId);
+  if (!note || !dateInput || !timeInput) return;
+
+  const dateVal = dateInput.value;
+  const timeVal = timeInput.value;
+  if (!dateVal || !timeVal) {
+    alert('Please choose both a date and time.');
+    return;
+  }
+
+  const [year, month, day] = dateVal.split('-').map(Number);
+  const [hours, minutes] = timeVal.split(':').map(Number);
+  const targetDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+  if (isNaN(targetDate.getTime()) || targetDate.getTime() <= Date.now()) {
+    alert('Please choose a time in the future.');
+    return;
+  }
+
+  note.reminderDate = targetDate.toISOString();
+  note.reminderTimeStr = formatDateTimeFriendly(targetDate);
+  saveQuickNotesToStorage();
+  renderQuickNotes();
+
+  await TasklyNotifications.scheduleQuickNoteReminder(note, targetDate);
+
+  TasklyNotifications.addInAppNotification({
+    title: 'Taskly – Quick Note Reminder',
+    description: `Reminder scheduled for: "${note.text}" at ${note.reminderTimeStr}`,
+    type: 'quick_note_reminder',
+    icon: '⏰',
+    sourceId: note.id,
+    sourceType: 'quick_note'
+  });
+
+  closeQuickReminderPicker();
+}
+
+function openEditQuickNoteModal(noteId) {
+  if (typeof document === 'undefined') return;
+  const note = (state.quickNotes || []).find(n => n.id === noteId);
+  if (!note) return;
+
+  const idInput = document.getElementById('edit-quick-note-id');
+  const textInput = document.getElementById('edit-quick-note-text');
+  const dateInput = document.getElementById('edit-quick-note-date');
+  const timeInput = document.getElementById('edit-quick-note-time');
+  const btnRemove = document.getElementById('btn-remove-note-reminder');
+
+  if (idInput) idInput.value = note.id;
+  if (textInput) textInput.value = note.text;
+
+  if (note.reminderDate) {
+    const d = new Date(note.reminderDate);
+    if (!isNaN(d.getTime())) {
+      if (dateInput) dateInput.value = toYmdString(d);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mm = String(d.getMinutes()).padStart(2, '0');
+      if (timeInput) timeInput.value = `${hh}:${mm}`;
+    }
+    if (btnRemove) btnRemove.style.display = 'inline';
+  } else {
+    if (dateInput) dateInput.value = '';
+    if (timeInput) timeInput.value = '';
+    if (btnRemove) btnRemove.style.display = 'none';
+  }
+
+  const modal = document.getElementById('modal-edit-quick-note');
+  if (modal) modal.classList.add('active');
+}
+
+function closeEditQuickNoteModal() {
+  if (typeof document === 'undefined') return;
+  const modal = document.getElementById('modal-edit-quick-note');
+  if (modal) modal.classList.remove('active');
+}
+
+async function handleSaveEditQuickNote(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (typeof document === 'undefined') return;
+
+  const idInput = document.getElementById('edit-quick-note-id');
+  const textInput = document.getElementById('edit-quick-note-text');
+  const dateInput = document.getElementById('edit-quick-note-date');
+  const timeInput = document.getElementById('edit-quick-note-time');
+
+  const noteId = idInput ? Number(idInput.value) : null;
+  const note = (state.quickNotes || []).find(n => n.id === noteId);
+  if (!note || !textInput) return;
+
+  const newText = textInput.value.trim();
+  if (!newText) return;
+  note.text = newText;
+
+  const dateVal = dateInput ? dateInput.value : '';
+  const timeVal = timeInput ? timeInput.value : '';
+
+  if (dateVal && timeVal) {
+    const [year, month, day] = dateVal.split('-').map(Number);
+    const [hours, minutes] = timeVal.split(':').map(Number);
+    const targetDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+    if (!isNaN(targetDate.getTime()) && targetDate.getTime() > Date.now()) {
+      note.reminderDate = targetDate.toISOString();
+      note.reminderTimeStr = formatDateTimeFriendly(targetDate);
+      await TasklyNotifications.cancelQuickNoteReminder(note.id);
+      await TasklyNotifications.scheduleQuickNoteReminder(note, targetDate);
+    }
+  }
+
+  saveQuickNotesToStorage();
+  renderQuickNotes();
+  closeEditQuickNoteModal();
+}
+
+function handleRemoveNoteReminder() {
+  if (typeof document === 'undefined') return;
+  const idInput = document.getElementById('edit-quick-note-id');
+  const noteId = idInput ? Number(idInput.value) : null;
+  const note = (state.quickNotes || []).find(n => n.id === noteId);
+  if (!note) return;
+
+  TasklyNotifications.cancelQuickNoteReminder(note.id);
+  note.reminderDate = null;
+  note.reminderTimeStr = null;
+
+  const dateInput = document.getElementById('edit-quick-note-date');
+  const timeInput = document.getElementById('edit-quick-note-time');
+  const btnRemove = document.getElementById('btn-remove-note-reminder');
+  if (dateInput) dateInput.value = '';
+  if (timeInput) timeInput.value = '';
+  if (btnRemove) btnRemove.style.display = 'none';
+
+  saveQuickNotesToStorage();
+  renderQuickNotes();
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.TasklyNotifications = TasklyNotifications;
+  globalThis.parseTaskDeadline = parseTaskDeadline;
+  globalThis.formatTimeAgo = formatTimeAgo;
+  globalThis.formatDateTimeFriendly = formatDateTimeFriendly;
+  globalThis.saveQuickNote = saveQuickNote;
+  globalThis.deleteQuickNote = deleteQuickNote;
+  globalThis.renderQuickNotes = renderQuickNotes;
+  globalThis.openQuickReminderPromptModal = openQuickReminderPromptModal;
+  globalThis.closeQuickReminderPromptModal = closeQuickReminderPromptModal;
+  globalThis.openQuickReminderPicker = openQuickReminderPicker;
+  globalThis.closeQuickReminderPicker = closeQuickReminderPicker;
+  globalThis.handleConfirmQuickReminder = handleConfirmQuickReminder;
+  globalThis.openEditQuickNoteModal = openEditQuickNoteModal;
+  globalThis.closeEditQuickNoteModal = closeEditQuickNoteModal;
+  globalThis.handleSaveEditQuickNote = handleSaveEditQuickNote;
+}
+
+// Dynamic Calendar Timeline Connection to Cat Mascot
+function updateCalendarTimelineRope() {
+  if (typeof document === 'undefined') return;
+  const container = document.getElementById('calendar-timeline-container');
+  const svgLine = document.getElementById('timeline-svg-rope-line');
+  const catBox = document.querySelector('.timeline-cat-mascot-box');
+  if (
+    !container ||
+    !svgLine ||
+    !catBox ||
+    typeof container.getBoundingClientRect !== 'function' ||
+    typeof catBox.getBoundingClientRect !== 'function' ||
+    typeof container.querySelectorAll !== 'function' ||
+    typeof container.querySelector !== 'function'
+  ) return;
+
+  const containerRect = container.getBoundingClientRect();
+  const dots = container.querySelectorAll('.timeline-marker-dot');
+  const catRect = catBox.getBoundingClientRect();
+  const spineCols = container.querySelectorAll('.timeline-spine-col');
+  if (spineCols.length === 0) return;
+
+  const firstSpineRect = spineCols[0].getBoundingClientRect();
+  const x = Math.round(firstSpineRect.left - containerRect.left + (firstSpineRect.width / 2));
+
+  let y1 = 0;
+  if (dots.length > 0) {
+    const firstDotRect = dots[0].getBoundingClientRect();
+    y1 = Math.round(firstDotRect.top - containerRect.top + (firstDotRect.height / 2));
+  } else {
+    const emptyRow = container.querySelector('.timeline-empty-card');
+    if (emptyRow) {
+      const emptyRect = emptyRow.getBoundingClientRect();
+      y1 = Math.round(emptyRect.top - containerRect.top + 20);
+    } else {
+      y1 = 20;
+    }
+  }
+
+  // Y2 touches top contour of sleeping cat with zero gap (accounting for transparent PNG padding)
+  const y2 = Math.round(catRect.top - containerRect.top + (catRect.height * 0.362));
+
+  svgLine.setAttribute('x1', x);
+  svgLine.setAttribute('y1', y1);
+  svgLine.setAttribute('x2', x);
+  svgLine.setAttribute('y2', Math.max(y1, y2));
+  svgLine.style.display = 'block';
+
+  if (typeof window !== 'undefined' && window.ResizeObserver && !container.__observed) {
+    container.__observed = true;
+    new ResizeObserver(() => updateCalendarTimelineRope()).observe(container);
+  }
 }
 
 // ==========================================================================
@@ -998,6 +2116,13 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
 
   // Update views
   renderAll();
+  if (tabName === 'add') {
+    initAddTaskDateTime();
+  }
+  if (tabName === 'calendar') {
+    setTimeout(updateCalendarTimelineRope, 20);
+    setTimeout(updateCalendarTimelineRope, 220);
+  }
 }
 
 function updateCarouselSlide(idx) {
@@ -1067,6 +2192,7 @@ async function fetchTodos() {
     if (!res.ok) throw new Error('Failed to load tasks');
     state.todos = await res.json();
     renderAll();
+    TasklyNotifications.reconcileScheduledReminders();
   } catch (err) {
     console.warn('[Fetch Warning]:', err.message);
     state.todos = state.todos || [];
@@ -1097,22 +2223,41 @@ async function handleAddTask(e) {
   const activeCategoryBtn = document.querySelector('#add-category-selector .pill-opt.active');
   const category = activeCategoryBtn ? activeCategoryBtn.dataset.val : 'Personal';
 
+  const selectedDate = (dateInput && dateInput.value) ? dateInput.value : toYmdString(new Date());
+  const rawTime = (timeInput && timeInput.value) ? timeInput.value.trim() : getRoundedLocalTime();
+  const formattedTime = formatTime24To12(rawTime);
+
+  const deadlineCheck = parseTaskDeadline(selectedDate, formattedTime);
+  if (!deadlineCheck || isNaN(deadlineCheck.getTime())) {
+    alert('Please enter a valid date and time.');
+    return;
+  }
+
   const payload = {
     title,
-    description: descInput.value.trim(),
-    dueDate: dateInput.value || toYmdString(new Date()),
-    time: timeInput.value.trim() || '6:00 PM',
+    description: descInput ? descInput.value.trim() : '',
+    dueDate: selectedDate,
+    time: formattedTime,
     priority,
     category,
-    reminder: reminderInput.checked
+    reminder: reminderInput ? reminderInput.checked : true
   };
 
   if (isLocalPreview() && state.isPreviewSession) {
     const created = Object.assign({ id: 'preview-' + Date.now(), completed: false }, payload);
     state.todos.unshift(created);
+    TasklyNotifications.notifyImmediate({
+      title: 'New task created',
+      description: `"${created.title}" has been added to your tasks.`,
+      type: 'task_created',
+      icon: '📝',
+      sourceId: created.id,
+      sourceType: 'task'
+    });
+    TasklyNotifications.scheduleTaskDeadlines(created);
     titleInput.value = '';
-    descInput.value = '';
-    timeInput.value = '';
+    if (descInput) descInput.value = '';
+    initAddTaskDateTime();
     const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
     state.previousTab = null;
     showMainFlow(targetTab);
@@ -1146,11 +2291,20 @@ async function handleAddTask(e) {
 
     const created = await res.json();
     state.todos.unshift(created);
+    TasklyNotifications.notifyImmediate({
+      title: 'New task created',
+      description: `"${created.title}" has been added to your tasks.`,
+      type: 'task_created',
+      icon: '📝',
+      sourceId: created.id,
+      sourceType: 'task'
+    });
+    TasklyNotifications.scheduleTaskDeadlines(created);
 
     // Reset Form
     titleInput.value = '';
-    descInput.value = '';
-    timeInput.value = '';
+    if (descInput) descInput.value = '';
+    initAddTaskDateTime();
 
     // Route back to calendar or home
     const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
@@ -1170,6 +2324,12 @@ async function handleToggleComplete(id) {
   const nextStatus = !task.completed;
   task.completed = nextStatus;
   renderAll();
+
+  if (nextStatus) {
+    TasklyNotifications.cancelTaskReminders(id);
+  } else {
+    TasklyNotifications.scheduleTaskDeadlines(task);
+  }
 
   if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
 
@@ -1201,8 +2361,20 @@ async function handleDeleteTask(event, id) {
     event.stopPropagation();
   }
   if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) return;
+  const taskToDelete = state.todos.find(t => t.id === id);
+  const taskTitle = taskToDelete ? taskToDelete.title : 'Task';
+  TasklyNotifications.cancelTaskReminders(id);
   state.todos = state.todos.filter(t => t.id !== id);
   renderAll();
+
+  TasklyNotifications.notifyImmediate({
+    title: 'Task deleted',
+    description: `"${taskTitle}" has been deleted.`,
+    type: 'task_deleted',
+    icon: '🗑️',
+    sourceId: id,
+    sourceType: 'task'
+  });
 
   if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
 
@@ -1225,6 +2397,99 @@ async function handleDeleteTask(event, id) {
   } catch (err) {
     console.warn('Delete task warning:', err);
   }
+}
+
+async function updateTask(id, updates) {
+  if (!id || !updates) return null;
+  const task = state.todos.find(t => t.id === id);
+  if (!task) return null;
+
+  // Apply updates locally
+  Object.assign(task, updates);
+  renderAll();
+
+  TasklyNotifications.cancelTaskReminders(task.id);
+  if (!task.completed) {
+    TasklyNotifications.scheduleTaskDeadlines(task);
+  }
+
+  TasklyNotifications.notifyImmediate({
+    title: 'Task updated successfully',
+    description: `"${task.title}" details have been updated.`,
+    type: 'task_updated',
+    icon: '✏️',
+    sourceId: task.id,
+    sourceType: 'task'
+  });
+
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return task;
+
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${state.userToken}`
+      },
+      body: JSON.stringify(updates)
+    });
+    if (res.status === 401) {
+      handleAuthExpiry();
+      return task;
+    }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+      return task;
+    }
+    if (res.ok) {
+      const updated = await res.json();
+      Object.assign(task, updated);
+      renderAll();
+      return updated;
+    }
+  } catch (err) {
+    console.warn('Update task warning:', err);
+  }
+  return task;
+}
+
+function handleOpenEditTaskModal(event, id) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  const task = state.todos.find(t => t.id === id);
+  if (!task) return;
+
+  const modal = document.getElementById('modal-edit-task');
+  const idInput = document.getElementById('edit-task-id');
+  const titleInput = document.getElementById('edit-task-title');
+  const descInput = document.getElementById('edit-task-desc');
+  const dateInput = document.getElementById('edit-task-date');
+  const priorityInput = document.getElementById('edit-task-priority');
+  const catInput = document.getElementById('edit-task-category');
+
+  if (idInput) idInput.value = task.id;
+  if (titleInput) titleInput.value = task.title || '';
+  if (descInput) descInput.value = task.description || '';
+  if (dateInput) dateInput.value = task.dueDate || '';
+  if (priorityInput) priorityInput.value = task.priority || 'Medium';
+  if (catInput) catInput.value = task.category || 'Personal';
+
+  const timeInput = document.getElementById('edit-task-time');
+  const timeDisplay = document.getElementById('edit-task-time-display');
+  if (timeInput) {
+    const time24 = task.time ? formatTimeTo24Hour(task.time) : getRoundedLocalTime();
+    timeInput.value = time24;
+    if (timeDisplay) {
+      timeDisplay.textContent = formatTime24To12(time24);
+    }
+  }
+
+  if (modal) modal.classList.add('active');
+}
+
+function closeEditTaskModal() {
+  const modal = document.getElementById('modal-edit-task');
+  if (modal) modal.classList.remove('active');
 }
 
 async function handleClearCompleted() {
@@ -1264,6 +2529,7 @@ async function handleClearCompleted() {
 function renderAll() {
   updatePreviewUI();
   renderHome();
+  renderQuickNotes();
   renderCalendar();
   renderAnalytics();
   renderProfile();
@@ -1274,7 +2540,7 @@ function renderHome() {
   // Personalized Greeting
   const greetingEl = document.getElementById('greeting-title');
   if (greetingEl) {
-    greetingEl.textContent = `Hello, ${state.user.name || 'vimal'} 👋`;
+    greetingEl.textContent = `Hello, ${state.user.name || 'User'} 👋`;
   }
 
   // Counts
@@ -1388,6 +2654,12 @@ function renderTaskItemHtml(t) {
       </div>
       <div class="task-item-right">
         <span class="badge-pill ${priorityClass}">${badgeLabel}</span>
+        <button type="button" class="btn-task-edit" onclick="handleOpenEditTaskModal(event, '${t.id}')" title="Edit Task" aria-label="Edit Task">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"></path>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+          </svg>
+        </button>
         <button type="button" class="btn-task-delete" onclick="handleDeleteTask(event, '${t.id}')" title="Delete Task" aria-label="Delete Task">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -1437,29 +2709,53 @@ function getTimelineCategoryIcon(task) {
 function renderCalendarTimelineItemHtml(t) {
   const isChecked = Boolean(t.completed);
   const timeDisplay = t.time ? escapeHtml(t.time) : 'All Day';
-  const nodeIcon = getTimelineCategoryIcon(t);
-
   let shortTime = 'All Day';
   if (t.time) {
     const timeMatch = t.time.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
     shortTime = timeMatch ? timeMatch[1] : t.time;
   }
+  const isGreen = isChecked;
+  const cardClass = isGreen ? 'tl-card-green' : (t.priority === 'Medium' ? 'tl-card-yellow' : 'tl-card-peach');
+  const dotColor = isChecked ? 'var(--mint)' : (t.priority === 'High' ? 'var(--brand-red)' : (t.priority === 'Medium' ? 'var(--brand-yellow)' : 'var(--primary)'));
+  const iconBg = isChecked ? '#10B981' : (t.priority === 'Medium' ? '#FFAD00' : 'var(--primary)');
+  const pct = isChecked ? '100%' : '0%';
+  const nodeIcon = getTimelineCategoryIcon(t);
 
   return `
-    <div class="cal-timeline-item ${isChecked ? 'completed' : ''}" data-id="${t.id}">
-      <div class="timeline-left">
-        <span class="timeline-time-label">${shortTime}</span>
-        <div class="timeline-node-circle" title="${escapeHtml(t.category || 'Task')}">
-          ${nodeIcon}
+    <div class="timeline-event-row cal-timeline-item ${isChecked ? 'completed' : ''}" data-id="${t.id}" data-task-id="${t.id}">
+      <div class="timeline-time-col">
+        <span class="timeline-time-text timeline-time-label">${shortTime}</span>
+      </div>
+      <div class="timeline-spine-col">
+        <div class="timeline-marker-dot ${isChecked ? 'checked' : ''}" style="background: ${dotColor};"></div>
+      </div>
+      <div class="timeline-card ${cardClass}">
+        <div class="tl-card-main">
+          <div class="tl-icon-circle timeline-node-circle" style="background: ${iconBg}; color: #fff; width: 28px; height: 28px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;" title="${escapeHtml(t.category || 'Task')}">
+            ${nodeIcon}
+          </div>
+          <div class="tl-text-box timeline-content">
+            <div class="tl-title timeline-title" style="${isChecked ? 'color: #065F46;' : ''}">${escapeHtml(t.title)}</div>
+            <div class="tl-sub timeline-sub" style="${isChecked ? 'color: #047857;' : ''}">${escapeHtml(t.description || timeDisplay)}</div>
+            <div class="tl-badge-row">
+              <span class="priority-badge-pill p-${(t.priority || 'medium').toLowerCase()}">${escapeHtml(t.priority || 'Medium')}</span>
+              ${t.category ? `<span class="tl-category-tag">${escapeHtml(t.category)}</span>` : ''}
+            </div>
+          </div>
         </div>
-        <div class="timeline-content">
-          <span class="timeline-sub">${timeDisplay}</span>
-          <div class="timeline-title">${escapeHtml(t.title)}</div>
+        <div class="tl-status-col">
+          <span class="tl-percent" style="${isChecked ? 'color: #047857;' : ''}">${pct}</span>
+          <button type="button" class="tl-check-round timeline-status-btn ${isChecked ? 'checked' : ''}" onclick="handleToggleComplete('${t.id}')" aria-label="Toggle task completed">
+            ${isChecked ? '✓' : ''}
+          </button>
+          <button type="button" class="btn-task-edit" onclick="handleOpenEditTaskModal(event, '${t.id}')" title="Edit Task" aria-label="Edit Task" style="margin-top: 4px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+          </button>
         </div>
       </div>
-      <button type="button" class="timeline-status-btn ${isChecked ? 'checked' : ''}" onclick="handleToggleComplete('${t.id}')" aria-label="Toggle task completed">
-        ${isChecked ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-      </button>
     </div>
   `;
 }
@@ -1587,10 +2883,14 @@ function renderCalendar() {
   if (taskListContainer) {
     if (tasksOnDate.length === 0) {
       taskListContainer.innerHTML = `
-        <div class="empty-state" style="text-align: center; padding: 28px 16px; color: var(--text-secondary);">
-          <div style="font-size: 2rem; margin-bottom: 8px;">🗓️</div>
-          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">No tasks scheduled for this day</div>
-          <p style="font-size: 0.8125rem; margin: 0;">Tap the red + button below to create a task for this date.</p>
+        <div class="timeline-event-row timeline-empty-row">
+          <div class="timeline-time-col"></div>
+          <div class="timeline-spine-col"></div>
+          <div class="timeline-empty-card">
+            <div style="font-size: 20px; margin-bottom: 4px;">🎉</div>
+            <div style="font-weight: 800; font-size: 13px; color: var(--text-primary); margin-bottom: 4px;">No tasks scheduled for this day</div>
+            <p style="font-size: 0.8125rem; margin: 0; color: var(--text-muted);">Tap the red + button below to create a task for this date.</p>
+          </div>
         </div>
       `;
     } else {
@@ -1614,6 +2914,8 @@ function renderCalendar() {
       undatedSection.style.display = 'none';
     }
   }
+
+  setTimeout(updateCalendarTimelineRope, 20);
 }
 
 function selectCalendarDate(dateStr) {
@@ -1645,30 +2947,345 @@ function toggleCalendarViewMode() {
   renderCalendar();
 }
 
-// 3. Analytics Render
-function renderAnalytics() {
-  const total = state.todos.length;
-  const completed = state.todos.filter(t => t.completed).length;
-  const pending = total - completed;
+// ==========================================================================
+// 3. Analytics & Progress Engine (Fully Dynamic Real-Data Driven)
+// ==========================================================================
 
-  // Overdue: dueDate < today and not completed
+function calculateStreaks(todos) {
+  if (!Array.isArray(todos) || todos.length === 0) {
+    return { currentStreak: 0, bestStreak: 0, completedDates: new Set() };
+  }
+
+  const completedDates = new Set();
+  todos.forEach(t => {
+    if (t.completed) {
+      const d = t.completedAt ? toYmdString(t.completedAt) : (t.dueDate || toYmdString(t.createdAt || new Date()));
+      if (d) completedDates.add(d);
+    }
+  });
+
+  if (completedDates.size === 0) {
+    return { currentStreak: 0, bestStreak: 0, completedDates };
+  }
+
   const todayStr = toYmdString(new Date());
-  const overdue = state.todos.filter(t => !t.completed && t.dueDate && t.dueDate < todayStr).length;
+  const yesterdayObj = new Date();
+  yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+  const yesterdayStr = toYmdString(yesterdayObj);
 
+  let currentStreak = 0;
+  if (completedDates.has(todayStr)) {
+    let checkDate = new Date();
+    while (true) {
+      const dateStr = toYmdString(checkDate);
+      if (completedDates.has(dateStr)) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  } else if (completedDates.has(yesterdayStr)) {
+    // If completed yesterday, today's streak is preserved as active (waiting for today's tasks)
+    let checkDate = new Date(yesterdayObj);
+    while (true) {
+      const dateStr = toYmdString(checkDate);
+      if (completedDates.has(dateStr)) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // All-time best streak
+  const sortedDates = Array.from(completedDates).sort();
+  let bestStreak = 0;
+  let runningStreak = 0;
+  let prevDateObj = null;
+
+  sortedDates.forEach(dateStr => {
+    const parts = dateStr.split('-').map(Number);
+    const curDateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+    if (!prevDateObj) {
+      runningStreak = 1;
+    } else {
+      const diffTime = curDateObj.getTime() - prevDateObj.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays === 1) {
+        runningStreak++;
+      } else if (diffDays > 1) {
+        runningStreak = 1;
+      }
+    }
+    prevDateObj = curDateObj;
+    if (runningStreak > bestStreak) {
+      bestStreak = runningStreak;
+    }
+  });
+
+  bestStreak = Math.max(bestStreak, currentStreak);
+  return { currentStreak, bestStreak, completedDates };
+}
+
+function getWeeklyOverview(todos, refDate = new Date()) {
+  const d = new Date(refDate);
+  const dayOfWeek = d.getDay(); // 0 is Sun, 1 is Mon
+  const mondayOffset = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - mondayOffset);
+
+  const daysLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const weekDays = [];
+  const todayStr = toYmdString(new Date());
+
+  for (let i = 0; i < 7; i++) {
+    const cur = new Date(monday);
+    cur.setDate(monday.getDate() + i);
+    const dateStr = toYmdString(cur);
+
+    const dayTasks = (todos || []).filter(t => t.dueDate === dateStr);
+    const completed = dayTasks.filter(t => t.completed).length;
+    const pending = dayTasks.filter(t => !t.completed).length;
+    const isToday = (dateStr === todayStr);
+
+    weekDays.push({
+      dateStr,
+      label: daysLabels[i],
+      completed,
+      pending,
+      total: dayTasks.length,
+      isToday,
+      isDone: completed > 0
+    });
+  }
+  return weekDays;
+}
+
+function getProductivityLast7Days(todos, refDate = new Date()) {
+  const result = [];
+  const daysLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const today = new Date(refDate);
+
+  for (let i = 6; i >= 0; i--) {
+    const cur = new Date(today);
+    cur.setDate(today.getDate() - i);
+    const dateStr = toYmdString(cur);
+    const dayLabel = daysLabels[cur.getDay()];
+
+    const dayTasks = (todos || []).filter(t => t.dueDate === dateStr);
+    const completed = dayTasks.filter(t => t.completed).length;
+    const pending = dayTasks.filter(t => !t.completed).length;
+
+    result.push({
+      dateStr,
+      dayLabel,
+      completed,
+      pending,
+      total: dayTasks.length
+    });
+  }
+  return result;
+}
+
+function getCategoryBreakdown(todos) {
+  const standardCats = ['Project', 'Work', 'Study', 'Personal'];
+  const metaMap = {
+    'Project': { tag: 'PR', color: '#0D9488', bg: '#CCFBF1' },
+    'Work': { tag: 'WO', color: '#3B82F6', bg: '#DBEAFE' },
+    'Study': { tag: 'ST', color: '#F97316', bg: '#FFEDD5' },
+    'Personal': { tag: 'PE', color: '#8B5CF6', bg: '#EDE9FE' }
+  };
+
+  const customCats = new Set();
+  (todos || []).forEach(t => {
+    if (t.category && !standardCats.some(c => c.toLowerCase() === t.category.toLowerCase())) {
+      customCats.add(t.category);
+    }
+  });
+
+  const allCategories = [...standardCats, ...Array.from(customCats)];
+
+  return allCategories.map(cat => {
+    const matched = (todos || []).filter(t => (t.category || 'Personal').toLowerCase() === cat.toLowerCase());
+    const total = matched.length;
+    const completed = matched.filter(t => t.completed).length;
+    const pending = total - completed;
+    const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+    const meta = metaMap[cat] || {
+      tag: cat.slice(0, 2).toUpperCase(),
+      color: '#64748B',
+      bg: '#F1F5F9'
+    };
+
+    return {
+      category: cat,
+      tag: meta.tag,
+      color: meta.color,
+      bg: meta.bg,
+      total,
+      completed,
+      pending,
+      percent
+    };
+  });
+}
+
+function filterTodosByTimeframe(todos, timeframe = 'week') {
+  if (!Array.isArray(todos) || todos.length === 0) return [];
+  if (timeframe === 'all') return [...todos];
+
+  const today = new Date();
+  const todayStr = toYmdString(today);
+
+  if (timeframe === 'week') {
+    const dayOfWeek = today.getDay(); // 0 is Sun, 1 is Mon
+    const mondayOffset = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - mondayOffset);
+    const monStr = toYmdString(monday);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const sunStr = toYmdString(sunday);
+
+    return todos.filter(t => {
+      const d = t.dueDate || toYmdString(t.createdAt || today);
+      return d >= monStr && d <= sunStr;
+    });
+  }
+
+  if (timeframe === 'month') {
+    const curYearMonth = todayStr.slice(0, 7); // 'YYYY-MM'
+    return todos.filter(t => {
+      const d = t.dueDate || toYmdString(t.createdAt || today);
+      return d.startsWith(curYearMonth);
+    });
+  }
+
+  return [...todos];
+}
+
+function calculateRadarPoints(overallPercent, catBreakdown, onTimePercent) {
+  const cx = 170;
+  const cy = 120;
+  const maxR = 64;
+  const minR = 10;
+
+  const getCatRate = (name) => {
+    const item = (catBreakdown || []).find(c => c.category.toLowerCase() === name.toLowerCase());
+    return item ? (item.percent / 100) : 0;
+  };
+
+  const rates = [
+    Math.min(1, Math.max(0, (overallPercent || 0) / 100)),
+    getCatRate('Project'),
+    getCatRate('Work'),
+    getCatRate('Study'),
+    getCatRate('Personal'),
+    Math.min(1, Math.max(0, (onTimePercent || 0) / 100))
+  ];
+
+  return rates.map((p, i) => {
+    const r = Math.round(minR + (p * (maxR - minR)));
+    const angle = (-Math.PI / 2) + (i * (Math.PI / 3));
+    const x = Math.round(cx + r * Math.cos(angle));
+    const y = Math.round(cy + r * Math.sin(angle));
+    return { x, y, r, p };
+  });
+}
+
+function renderAnalytics() {
+  const allTodos = state.todos || [];
+  const todayStr = toYmdString(new Date());
+
+  // 1. Dynamic Streak Calculation (based on full task history)
+  const streakData = calculateStreaks(allTodos);
+  const streakDaysEl = document.getElementById('streak-days-display');
+  const streakCurrentStatEl = document.getElementById('streak-current-stat');
+  const streakBestStatEl = document.getElementById('streak-best-stat');
+
+  if (streakDaysEl) {
+    const s = streakData.currentStreak;
+    streakDaysEl.textContent = `${s} day${s === 1 ? '' : 's'}`;
+  }
+  if (streakCurrentStatEl) {
+    streakCurrentStatEl.textContent = `🔥 ${streakData.currentStreak} day streak`;
+  }
+  if (streakBestStatEl) {
+    streakBestStatEl.textContent = `🏆 Best: ${streakData.bestStreak} day${streakData.bestStreak === 1 ? '' : 's'}`;
+  }
+
+  // 2. Weekly Overview (Mon-Sun task completion row)
+  const streakRowEl = document.getElementById('streak-7days-row');
+  if (streakRowEl) {
+    const weekDays = getWeeklyOverview(allTodos);
+    streakRowEl.innerHTML = weekDays.map(d => {
+      let circleClass = 'streak-day-circle';
+      let content = '';
+      if (d.completed > 0) {
+        circleClass += ' done';
+        content = '✓';
+      } else if (d.pending > 0) {
+        circleClass += ' pending';
+        content = '○';
+      }
+      if (d.isToday) {
+        circleClass += ' today';
+      }
+      const titleAttr = `${d.label} (${d.dateStr}): ${d.completed} completed, ${d.pending} pending`;
+      return `
+        <div class="streak-day-item" title="${escapeHtml(titleAttr)}">
+          <span class="streak-day-label" style="${d.isToday ? 'color: var(--primary); font-weight: 800;' : ''}">${d.label}</span>
+          <div class="${circleClass}">${content}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 3. Timeframe Filtering & Overall Productivity Stats
+  const timeframe = state.analyticsTimeframe || 'week';
+  const filteredTodos = filterTodosByTimeframe(allTodos, timeframe);
+
+  const total = filteredTodos.length;
+  const completed = filteredTodos.filter(t => t.completed).length;
+  const pending = total - completed;
+  const overdue = filteredTodos.filter(t => !t.completed && t.dueDate && t.dueDate < todayStr).length;
   const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
 
   const ringFill = document.getElementById('analytics-ring-fill');
   const percentEl = document.getElementById('analytics-percent');
   const summaryEl = document.getElementById('analytics-tasks-summary');
+  const trendEl = document.getElementById('analytics-trend-badge');
 
   if (ringFill) {
     const offset = 251.2 - (251.2 * percent / 100);
     ringFill.style.strokeDashoffset = offset;
   }
   if (percentEl) percentEl.textContent = `${percent}%`;
-  if (summaryEl) summaryEl.textContent = `${completed} of ${total} tasks completed`;
+  if (summaryEl) {
+    if (total === 0) {
+      summaryEl.textContent = 'No tasks in this timeframe';
+    } else {
+      summaryEl.textContent = `${completed} of ${total} tasks completed`;
+    }
+  }
+  if (trendEl) {
+    if (total === 0) {
+      trendEl.textContent = 'Add tasks to start 🚀';
+    } else if (percent === 100) {
+      trendEl.textContent = '100% All tasks done! 🌟';
+    } else if (percent >= 75) {
+      trendEl.textContent = 'Excellent velocity ⚡';
+    } else if (percent >= 50) {
+      trendEl.textContent = `${percent}% On track ✨`;
+    } else {
+      trendEl.textContent = `${percent}% In progress`;
+    }
+  }
 
-  // Overview counts
+  // Task Overview Numbers
   const compVal = document.getElementById('overview-completed-val');
   const pendVal = document.getElementById('overview-pending-val');
   const overVal = document.getElementById('overview-overdue-val');
@@ -1676,25 +3293,65 @@ function renderAnalytics() {
   if (pendVal) pendVal.textContent = pending;
   if (overVal) overVal.textContent = overdue;
 
-  // 7-Day Bar Chart
+  // 4. Productivity (Last 7 Days) Bar Chart
   const barContainer = document.getElementById('barchart-bars');
   if (barContainer) {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    // Distribute completion counts across past 7 days for visual analytics
-    const counts = [3, 5, 2, 6, 4, 1, 2];
-    const maxVal = Math.max(...counts, 6);
+    const last7 = getProductivityLast7Days(allTodos);
+    const maxVal = Math.max(...last7.map(d => d.completed), 1);
 
-    barContainer.innerHTML = days.map((day, i) => {
-      const heightPercent = Math.round((counts[i] / maxVal) * 100);
+    barContainer.innerHTML = last7.map((dayItem) => {
+      const heightPercent = dayItem.completed === 0 ? 0 : Math.round((dayItem.completed / maxVal) * 100);
+      const titleAttr = `${dayItem.dayLabel} (${dayItem.dateStr}): ${dayItem.completed} completed, ${dayItem.pending} pending`;
       return `
-        <div class="bar-col">
+        <div class="bar-col" title="${escapeHtml(titleAttr)}">
           <div class="bar-tube">
             <div class="bar-fill" style="height: ${heightPercent}%;"></div>
           </div>
-          <span class="bar-label">${day}</span>
+          <span class="bar-label">${dayItem.dayLabel}</span>
         </div>
       `;
     }).join('');
+  }
+
+  // 5. Category-wise Task Completion Breakdown
+  const catListEl = document.getElementById('progress-category-list');
+  const catBreakdown = getCategoryBreakdown(filteredTodos);
+  if (catListEl) {
+    const activeCategories = catBreakdown.filter(c => c.total > 0);
+    if (activeCategories.length === 0) {
+      catListEl.innerHTML = `
+        <div class="progress-empty-state">
+          No tasks found for this period. Create tasks and assign categories (Project, Work, Study, Personal) to see your breakdown.
+        </div>
+      `;
+    } else {
+      catListEl.innerHTML = activeCategories.map(c => `
+        <div class="learning-item-card">
+          <div class="learning-tag-box" style="background: ${c.color};">${c.tag}</div>
+          <div class="learning-info-col">
+            <div class="learning-title">${escapeHtml(c.category)}</div>
+            <div class="learning-meta">${c.completed} of ${c.total} completed • ${c.percent}%</div>
+          </div>
+          <div class="circle-progress-mini" style="border: 3px solid ${c.color}; border-radius: 9999px;">${c.percent}%</div>
+        </div>
+      `).join('');
+    }
+  }
+
+  // 6. Productivity & Category Dynamic Radar Chart
+  const radarPolygon = document.getElementById('radar-polygon');
+  const radarPointsGroup = document.getElementById('radar-points');
+  if (radarPolygon) {
+    const onTimeRate = total === 0 ? 0 : Math.round(((total - overdue) / total) * 100);
+    const radarPts = calculateRadarPoints(percent, catBreakdown, onTimeRate);
+    const pointsStr = radarPts.map(p => `${p.x},${p.y}`).join(' ');
+    radarPolygon.setAttribute('points', pointsStr);
+
+    if (radarPointsGroup) {
+      radarPointsGroup.innerHTML = radarPts.map(p => `
+        <circle cx="${p.x}" cy="${p.y}" r="4" fill="#F88438"/>
+      `).join('');
+    }
   }
 }
 
@@ -1715,6 +3372,144 @@ function renderProfile() {
   const profileAvatarCircle = document.getElementById('profile-avatar-circle');
   if (profileAvatarCircle) {
     profileAvatarCircle.innerHTML = `<span style="font-weight: 800; font-size: 1.5rem;">${currentName.charAt(0).toUpperCase()}</span>`;
+  }
+}
+
+// ==========================================================================
+// Authentication Password Visibility Toggle
+// ==========================================================================
+function updatePasswordVisibilityUI(visible, mode) {
+  const currentMode = mode || state.authMode || 'login';
+  const passwordInput = document.getElementById('setup-password');
+  const toggleBtn = document.getElementById('btn-toggle-password');
+
+  if (passwordInput) {
+    const currentVal = passwordInput.value;
+    passwordInput.type = visible ? 'text' : 'password';
+    passwordInput.value = currentVal;
+  }
+
+  if (toggleBtn) {
+    const label = visible ? 'Hide password' : 'Show password';
+    toggleBtn.setAttribute('aria-label', label);
+    toggleBtn.setAttribute('title', label);
+    const eyeIcon = toggleBtn.querySelector('.icon-eye');
+    const eyeOffIcon = toggleBtn.querySelector('.icon-eye-off');
+    if (eyeIcon && eyeOffIcon) {
+      eyeIcon.style.display = visible ? 'none' : 'block';
+      eyeOffIcon.style.display = visible ? 'block' : 'none';
+    }
+  }
+}
+
+function togglePasswordVisibility(target, btnEl) {
+  let mode = state.authMode || 'login';
+  let input = document.getElementById('setup-password');
+  let btn = btnEl || document.getElementById('btn-toggle-password');
+
+  if (typeof target === 'string') {
+    if (target === 'login' || target === 'signup') {
+      mode = target;
+      input = document.getElementById('setup-password');
+      btn = btn || document.getElementById('btn-toggle-password');
+    } else {
+      const el = document.getElementById(target);
+      if (el) {
+        input = el;
+        if (target.includes('signin') || target.includes('login')) mode = 'login';
+        else if (target.includes('signup')) mode = 'signup';
+      }
+    }
+  } else if (target && target.tagName) {
+    input = target;
+  }
+
+  if (!input) return false;
+
+  const currentVal = input.value;
+  const isCurrentlyVisible = input.type === 'text';
+  const newVisible = !isCurrentlyVisible;
+
+  if (state.passwordVisibility) {
+    state.passwordVisibility[mode] = newVisible;
+  }
+
+  input.type = newVisible ? 'text' : 'password';
+  input.value = currentVal;
+
+  if (btn) {
+    const label = newVisible ? 'Hide password' : 'Show password';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+    const eyeIcon = btn.querySelector('.icon-eye');
+    const eyeOffIcon = btn.querySelector('.icon-eye-off');
+    if (eyeIcon && eyeOffIcon) {
+      eyeIcon.style.display = newVisible ? 'none' : 'block';
+      eyeOffIcon.style.display = newVisible ? 'block' : 'none';
+    } else {
+      btn.innerHTML = newVisible ? `
+        <svg class="icon-eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+        </svg>
+      ` : `
+        <svg class="icon-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      `;
+    }
+  }
+
+  return newVisible;
+}
+
+if (typeof window !== 'undefined') {
+  window.togglePasswordVisibility = togglePasswordVisibility;
+  window.togglePassVisibility = togglePasswordVisibility;
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode;
+  const authErrorMsg = document.getElementById('auth-error-msg');
+  if (authErrorMsg) {
+    authErrorMsg.style.display = 'none';
+    authErrorMsg.textContent = '';
+  }
+  const authPetImg = document.getElementById('auth-pet-img');
+  if (authPetImg) {
+    authPetImg.src = mode === 'signup' ? '/assets/pets/signup_cat_wave.png' : '/assets/pets/signin_dog_sleep.png';
+    authPetImg.alt = mode === 'signup' ? 'Waving Cat Mascot' : 'Sleeping Dog Mascot';
+  }
+
+  // Sync password visibility to this mode's independent setting
+  const targetVisibility = state.passwordVisibility ? (state.passwordVisibility[mode] || false) : false;
+  updatePasswordVisibilityUI(targetVisibility, mode);
+
+  const btnToggleLogin = document.getElementById('btn-toggle-login');
+  const btnToggleSignup = document.getElementById('btn-toggle-signup');
+  const fieldWrapName = document.getElementById('field-wrap-name');
+  const fieldWrapAge = document.getElementById('field-wrap-age');
+  const authTitle = document.getElementById('auth-title');
+  const authSubtitle = document.getElementById('auth-subtitle');
+  const btnAuthText = document.getElementById('btn-auth-text');
+
+  if (mode === 'signup') {
+    btnToggleSignup?.classList.add('active');
+    btnToggleLogin?.classList.remove('active');
+    if (fieldWrapName) fieldWrapName.style.display = 'flex';
+    if (fieldWrapAge) fieldWrapAge.style.display = 'flex';
+    if (authTitle) authTitle.innerHTML = 'Create your<br>account ✨';
+    if (authSubtitle) authSubtitle.textContent = 'Start organizing your tasks with Taskly.';
+    if (btnAuthText) btnAuthText.textContent = 'Create Account';
+  } else {
+    btnToggleLogin?.classList.add('active');
+    btnToggleSignup?.classList.remove('active');
+    if (fieldWrapName) fieldWrapName.style.display = 'none';
+    if (fieldWrapAge) fieldWrapAge.style.display = 'none';
+    if (authTitle) authTitle.innerHTML = 'Welcome back<br>to Taskly ✨';
+    if (authSubtitle) authSubtitle.textContent = 'Sign in to access and sync your tasks.';
+    if (btnAuthText) btnAuthText.textContent = 'Sign In';
   }
 }
 
@@ -1769,40 +3564,35 @@ function setupEventListeners() {
   // Auth Mode Toggles (Sign In vs Create Account)
   const btnToggleLogin = document.getElementById('btn-toggle-login');
   const btnToggleSignup = document.getElementById('btn-toggle-signup');
-  const fieldWrapName = document.getElementById('field-wrap-name');
-  const fieldWrapAge = document.getElementById('field-wrap-age');
-  const authTitle = document.getElementById('auth-title');
-  const authSubtitle = document.getElementById('auth-subtitle');
-  const btnAuthText = document.getElementById('btn-auth-text');
-  const authErrorMsg = document.getElementById('auth-error-msg');
-
-  function setAuthMode(mode) {
-    state.authMode = mode;
-    if (authErrorMsg) {
-      authErrorMsg.style.display = 'none';
-      authErrorMsg.textContent = '';
-    }
-    if (mode === 'signup') {
-      btnToggleSignup?.classList.add('active');
-      btnToggleLogin?.classList.remove('active');
-      if (fieldWrapName) fieldWrapName.style.display = 'flex';
-      if (fieldWrapAge) fieldWrapAge.style.display = 'flex';
-      if (authTitle) authTitle.innerHTML = 'Create your<br>account ✨';
-      if (authSubtitle) authSubtitle.textContent = 'Start organizing your tasks with Taskly.';
-      if (btnAuthText) btnAuthText.textContent = 'Create Account';
-    } else {
-      btnToggleLogin?.classList.add('active');
-      btnToggleSignup?.classList.remove('active');
-      if (fieldWrapName) fieldWrapName.style.display = 'none';
-      if (fieldWrapAge) fieldWrapAge.style.display = 'none';
-      if (authTitle) authTitle.innerHTML = 'Welcome back<br>to Taskly ✨';
-      if (authSubtitle) authSubtitle.textContent = 'Sign in to access and sync your tasks.';
-      if (btnAuthText) btnAuthText.textContent = 'Sign In';
-    }
-  }
 
   if (btnToggleLogin) btnToggleLogin.addEventListener('click', () => setAuthMode('login'));
   if (btnToggleSignup) btnToggleSignup.addEventListener('click', () => setAuthMode('signup'));
+
+  // Password Visibility Toggle Listeners
+  const btnTogglePassword = document.getElementById('btn-toggle-password');
+  if (btnTogglePassword) {
+    btnTogglePassword.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePasswordVisibility();
+    });
+  }
+  const btnToggleSigninPass = document.getElementById('btn-toggle-signin-pass');
+  if (btnToggleSigninPass) {
+    btnToggleSigninPass.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePasswordVisibility('input-signin-pass', btnToggleSigninPass);
+    });
+  }
+  const btnToggleSignupPass = document.getElementById('btn-toggle-signup-pass');
+  if (btnToggleSignupPass) {
+    btnToggleSignupPass.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePasswordVisibility('input-signup-pass', btnToggleSignupPass);
+    });
+  }
 
   // Screen 3: Profile Setup Form / Supabase Auth
   const formProfileSetup = document.getElementById('form-profile-setup');
@@ -1814,6 +3604,7 @@ function setupEventListeners() {
       const nameInput = document.getElementById('setup-name');
       const ageInput = document.getElementById('setup-age');
       const submitBtn = document.getElementById('btn-auth-submit');
+      const authErrorMsg = document.getElementById('auth-error-msg');
 
       const email = emailInput?.value.trim() || '';
       const password = passwordInput?.value || '';
@@ -2056,8 +3847,24 @@ function setupEventListeners() {
   const btnDeskTheme = document.getElementById('btn-desktop-theme');
   if (btnDeskTheme) {
     btnDeskTheme.addEventListener('click', () => {
-      const nextTheme = state.theme === 'day' ? 'pastel' : 'day';
+      const cycle = { pet: 'day', day: 'pastel', pastel: 'pet' };
+      const nextTheme = cycle[state.theme] || 'pet';
       applyTheme(nextTheme);
+    });
+  }
+
+  // Quick Capture in Home Dashboard
+  const btnQcSave = document.getElementById('btn-qc-save');
+  const qcInput = document.getElementById('qc-input-text');
+  if (btnQcSave) {
+    btnQcSave.addEventListener('click', saveQuickNote);
+  }
+  if (qcInput) {
+    qcInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveQuickNote();
+      }
     });
   }
 
@@ -2173,10 +3980,99 @@ function setupEventListeners() {
 
   if (btnProfileNotif) {
     btnProfileNotif.addEventListener('click', () => {
-      const notifDot = document.getElementById('profile-notif-dot');
-      if (notifDot) notifDot.style.display = 'none';
-      alert("You're all caught up! No unread notifications.");
+      TasklyNotifications.openModal();
     });
+  }
+  const btnHomeNotif = document.getElementById('btn-home-notifications');
+  if (btnHomeNotif) {
+    btnHomeNotif.addEventListener('click', () => {
+      TasklyNotifications.openModal();
+    });
+  }
+  const btnDesktopNotif = document.getElementById('btn-desktop-notifications');
+  if (btnDesktopNotif) {
+    btnDesktopNotif.addEventListener('click', () => {
+      TasklyNotifications.openModal();
+    });
+  }
+  const btnCloseNotif = document.getElementById('btn-close-notifications');
+  if (btnCloseNotif) {
+    btnCloseNotif.addEventListener('click', () => {
+      TasklyNotifications.closeModal();
+    });
+  }
+  const modalNotifs = document.getElementById('modal-notifications');
+  if (modalNotifs) {
+    modalNotifs.addEventListener('click', (e) => {
+      if (e.target === modalNotifs) TasklyNotifications.closeModal();
+    });
+  }
+  const btnNotifMarkAll = document.getElementById('btn-notif-mark-all');
+  if (btnNotifMarkAll) {
+    btnNotifMarkAll.addEventListener('click', () => {
+      TasklyNotifications.markAllAsRead();
+    });
+  }
+  const btnNotifClearAll = document.getElementById('btn-notif-clear-all');
+  if (btnNotifClearAll) {
+    btnNotifClearAll.addEventListener('click', () => {
+      TasklyNotifications.clearHistory();
+    });
+  }
+
+  // Quick Reminder Prompt & Picker Listeners (Part 5)
+  const btnPromptReminderNo = document.getElementById('btn-prompt-reminder-no');
+  if (btnPromptReminderNo) {
+    btnPromptReminderNo.addEventListener('click', closeQuickReminderPromptModal);
+  }
+  const btnPromptReminderYes = document.getElementById('btn-prompt-reminder-yes');
+  if (btnPromptReminderYes) {
+    btnPromptReminderYes.addEventListener('click', () => {
+      const noteId = state.pendingReminderNoteId;
+      closeQuickReminderPromptModal();
+      openQuickReminderPicker(noteId);
+    });
+  }
+  const modalPrompt = document.getElementById('modal-quick-reminder-prompt');
+  if (modalPrompt) {
+    modalPrompt.addEventListener('click', (e) => {
+      if (e.target === modalPrompt) closeQuickReminderPromptModal();
+    });
+  }
+
+  const btnClosePicker = document.getElementById('btn-close-reminder-picker');
+  const btnCancelPicker = document.getElementById('btn-cancel-reminder-picker');
+  if (btnClosePicker) btnClosePicker.addEventListener('click', closeQuickReminderPicker);
+  if (btnCancelPicker) btnCancelPicker.addEventListener('click', closeQuickReminderPicker);
+  const modalPicker = document.getElementById('modal-quick-reminder-picker');
+  if (modalPicker) {
+    modalPicker.addEventListener('click', (e) => {
+      if (e.target === modalPicker) closeQuickReminderPicker();
+    });
+  }
+  const formPicker = document.getElementById('form-quick-reminder-picker');
+  if (formPicker) {
+    formPicker.addEventListener('submit', handleConfirmQuickReminder);
+  }
+
+  // Edit Quick Note Modal Listeners
+  const btnCloseEditQn = document.getElementById('btn-close-edit-quick-note');
+  const btnCancelEditQn = document.getElementById('btn-cancel-edit-quick-note');
+  if (btnCloseEditQn) btnCloseEditQn.addEventListener('click', closeEditQuickNoteModal);
+  if (btnCancelEditQn) btnCancelEditQn.addEventListener('click', closeEditQuickNoteModal);
+  const modalEditQn = document.getElementById('modal-edit-quick-note');
+  if (modalEditQn) {
+    modalEditQn.addEventListener('click', (e) => {
+      if (e.target === modalEditQn) closeEditQuickNoteModal();
+    });
+  }
+  const formEditQn = document.getElementById('form-edit-quick-note');
+  if (formEditQn) {
+    formEditQn.addEventListener('submit', handleSaveEditQuickNote);
+  }
+  const btnRemoveNoteReminder = document.getElementById('btn-remove-note-reminder');
+  if (btnRemoveNoteReminder) {
+    btnRemoveNoteReminder.addEventListener('click', handleRemoveNoteReminder);
   }
 
   if (menuFaq) {
@@ -2215,6 +4111,31 @@ function setupEventListeners() {
       btn.classList.add('active');
     });
   });
+
+  // Live Time Display Synchronizers (Add Task & Edit Task)
+  const addTimeInput = document.getElementById('add-time');
+  const addTimeDisplay = document.getElementById('add-time-display');
+  if (addTimeInput && addTimeDisplay) {
+    const syncAddTime = () => {
+      if (addTimeInput.value) {
+        addTimeDisplay.textContent = formatTime24To12(addTimeInput.value);
+      }
+    };
+    addTimeInput.addEventListener('input', syncAddTime);
+    addTimeInput.addEventListener('change', syncAddTime);
+  }
+
+  const editTimeInput = document.getElementById('edit-task-time');
+  const editTimeDisplay = document.getElementById('edit-task-time-display');
+  if (editTimeInput && editTimeDisplay) {
+    const syncEditTime = () => {
+      if (editTimeInput.value) {
+        editTimeDisplay.textContent = formatTime24To12(editTimeInput.value);
+      }
+    };
+    editTimeInput.addEventListener('input', syncEditTime);
+    editTimeInput.addEventListener('change', syncEditTime);
+  }
 
   // Progress Timeframe Segmented Control
   document.querySelectorAll('#progress-timeframe-filter .seg-btn').forEach(btn => {
@@ -2264,10 +4185,55 @@ function setupEventListeners() {
     });
   }
 
+  // Task Edit Modal Event Handlers
+  const btnCloseEditTask = document.getElementById('btn-close-edit-task');
+  const btnCancelEditTask = document.getElementById('btn-cancel-edit-task');
+  const formEditTask = document.getElementById('form-edit-task');
+  const modalEditTask = document.getElementById('modal-edit-task');
+
+  if (btnCloseEditTask) btnCloseEditTask.addEventListener('click', closeEditTaskModal);
+  if (btnCancelEditTask) btnCancelEditTask.addEventListener('click', closeEditTaskModal);
+  if (modalEditTask) {
+    modalEditTask.addEventListener('click', (e) => {
+      if (e.target === modalEditTask) closeEditTaskModal();
+    });
+  }
+  if (formEditTask) {
+    formEditTask.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const idInput = document.getElementById('edit-task-id');
+      const titleInput = document.getElementById('edit-task-title');
+      const descInput = document.getElementById('edit-task-desc');
+      const dateInput = document.getElementById('edit-task-date');
+      const priorityInput = document.getElementById('edit-task-priority');
+      const catInput = document.getElementById('edit-task-category');
+
+      const id = idInput ? idInput.value : null;
+      const title = titleInput ? titleInput.value.trim() : '';
+      if (!id || !title) return;
+
+      const timeInput = document.getElementById('edit-task-time');
+      const timeVal = (timeInput && timeInput.value) ? formatTime24To12(timeInput.value) : null;
+
+      const updates = {
+        title,
+        description: descInput ? descInput.value.trim() : '',
+        dueDate: dateInput && dateInput.value ? dateInput.value : null,
+        time: timeVal,
+        priority: priorityInput ? priorityInput.value : 'Medium',
+        category: catInput ? catInput.value : 'Personal'
+      };
+
+      await updateTask(id, updates);
+      closeEditTaskModal();
+    });
+  }
+
   // Theme Selection Modal in Profile
   const modalTheme = document.getElementById('modal-theme');
   const btnToggleTheme = document.getElementById('btn-toggle-theme');
   const btnCloseThemeModal = document.getElementById('btn-close-theme-modal');
+  const optPet = document.getElementById('theme-choice-pet');
   const optPastel = document.getElementById('theme-choice-pastel');
   const optDay = document.getElementById('theme-choice-day');
 
@@ -2286,6 +4252,12 @@ function setupEventListeners() {
       if (e.target === modalTheme) {
         modalTheme.classList.remove('active');
       }
+    });
+  }
+  if (optPet) {
+    optPet.addEventListener('click', () => {
+      applyTheme('pet');
+      if (modalTheme) modalTheme.classList.remove('active');
     });
   }
   if (optPastel) {
@@ -2387,6 +4359,43 @@ if (typeof module !== 'undefined' && module.exports) {
     renderAll,
     selectCalendarDate,
     changeCalendarMonth,
+    updateCalendarTimelineRope,
+    saveQuickNote,
+    deleteQuickNote,
+    renderQuickNotes,
+    renderAnalytics,
+    calculateStreaks,
+    getWeeklyOverview,
+    getProductivityLast7Days,
+    getCategoryBreakdown,
+    filterTodosByTimeframe,
+    calculateRadarPoints,
+    updateTask,
+    handleToggleComplete,
+    handleDeleteTask,
+    handleOpenEditTaskModal,
+    closeEditTaskModal,
+    TasklyNotifications,
+    parseTaskDeadline,
+    formatTimeAgo,
+    formatDateTimeFriendly,
+    openQuickReminderPromptModal,
+    closeQuickReminderPromptModal,
+    openQuickReminderPicker,
+    closeQuickReminderPicker,
+    handleConfirmQuickReminder,
+    openEditQuickNoteModal,
+    closeEditQuickNoteModal,
+    handleSaveEditQuickNote,
+    handleRemoveNoteReminder,
+    togglePasswordVisibility,
+    updatePasswordVisibilityUI,
+    setAuthMode,
+    formatTimeTo24Hour,
+    formatTime24To12,
+    getRoundedLocalTime,
+    initAddTaskDateTime,
+    handleAddTask,
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };

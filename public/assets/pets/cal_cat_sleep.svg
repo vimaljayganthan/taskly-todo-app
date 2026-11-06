@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" width="2048" height="2048">
+  <defs>
+    <filter id="shadow8" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#3D1C0B" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <g id="cat_cal_sleep" filter="url(#shadow8)">
+    <path d="M 1440 1240 C 1680 1160 1700 880 1520 760 C 1440 720 1380 780 1420 840 C 1520 960 1460 1120 1280 1200 Z"
+          fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+
+    <ellipse cx="1024" cy="1160" rx="580" ry="380" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44"/>
+
+    <polygon points="680,860 760,520 960,720" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+    <polygon points="730,820 780,580 910,720" fill="#FFA8A8"/>
+
+    <polygon points="1360,860 1280,520 1080,720" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+    <polygon points="1310,820 1260,580 1130,720" fill="#FFA8A8"/>
+
+    <ellipse cx="1024" cy="1060" rx="400" ry="300" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44"/>
+
+    <ellipse cx="1024" cy="1100" rx="200" ry="140" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32"/>
+    <polygon points="996,1060 1052,1060 1024,1092" fill="#E66666" stroke="#3D1C0B" stroke-width="16" stroke-linejoin="round"/>
+
+    <path d="M 820 990 Q 880 1050 940 990" fill="none" stroke="#221108" stroke-width="32" stroke-linecap="round"/>
+    <path d="M 1108 990 Q 1168 1050 1228 990" fill="none" stroke="#221108" stroke-width="32" stroke-linecap="round"/>
+
+    <path d="M 660 1070 L 460 1050 M 650 1110 L 450 1120" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+    <path d="M 1388 1070 L 1588 1050 M 1398 1110 L 1598 1120" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+
+    <ellipse cx="900" cy="1340" rx="96" ry="64" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+    <ellipse cx="1148" cy="1340" rx="96" ry="64" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+
+    <g id="cal_zzz" fill="#D36C18">
+      <path d="M 1380 560 L 1470 560 L 1380 650 L 1480 650 L 1480 674 L 1356 674 L 1448 584 L 1356 584 Z"/>
+      <path d="M 1500 420 L 1570 420 L 1500 490 L 1580 490 L 1580 510 L 1480 510 L 1550 440 L 1480 440 Z"/>
+    </g>
+  </g>
+</svg>

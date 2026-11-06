@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" width="2048" height="2048">
+  <defs>
+    <filter id="shadow2" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#3D1C0B" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <g id="cat_calendar" filter="url(#shadow2)">
+    <!-- Cat Tail (curled up right) -->
+    <path d="M 1360 1440 C 1560 1400 1700 1240 1660 1040 C 1620 980 1540 1000 1520 1060 C 1500 1200 1400 1320 1280 1400 Z"
+          fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+    <path d="M 1560 1080 Q 1640 1120 1600 1200" stroke="#D36C18" stroke-width="32" stroke-linecap="round"/>
+    <path d="M 1480 1240 Q 1540 1280 1460 1360" stroke="#D36C18" stroke-width="32" stroke-linecap="round"/>
+
+    <!-- Cat Body Behind Calendar -->
+    <ellipse cx="1024" cy="1200" rx="440" ry="480" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40"/>
+
+    <!-- Pointed Kitten Ears -->
+    <polygon points="620,680 740,320 960,540" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="680,640 760,400 900,540" fill="#FFA8A8"/>
+
+    <polygon points="1428,680 1308,320 1088,540" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="1368,640 1288,400 1148,540" fill="#FFA8A8"/>
+
+    <!-- Head -->
+    <ellipse cx="1024" cy="720" rx="460" ry="360" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44"/>
+
+    <!-- Forehead Stripes -->
+    <path d="M 1024 420 L 1024 540 M 940 460 L 970 560 M 1108 460 L 1078 560"
+          stroke="#D36C18" stroke-width="32" stroke-linecap="round"/>
+
+    <!-- Cheeks Blush -->
+    <ellipse cx="700" cy="770" rx="68" ry="40" fill="#FF9480" opacity="0.45"/>
+    <ellipse cx="1348" cy="770" rx="68" ry="40" fill="#FF9480" opacity="0.45"/>
+
+    <!-- Cream Muzzle -->
+    <ellipse cx="1024" cy="780" rx="200" ry="140" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32"/>
+
+    <!-- Nose -->
+    <polygon points="992,730 1056,730 1024,770" fill="#E66666" stroke="#3D1C0B" stroke-width="20" stroke-linejoin="round"/>
+
+    <!-- Sweet Smiling Mouth -->
+    <path d="M 960 790 Q 1024 840 1024 770 Q 1024 840 1088 790" fill="none" stroke="#3D1C0B" stroke-width="28" stroke-linecap="round"/>
+
+    <!-- Whiskers -->
+    <path d="M 660 750 L 460 730 M 650 790 L 450 800 M 660 830 L 480 870" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+    <path d="M 1388 750 L 1588 730 M 1398 790 L 1598 800 M 1388 830 L 1568 870" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+
+    <!-- Happy Curved Eyes (^ ^) -->
+    <path d="M 780 690 Q 840 630 900 690" fill="none" stroke="#221108" stroke-width="36" stroke-linecap="round"/>
+    <path d="M 1148 690 Q 1208 630 1268 690" fill="none" stroke="#221108" stroke-width="36" stroke-linecap="round"/>
+
+    <!-- Calendar Card (Clean, vector white card with orange top bar) -->
+    <g id="calendar_card" transform="translate(664, 940)">
+      <rect x="0" y="0" width="720" height="640" rx="64" fill="#FFFFFF" stroke="#3D1C0B" stroke-width="40"/>
+      <path d="M 0 64 Q 0 0 64 0 L 656 0 Q 720 0 720 64 L 720 160 L 0 160 Z" fill="#FF7A29" stroke="#3D1C0B" stroke-width="40"/>
+      <circle cx="180" cy="80" r="28" fill="#FFFFFF"/>
+      <circle cx="540" cy="80" r="28" fill="#FFFFFF"/>
+      <!-- Grid Cells -->
+      <rect x="100" y="240" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="240" y="240" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="380" y="240" width="90" height="72" rx="16" fill="#FF7A29"/>
+      <rect x="520" y="240" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="100" y="360" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="240" y="360" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="380" y="360" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="520" y="360" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="100" y="480" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="240" y="480" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="380" y="480" width="90" height="72" rx="16" fill="#FFF0E6"/>
+      <rect x="520" y="480" width="90" height="72" rx="16" fill="#FFF0E6"/>
+    </g>
+
+    <!-- White Paws Holding Calendar Card -->
+    <ellipse cx="700" cy="1080" rx="84" ry="68" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+    <ellipse cx="1348" cy="1080" rx="84" ry="68" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+  </g>
+</svg>

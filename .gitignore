@@ -58,6 +58,8 @@ Thumbs.db
 dist/
 build/
 .cache/
+.vercel/
+scratch/
 
 # Native mobile build outputs
 .gradle/

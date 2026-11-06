@@ -99,10 +99,20 @@ describe('Taskly Theme System Suite (Pastel Light & Day Theme)', () => {
     delete global.localStorage;
   });
 
-  test('1. Default theme is pastel for new users without stored preference', () => {
+  test('1. Default theme is pet for new users without stored preference', () => {
     mockStorage = {};
     clientApp.loadStoredPreferences();
-    assert.strictEqual(clientApp.state.theme, 'pastel');
+    assert.strictEqual(clientApp.state.theme, 'pet');
+  });
+
+  test('1b. applyTheme("pet") activates Pet Theme and persists to localStorage', () => {
+    clientApp.applyTheme('pet');
+    assert.strictEqual(clientApp.state.theme, 'pet');
+    assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'pet');
+    assert.strictEqual(mockLocalStorage.getItem('taskly_theme'), 'pet');
+
+    const themeLabel = getMockElement('theme-display-val');
+    assert.strictEqual(themeLabel.textContent, 'Pet Theme ›');
   });
 
   test('2. applyTheme("day") activates Day Theme and persists to localStorage', () => {
@@ -131,10 +141,16 @@ describe('Taskly Theme System Suite (Pastel Light & Day Theme)', () => {
     assert.strictEqual(clientApp.state.theme, 'day');
   });
 
-  test('5. loadStoredPreferences() falls back safely to pastel for unknown themes', () => {
+  test('4b. loadStoredPreferences() restores previously saved Pet Theme', () => {
+    mockLocalStorage.setItem('taskly_theme', 'pet');
+    clientApp.loadStoredPreferences();
+    assert.strictEqual(clientApp.state.theme, 'pet');
+  });
+
+  test('5. loadStoredPreferences() falls back safely to pet for unknown themes', () => {
     mockLocalStorage.setItem('taskly_theme', 'unknown-dark-mode');
     clientApp.loadStoredPreferences();
-    assert.strictEqual(clientApp.state.theme, 'pastel');
+    assert.strictEqual(clientApp.state.theme, 'pet');
   });
 
   test('6. Legacy "light" preference safely resolves to pastel', () => {
@@ -143,7 +159,7 @@ describe('Taskly Theme System Suite (Pastel Light & Day Theme)', () => {
     assert.strictEqual(clientApp.state.theme, 'pastel');
   });
 
-  test('7. Meta theme color adapts to active section in Day Theme', () => {
+  test('7. Meta theme color adapts to active section in Day Theme, Pastel Theme, and Pet Theme', () => {
     const metaTheme = getMockElement('meta-theme-color');
     clientApp.state.activeTab = 'calendar';
     clientApp.applyTheme('day');
@@ -159,5 +175,8 @@ describe('Taskly Theme System Suite (Pastel Light & Day Theme)', () => {
 
     clientApp.applyTheme('pastel');
     assert.strictEqual(metaTheme.getAttribute('content'), '#F5F3FF');
+
+    clientApp.applyTheme('pet');
+    assert.strictEqual(metaTheme.getAttribute('content'), '#FDF1EA');
   });
 });

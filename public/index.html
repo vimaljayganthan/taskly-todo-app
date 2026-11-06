@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="pastel">
+<html lang="en" data-theme="pet">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <title>Taskly — Plan • Organize • Get Things Done</title>
   <meta name="description" content="A modern, intuitive task manager to organize your life, track productivity, and never miss deadlines.">
-  <meta name="theme-color" content="#F5F3FF" id="meta-theme-color">
+  <meta name="theme-color" content="#FDF1EA" id="meta-theme-color">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   
@@ -67,6 +67,13 @@
         </nav>
 
         <div class="desktop-header-right">
+          <button type="button" class="btn-desktop-theme" id="btn-desktop-notifications" title="Notifications" aria-label="Notifications" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-primary); cursor: pointer; margin-right: 8px; position: relative;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="notif-badge-dot" id="desktop-notif-dot" style="display: none; position: absolute; top: 8px; right: 8px;"></span>
+          </button>
           <button type="button" class="btn-desktop-theme" id="btn-desktop-theme" title="Toggle Appearance Theme" aria-label="Toggle Theme" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-primary); cursor: pointer; margin-right: 8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           </button>
@@ -82,14 +89,24 @@
           <!-- Dashboard Greeting & Header -->
           <header class="dash-header">
             <div class="dash-greeting">
-              <h1 class="dash-title" id="greeting-title">Hello, vimal 👋</h1>
+              <h1 class="dash-title" id="greeting-title">Hello, <span id="dash-user-name">User</span> 👋</h1>
               <p class="dash-subtitle">Let's make today productive!</p>
             </div>
-            <button id="btn-header-avatar" class="dash-avatar" aria-label="Open Profile">
-              <div class="avatar-circle">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              </div>
-            </button>
+            <div class="dash-header-actions" style="display: flex; align-items: center; gap: 8px;">
+              <button type="button" class="btn-header-notif" id="btn-home-notifications" aria-label="Notifications" title="Notifications">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+                <span class="notif-badge-dot" id="home-notif-dot" style="display: none;"></span>
+                <span class="notif-badge-count" id="home-notif-count" style="display: none;">0</span>
+              </button>
+              <button id="btn-header-avatar" class="dash-avatar home-header-mascot-wrap" aria-label="Open Profile" style="background: transparent; border: none; padding: 0; box-shadow: none;">
+                <div class="pet-circle-container pet-circle-header-cat">
+                  <img src="/assets/pets/home_cat_peek.png" alt="Peeking Cat" class="home-peeking-cat-img pet-contained-img">
+                </div>
+              </button>
+            </div>
           </header>
 
           <!-- Metrics Row (4 Stat Cards: Red, Green, Yellow, Indigo) -->
@@ -128,6 +145,36 @@
               </div>
               <div class="stat-number" id="stat-efficiency-count">80%</div>
               <div class="stat-label">Efficiency</div>
+            </div>
+          </div>
+
+          <!-- Quick Capture Card with Real Peeking Dog Mascot -->
+          <div class="quick-capture-card" id="home-quick-capture">
+            <div class="qc-mascot-wrap">
+              <div class="pet-circle-container pet-circle-qc-dog">
+                <img src="/assets/pets/home_dog_qc.png" alt="Puppy Peeking" class="pet-contained-img">
+              </div>
+            </div>
+            <div class="qc-head-row">
+              <div class="qc-title">Quick Capture</div>
+            </div>
+            <div class="qc-input-row">
+              <span class="qc-input-icon">✏️</span>
+              <input type="text" id="qc-input-text" class="qc-input-field" placeholder="What's on your mind today?" maxlength="120">
+              <button type="button" id="btn-qc-save" class="btn-qc-save">Save</button>
+            </div>
+          </div>
+
+          <!-- Dedicated Section: My Quick Notes (Part 5) -->
+          <div class="quick-notes-section" id="section-quick-notes">
+            <div class="section-head" style="margin: 18px 0 10px;">
+              <div class="section-title-wrap">
+                <h2 class="section-title" id="quick-notes-heading" style="font-size: 15px; font-weight: 800; color: var(--text-primary);">My Quick Notes</h2>
+                <span class="tasks-counter-badge" id="quick-notes-counter-badge">0 Notes</span>
+              </div>
+            </div>
+            <div class="quick-notes-grid" id="qc-notes-list">
+              <!-- Dynamically populated Quick Note cards -->
             </div>
           </div>
 
@@ -290,11 +337,30 @@
               </button>
             </div>
 
-            <!-- Chronological Daily Task Timeline (Driven by real database tasks) -->
+            <!-- Chronological Daily Task Timeline (Dynamic Interactive Connected to Cat) -->
             <div class="calendar-timeline-wrap">
-              <div class="cal-timeline-line"></div>
-              <div class="calendar-timeline-list" id="calendar-task-list">
-                <!-- Dynamically rendered chronological tasks for selected date -->
+              <div class="timeline-container-dynamic" id="calendar-timeline-container">
+                <!-- Dynamic Continuous Line from First Event Marker to Sleeping Cat -->
+                <svg class="timeline-dynamic-svg">
+                  <line class="timeline-svg-rope-line" id="timeline-svg-rope-line" x1="0" y1="0" x2="0" y2="0"></line>
+                </svg>
+
+                <div class="calendar-timeline-list" id="calendar-task-list">
+                  <!-- Dynamically rendered chronological tasks for selected date -->
+                </div>
+
+                <!-- Sleeping Cat Mascot Endpoint Row (Directly connects to bottom of timeline line) -->
+                <div class="timeline-cat-endpoint-row" id="cal-cat-endpoint-row">
+                  <div class="timeline-time-col"></div>
+                  <div class="timeline-spine-col">
+                    <div class="timeline-cat-mascot-box">
+                      <img src="/assets/pets/cal_cat_sleep.png" alt="Sleeping Cat Endpoint Mascot" class="timeline-cat-mascot-img" id="cal-cat-endpoint-img" onload="if(typeof updateCalendarTimelineRope === 'function') updateCalendarTimelineRope();">
+                    </div>
+                  </div>
+                  <div class="timeline-cat-label-col">
+                    <span class="timeline-cat-status-tag">Rest &amp; Recharge ✨</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -326,12 +392,19 @@
           </div>
 
           <form id="form-add-task" class="add-task-form">
-            <!-- Back & Title -->
-            <div class="add-screen-nav">
-              <button type="button" id="btn-back-from-add" class="btn-back" aria-label="Go back">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-              </button>
-              <h3 class="add-nav-title">Add Task</h3>
+            <!-- Back & Title with Peeking Puppy -->
+            <div class="add-screen-nav" style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button type="button" id="btn-back-from-add" class="btn-back" aria-label="Go back">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <h3 class="add-nav-title">Add Task</h3>
+              </div>
+              <div class="add-task-header-right">
+                <div class="pet-circle-container pet-circle-add-dog">
+                  <img src="/assets/pets/add_dog_peek.png" alt="Peeking Puppy" class="pet-contained-img">
+                </div>
+              </div>
             </div>
 
             <!-- Task Title Input -->
@@ -361,9 +434,12 @@
               <div class="row-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
-              <div class="row-content">
-                <label for="add-time" class="row-label">Time</label>
-                <input type="text" id="add-time" class="row-input-field" placeholder="Today, 6:00 PM">
+              <div class="row-content flex-between">
+                <div style="flex: 1; min-width: 0;">
+                  <label for="add-time" class="row-label">Time</label>
+                  <input type="time" id="add-time" class="row-input-field" step="300" required>
+                </div>
+                <span id="add-time-display" class="time-formatted-pill">--:-- --</span>
               </div>
             </div>
 
@@ -437,6 +513,38 @@
 
           <!-- Progress Desktop Grid Container -->
           <div class="progress-desktop-wrap">
+            <!-- Weekly Streak Card with Mascot Badge -->
+            <div class="progress-streak-card">
+              <div class="progress-streak-top-row">
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--text-primary);">
+                  <span>🔥</span>
+                  <span>Weekly streak</span>
+                </div>
+                <div class="progress-pet-badge-wrap">
+                  <div class="pet-circle-container pet-circle-progress-badge">
+                    <img src="/assets/pets/onboard_cat_3.png" alt="Pet Mascot Badge" class="pet-contained-img">
+                  </div>
+                </div>
+              </div>
+
+              <div class="streak-big-days" id="streak-days-display">5 days</div>
+
+              <div class="streak-7days-row" id="streak-7days-row">
+                <div class="streak-day-item"><span class="streak-day-label">Mon</span><div class="streak-day-circle"></div></div>
+                <div class="streak-day-item"><span class="streak-day-label">Tue</span><div class="streak-day-circle"></div></div>
+                <div class="streak-day-item"><span class="streak-day-label">Wed</span><div class="streak-day-circle"></div></div>
+                <div class="streak-day-item"><span class="streak-day-label">Thu</span><div class="streak-day-circle"></div></div>
+                <div class="streak-day-item"><span class="streak-day-label">Fri</span><div class="streak-day-circle"></div></div>
+                <div class="streak-day-item"><span class="streak-day-label">Sat</span><div class="streak-day-circle"></div></div>
+                <div class="streak-day-item"><span class="streak-day-label">Sun</span><div class="streak-day-circle"></div></div>
+              </div>
+
+              <div class="streak-sub-stat-row">
+                <span id="streak-current-stat">🔥 0 day streak</span>
+                <span id="streak-best-stat">🏆 Best: 0 days</span>
+              </div>
+            </div>
+
             <!-- Main Circular Progress Ring Card -->
             <div class="analytics-card card-yellow-accent">
               <div class="progress-ring-container large-ring">
@@ -482,6 +590,52 @@
                 <!-- Dynamically populated 7 bars -->
               </div>
             </div>
+
+            <!-- Category-Wise Task Completion Breakdown -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px;">
+              <div style="font-size: 14px; font-weight: 800; color: var(--text-primary);">Category breakdown</div>
+              <span style="color: var(--text-muted); cursor: pointer;" title="Tasks grouped by category">•••</span>
+            </div>
+            <div id="progress-category-list">
+              <!-- Dynamically populated category progress cards -->
+            </div>
+
+            <!-- Productivity & Category Dynamic Radar Chart -->
+            <div style="display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px;">
+              <div style="font-size: 14px; font-weight: 800; color: var(--text-primary);">Productivity radar</div>
+              <span style="color: var(--text-muted); cursor: pointer;" title="Dynamic multi-axis performance radar">•••</span>
+            </div>
+
+            <div class="radar-card-wrap">
+              <svg viewBox="0 0 340 240" width="100%" height="auto" style="max-width: 320px; overflow: visible;">
+                <!-- Concentric Hexagons (r = 64, 44, 24) -->
+                <polygon points="170,56 225,88 225,152 170,184 115,152 115,88" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+                <polygon points="170,76 208,98 208,142 170,164 132,142 132,98" fill="none" stroke="var(--border)" stroke-width="1"/>
+                <polygon points="170,96 191,108 191,132 170,144 149,132 149,108" fill="none" stroke="var(--border)" stroke-width="1"/>
+                <!-- Radial Axis Lines -->
+                <line x1="170" y1="56" x2="170" y2="184" stroke="var(--border)" stroke-width="1"/>
+                <line x1="115" y1="88" x2="225" y2="152" stroke="var(--border)" stroke-width="1"/>
+                <line x1="115" y1="152" x2="225" y2="88" stroke="var(--border)" stroke-width="1"/>
+                <!-- Dynamic Filled Radar Polygon -->
+                <polygon id="radar-polygon" points="170,68 218,90 200,146 170,160 128,144 138,94" fill="rgba(248, 132, 56, 0.22)" stroke="#F88438" stroke-width="2.5"/>
+                <!-- Dynamic Data Points -->
+                <g id="radar-points">
+                  <circle cx="170" cy="68" r="4" fill="#F88438"/>
+                  <circle cx="218" cy="90" r="4" fill="#F88438"/>
+                  <circle cx="200" cy="146" r="4" fill="#F88438"/>
+                  <circle cx="170" cy="160" r="4" fill="#F88438"/>
+                  <circle cx="128" cy="144" r="4" fill="#F88438"/>
+                  <circle cx="138" cy="94" r="4" fill="#F88438"/>
+                </g>
+                <!-- Category & Performance Axis Labels -->
+                <text x="170" y="38" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">Productivity</text>
+                <text x="238" y="92" text-anchor="start" font-size="10" font-weight="800" fill="var(--text-primary)">Project</text>
+                <text x="238" y="156" text-anchor="start" font-size="10" font-weight="800" fill="var(--text-primary)">Work</text>
+                <text x="170" y="206" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">Study</text>
+                <text x="102" y="156" text-anchor="end" font-size="10" font-weight="800" fill="var(--text-primary)">Personal</text>
+                <text x="102" y="92" text-anchor="end" font-size="10" font-weight="800" fill="var(--text-primary)">Consistency</text>
+              </svg>
+            </div>
           </div>
         </section>
 
@@ -505,10 +659,12 @@
               <!-- User Bio Header -->
               <div class="profile-user-header">
                 <div class="profile-avatar-wrap" id="profile-avatar-wrap">
-                  <div class="profile-avatar-circle" id="profile-avatar-circle">
-                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <div class="profile-avatar-circle-art" id="profile-avatar-circle">
+                    <div class="pet-circle-container pet-circle-profile-avatar">
+                      <img src="/assets/pets/profile_dog_avatar.png" alt="User Dog Avatar" class="pet-contained-img">
+                      <button id="btn-edit-avatar" class="avatar-pencil-tag" aria-label="Edit Profile">✎</button>
+                    </div>
                   </div>
-                  <button id="btn-edit-avatar" class="avatar-edit-pencil" aria-label="Edit Profile">✎</button>
                 </div>
 
                 <div class="profile-user-details">
@@ -578,7 +734,7 @@
                     </div>
                     <span class="menu-item-label">Theme</span>
                   </div>
-                  <span class="menu-item-val" id="theme-display-val">Pastel Light ›</span>
+                  <span class="menu-item-val" id="theme-display-val">Pet Theme ›</span>
                 </button>
 
                 <!-- Hidden bridge buttons to guarantee tour & about listeners work -->
@@ -592,6 +748,13 @@
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                   <span>Log out</span>
                 </button>
+              </div>
+
+              <!-- Illustrated Sitting Cat in Corner - Clean, borderless, unclipped -->
+              <div class="profile-cat-sit-row">
+                <div class="pet-circle-container pet-circle-profile-cat">
+                  <img src="/assets/pets/profile_cat_sit.png" alt="Sitting Cat Mascot" class="pet-contained-img">
+                </div>
               </div>
             </div>
           </div>
@@ -632,8 +795,10 @@
 
           <!-- Profile -->
           <button class="nav-tab" data-tab="profile" aria-label="Profile">
-            <div class="nav-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div class="nav-icon" style="display: flex; align-items: center; justify-content: center;">
+              <div class="pet-circle-container pet-circle-nav-icon">
+                <img src="/assets/pets/profile_dog_avatar.png" alt="Profile" class="pet-contained-img">
+              </div>
             </div>
             <span class="nav-label">Profile</span>
           </button>
@@ -661,15 +826,8 @@
             <!-- Slide 1 -->
             <div class="carousel-slide active" data-slide="0">
               <div class="slide-illustration">
-                <div class="illo-card illo-clipboard">
-                  <div class="illo-clip"></div>
-                  <div class="illo-lines">
-                    <div class="illo-line line-1"></div>
-                    <div class="illo-line line-2"></div>
-                    <div class="illo-line line-3"></div>
-                  </div>
-                  <div class="illo-check-circle">✓</div>
-                  <div class="illo-pencil"></div>
+                <div class="pet-circle-container pet-circle-hero">
+                  <img src="/assets/pets/onboard_dog_1.png" alt="Organize Your Tasks" class="pet-contained-img">
                 </div>
               </div>
               <h2 class="slide-title">Organize Your Tasks</h2>
@@ -679,15 +837,8 @@
             <!-- Slide 2 -->
             <div class="carousel-slide" data-slide="1">
               <div class="slide-illustration">
-                <div class="illo-card illo-calendar">
-                  <div class="illo-cal-header">
-                    <div class="illo-cal-ring ring-l"></div>
-                    <div class="illo-cal-ring ring-r"></div>
-                  </div>
-                  <div class="illo-cal-grid">
-                    <span></span><span></span><span></span>
-                    <span class="active-dot"></span><span></span><span></span>
-                  </div>
+                <div class="pet-circle-container pet-circle-hero">
+                  <img src="/assets/pets/onboard_cat_2.png" alt="Stay on Schedule" class="pet-contained-img">
                 </div>
               </div>
               <h2 class="slide-title">Stay on Schedule</h2>
@@ -697,14 +848,8 @@
             <!-- Slide 3 -->
             <div class="carousel-slide" data-slide="2">
               <div class="slide-illustration">
-                <div class="illo-card illo-chart">
-                  <div class="illo-bars">
-                    <div class="illo-bar b1"></div>
-                    <div class="illo-bar b2"></div>
-                    <div class="illo-bar b3"></div>
-                    <div class="illo-bar b4"></div>
-                  </div>
-                  <div class="illo-arrow-up">↗</div>
+                <div class="pet-circle-container pet-circle-hero">
+                  <img src="/assets/pets/onboard_cat_3.png" alt="Track Your Progress" class="pet-contained-img">
                 </div>
               </div>
               <h2 class="slide-title">Track Your Progress</h2>
@@ -749,8 +894,15 @@
           </div>
 
           <div class="step-content">
-            <h2 class="setup-title" id="auth-title">Welcome to<br>Taskly ✨</h2>
-            <p class="setup-subtitle" id="auth-subtitle">Sign in or create your account to sync your tasks.</p>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px;">
+              <div>
+                <h2 class="setup-title" id="auth-title">Welcome to<br>Taskly ✨</h2>
+                <p class="setup-subtitle" id="auth-subtitle">Sign in or create your account to sync your tasks.</p>
+              </div>
+              <div class="pet-circle-container pet-circle-auth-mascot" id="auth-pet-mascot">
+                <img src="/assets/pets/signin_dog_sleep.png" alt="Sleeping Dog" class="pet-contained-img" id="auth-pet-img">
+              </div>
+            </div>
 
             <div class="auth-toggle-group" id="auth-mode-toggle">
               <button type="button" class="auth-toggle-btn active" id="btn-toggle-login">Sign In</button>
@@ -798,6 +950,16 @@
                   <label for="setup-password" class="input-card-label">Password</label>
                   <input type="password" id="setup-password" class="input-card-field" placeholder="••••••••" required minlength="6">
                 </div>
+                <button type="button" class="btn-password-toggle" id="btn-toggle-password" aria-label="Show password" title="Show password">
+                  <svg class="icon-eye" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <svg class="icon-eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                </button>
               </div>
 
               <button type="submit" id="btn-auth-submit" class="btn-primary-wide">
@@ -874,6 +1036,59 @@
         </div>
       </div>
 
+      <!-- Modal: Edit Task -->
+      <div id="modal-edit-task" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 class="modal-title">Edit Task</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-edit-task" aria-label="Close">×</button>
+          </div>
+          <form id="form-edit-task" class="modal-form">
+            <input type="hidden" id="edit-task-id">
+            <div class="form-group">
+              <label for="edit-task-title" class="form-label">Task Title</label>
+              <input type="text" id="edit-task-title" class="form-input" required maxlength="150">
+            </div>
+            <div class="form-group">
+              <label for="edit-task-desc" class="form-label">Description (Optional)</label>
+              <input type="text" id="edit-task-desc" class="form-input" maxlength="500">
+            </div>
+            <div class="form-group">
+              <label for="edit-task-date" class="form-label">Due Date</label>
+              <input type="date" id="edit-task-date" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="edit-task-time" class="form-label">Time</label>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="time" id="edit-task-time" class="form-input" step="300" style="flex: 1;">
+                <span id="edit-task-time-display" class="time-formatted-pill">--:-- --</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="edit-task-priority" class="form-label">Priority</label>
+              <select id="edit-task-priority" class="form-input">
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="edit-task-category" class="form-label">Category</label>
+              <select id="edit-task-category" class="form-input">
+                <option value="Project">Project</option>
+                <option value="Work">Work</option>
+                <option value="Study">Study</option>
+                <option value="Personal">Personal</option>
+              </select>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-modal-cancel" id="btn-cancel-edit-task">Cancel</button>
+              <button type="submit" class="btn-primary-compact">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <div id="modal-about" class="modal-backdrop">
         <div class="modal-card">
           <div class="modal-head">
@@ -911,13 +1126,13 @@
             <button type="button" class="btn-close-modal" id="btn-close-theme-modal" aria-label="Close">×</button>
           </div>
           <div class="theme-options-wrap">
-            <p class="about-desc">Choose between Pastel Light and the new Day Theme.</p>
+            <p class="about-desc">Choose between Pet Theme, Day Theme, and Pastel Light.</p>
             <div class="theme-picker-list">
-              <button type="button" class="theme-choice-btn active" id="theme-choice-pastel" data-theme-val="pastel">
-                <div class="theme-choice-icon">🌸</div>
+              <button type="button" class="theme-choice-btn active" id="theme-choice-pet" data-theme-val="pet">
+                <div class="theme-choice-icon">🐾</div>
                 <div class="theme-choice-text">
-                  <span class="theme-choice-title">Pastel Light</span>
-                  <span class="theme-choice-sub">Soft lavender canvas & pastel accents (Default)</span>
+                  <span class="theme-choice-title">Pet Theme</span>
+                  <span class="theme-choice-sub">Warm peach canvas &amp; cute dog/cat mascots (Default)</span>
                 </div>
                 <span class="theme-choice-check">✓</span>
               </button>
@@ -929,8 +1144,115 @@
                 </div>
                 <span class="theme-choice-check">✓</span>
               </button>
+              <button type="button" class="theme-choice-btn" id="theme-choice-pastel" data-theme-val="pastel">
+                <div class="theme-choice-icon">🌸</div>
+                <div class="theme-choice-text">
+                  <span class="theme-choice-title">Pastel Light</span>
+                  <span class="theme-choice-sub">Soft lavender canvas &amp; pastel accents</span>
+                </div>
+                <span class="theme-choice-check">✓</span>
+              </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal: In-App Notification Centre (Part 4) -->
+      <div id="modal-notifications" class="modal-backdrop">
+        <div class="modal-card modal-notifications-card">
+          <div class="modal-head">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h3 class="modal-title">Notifications</h3>
+              <span class="notif-modal-badge" id="notif-modal-unread-count" style="display: none;">0 unread</span>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-notifications" aria-label="Close">×</button>
+          </div>
+          <div class="notif-modal-toolbar">
+            <button type="button" class="btn-notif-tool" id="btn-notif-mark-all">✓ Mark all as read</button>
+            <button type="button" class="btn-notif-tool" id="btn-notif-clear-all">🗑️ Clear history</button>
+          </div>
+          <div class="notifications-scroll-wrap">
+            <div class="notifications-list" id="notifications-list">
+              <!-- Dynamically populated notifications -->
+            </div>
+            <div class="notifications-empty" id="notifications-empty" style="display: none;">
+              <div class="notif-empty-mascot">🐾</div>
+              <div class="notif-empty-title">All caught up!</div>
+              <div class="notif-empty-sub">No unread notifications. When tasks have updates or upcoming deadlines, they'll appear here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Quick Note Reminder Prompt (Part 5) -->
+      <div id="modal-quick-reminder-prompt" class="modal-backdrop">
+        <div class="modal-card modal-prompt-card">
+          <div class="prompt-mascot-head">
+            <span class="prompt-icon">⏰</span>
+            <h3 class="modal-title">Set a Reminder?</h3>
+          </div>
+          <p class="prompt-question">Would you like to set a reminder for this quick note?</p>
+          <div class="prompt-note-preview" id="prompt-note-preview-text">"..."</div>
+          <div class="modal-actions prompt-actions">
+            <button type="button" class="btn-modal-cancel" id="btn-prompt-reminder-no">No, Just Save</button>
+            <button type="button" class="btn-primary-compact" id="btn-prompt-reminder-yes">Yes, Set Reminder</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Quick Note Reminder Picker (Part 5) -->
+      <div id="modal-quick-reminder-picker" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 class="modal-title">Schedule Reminder</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-reminder-picker" aria-label="Close">×</button>
+          </div>
+          <form id="form-quick-reminder-picker" class="modal-form">
+            <input type="hidden" id="reminder-target-note-id">
+            <div class="form-group">
+              <label for="reminder-picker-date" class="form-label">Reminder Date</label>
+              <input type="date" id="reminder-picker-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label for="reminder-picker-time" class="form-label">Reminder Time</label>
+              <input type="time" id="reminder-picker-time" class="form-input" required>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-modal-cancel" id="btn-cancel-reminder-picker">Cancel</button>
+              <button type="submit" class="btn-primary-compact" id="btn-confirm-reminder-picker">Confirm Reminder</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal: Edit Quick Note (Part 5) -->
+      <div id="modal-edit-quick-note" class="modal-backdrop">
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3 class="modal-title">Edit Quick Note</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-edit-quick-note" aria-label="Close">×</button>
+          </div>
+          <form id="form-edit-quick-note" class="modal-form">
+            <input type="hidden" id="edit-quick-note-id">
+            <div class="form-group">
+              <label for="edit-quick-note-text" class="form-label">Note Content</label>
+              <textarea id="edit-quick-note-text" class="form-input" required maxlength="250" style="height: 70px; resize: none;"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                <span>Reminder</span>
+                <button type="button" id="btn-remove-note-reminder" class="btn-remove-reminder-link" style="background: none; border: none; color: var(--danger); font-size: 11px; font-weight: 700; cursor: pointer; display: none;">Remove reminder</button>
+              </label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <input type="date" id="edit-quick-note-date" class="form-input">
+                <input type="time" id="edit-quick-note-time" class="form-input">
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-modal-cancel" id="btn-cancel-edit-quick-note">Cancel</button>
+              <button type="submit" class="btn-primary-compact">Save Changes</button>
+            </div>
+          </form>
         </div>
       </div>
 

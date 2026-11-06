@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" width="2048" height="2048">
+  <defs>
+    <filter id="shadow11" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#3D1C0B" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <g id="cat_sit" filter="url(#shadow11)">
+    <path d="M 1320 1480 C 1520 1460 1680 1280 1640 1080 C 1600 1020 1520 1040 1500 1100 C 1480 1240 1380 1360 1240 1440 Z"
+          fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+    <path d="M 1560 1120 Q 1620 1160 1580 1240" stroke="#D36C18" stroke-width="32" stroke-linecap="round"/>
+
+    <path d="M 760 980 C 700 1260 700 1500 840 1600 C 940 1640 1108 1640 1208 1600 C 1348 1500 1348 1260 1288 980 Z"
+          fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+
+    <path d="M 880 1040 C 880 1320 920 1560 1024 1560 C 1128 1560 1168 1320 1168 1040 Z"
+          fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32" stroke-linejoin="round"/>
+
+    <ellipse cx="920" cy="1580" rx="72" ry="48" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+    <ellipse cx="1128" cy="1580" rx="72" ry="48" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+
+    <polygon points="640,680 760,320 960,540" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="700,640 780,400 910,540" fill="#FFA8A8"/>
+
+    <polygon points="1408,680 1288,320 1088,540" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="1348,640 1268,400 1138,540" fill="#FFA8A8"/>
+
+    <ellipse cx="1024" cy="720" rx="420" ry="320" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44"/>
+
+    <path d="M 1024 440 L 1024 560 M 940 480 L 970 580 M 1108 480 L 1078 580"
+          stroke="#D36C18" stroke-width="32" stroke-linecap="round"/>
+
+    <ellipse cx="700" cy="770" rx="68" ry="40" fill="#FF9480" opacity="0.45"/>
+    <ellipse cx="1348" cy="770" rx="68" ry="40" fill="#FF9480" opacity="0.45"/>
+
+    <ellipse cx="1024" cy="780" rx="190" ry="130" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32"/>
+    <polygon points="992,730 1056,730 1024,770" fill="#E66666" stroke="#3D1C0B" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M 960 790 Q 1024 840 1024 770 Q 1024 840 1088 790" fill="none" stroke="#3D1C0B" stroke-width="28" stroke-linecap="round"/>
+
+    <path d="M 660 760 L 440 740 M 650 800 L 430 810 M 660 840 L 450 880" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+    <path d="M 1388 760 L 1608 740 M 1398 800 L 1618 810 M 1388 840 L 1598 880" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+
+    <ellipse cx="828" cy="680" rx="48" ry="68" fill="#221108"/>
+    <circle cx="812" cy="656" r="20" fill="#FFFFFF"/>
+    <circle cx="848" cy="700" r="10" fill="#FFFFFF"/>
+
+    <ellipse cx="1220" cy="680" rx="48" ry="68" fill="#221108"/>
+    <circle cx="1204" cy="656" r="20" fill="#FFFFFF"/>
+    <circle cx="1240" cy="700" r="10" fill="#FFFFFF"/>
+  </g>
+</svg>

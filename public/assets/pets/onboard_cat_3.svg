@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" width="2048" height="2048">
+  <defs>
+    <filter id="shadow3" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#3D1C0B" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <g id="cat_progress" filter="url(#shadow3)">
+    <!-- 4 Stepped Orange Progress Bars -->
+    <rect x="720" y="1200" width="160" height="400" rx="56" fill="#FFC285" stroke="#3D1C0B" stroke-width="36"/>
+    <rect x="940" y="960" width="160" height="640" rx="56" fill="#FFA552" stroke="#3D1C0B" stroke-width="36"/>
+    <rect x="1160" y="720" width="160" height="880" rx="56" fill="#FF8A29" stroke="#3D1C0B" stroke-width="36"/>
+    <rect x="1380" y="480" width="160" height="1120" rx="56" fill="#FF6A00" stroke="#3D1C0B" stroke-width="36"/>
+
+    <!-- Happy Kitten on the Left -->
+    <g id="progress_kitten" transform="translate(-80, 40)">
+      <path d="M 440 1480 C 280 1400 200 1200 260 1040 C 300 980 380 1000 360 1080 C 320 1200 360 1320 500 1420 Z"
+            fill="#FFA44D" stroke="#3D1C0B" stroke-width="36" stroke-linejoin="round"/>
+
+      <ellipse cx="640" cy="1160" rx="300" ry="380" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40"/>
+      <ellipse cx="720" cy="1240" rx="160" ry="240" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32"/>
+
+      <polygon points="380,680 460,360 640,560" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+      <polygon points="430,640 480,420 590,550" fill="#FFA8A8"/>
+      <polygon points="900,680 820,360 640,560" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40" stroke-linejoin="round"/>
+      <polygon points="850,640 800,420 690,550" fill="#FFA8A8"/>
+
+      <ellipse cx="640" cy="720" rx="320" ry="260" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40"/>
+
+      <path d="M 640 500 L 640 590 M 580 530 L 600 610 M 700 530 L 680 610"
+            stroke="#D36C18" stroke-width="28" stroke-linecap="round"/>
+
+      <ellipse cx="440" cy="760" rx="52" ry="32" fill="#FF9480" opacity="0.45"/>
+      <ellipse cx="840" cy="760" rx="52" ry="32" fill="#FF9480" opacity="0.45"/>
+
+      <ellipse cx="640" cy="770" rx="140" ry="100" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="28"/>
+      <polygon points="620,730 660,730 640,760" fill="#E66666" stroke="#3D1C0B" stroke-width="16" stroke-linejoin="round"/>
+      <path d="M 600 780 Q 640 820 640 770 Q 640 820 680 780" fill="none" stroke="#3D1C0B" stroke-width="24" stroke-linecap="round"/>
+
+      <path d="M 420 750 L 280 740 M 410 790 L 270 800" stroke="#4E250E" stroke-width="20" stroke-linecap="round"/>
+      <path d="M 860 750 L 1000 740 M 870 790 L 1010 800" stroke="#4E250E" stroke-width="20" stroke-linecap="round"/>
+
+      <path d="M 500 700 Q 550 650 600 700" fill="none" stroke="#221108" stroke-width="32" stroke-linecap="round"/>
+      <path d="M 680 700 Q 730 650 780 700" fill="none" stroke="#221108" stroke-width="32" stroke-linecap="round"/>
+
+      <!-- Raised Paw Pointing to Bars -->
+      <path d="M 840 1080 Q 960 940 1020 880" stroke="#FFA44D" stroke-width="100" stroke-linecap="round"/>
+      <ellipse cx="1020" cy="880" rx="56" ry="48" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32"/>
+    </g>
+  </g>
+</svg>

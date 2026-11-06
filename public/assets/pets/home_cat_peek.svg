@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" width="2048" height="2048">
+  <defs>
+    <filter id="shadow6" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#3D1C0B" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <g id="cat_peek" filter="url(#shadow6)">
+    <polygon points="540,840 660,360 940,640" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="620,780 700,460 870,640" fill="#FFA8A8"/>
+
+    <polygon points="1508,840 1388,360 1108,640" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="1428,780 1348,460 1178,640" fill="#FFA8A8"/>
+
+    <ellipse cx="1024" cy="920" rx="520" ry="420" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44"/>
+
+    <path d="M 1024 560 L 1024 700 M 920 600 L 960 720 M 1128 600 L 1088 720"
+          stroke="#D36C18" stroke-width="36" stroke-linecap="round"/>
+
+    <ellipse cx="640" cy="1000" rx="76" ry="48" fill="#FF9480" opacity="0.45"/>
+    <ellipse cx="1408" cy="1000" rx="76" ry="48" fill="#FF9480" opacity="0.45"/>
+
+    <ellipse cx="1024" cy="1010" rx="220" ry="160" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+    <polygon points="988,960 1060,960 1024,1004" fill="#E66666" stroke="#3D1C0B" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M 952 1024 Q 1024 1076 1024 1004 Q 1024 1076 1096 1024" fill="none" stroke="#3D1C0B" stroke-width="32" stroke-linecap="round"/>
+
+    <path d="M 620 980 L 360 960 M 610 1030 L 350 1040 M 620 1080 L 380 1120" stroke="#4E250E" stroke-width="28" stroke-linecap="round"/>
+    <path d="M 1428 980 L 1688 960 M 1438 1030 L 1698 1040 M 1428 1080 L 1668 1120" stroke="#4E250E" stroke-width="28" stroke-linecap="round"/>
+
+    <ellipse cx="800" cy="870" rx="56" ry="76" fill="#221108"/>
+    <circle cx="784" cy="840" r="24" fill="#FFFFFF"/>
+    <circle cx="820" cy="890" r="12" fill="#FFFFFF"/>
+
+    <ellipse cx="1248" cy="870" rx="56" ry="76" fill="#221108"/>
+    <circle cx="1232" cy="840" r="24" fill="#FFFFFF"/>
+    <circle cx="1268" cy="890" r="12" fill="#FFFFFF"/>
+
+    <!-- Paws Peeking Over Edge -->
+    <ellipse cx="760" cy="1360" rx="110" ry="72" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+    <ellipse cx="1288" cy="1360" rx="110" ry="72" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+  </g>
+</svg>

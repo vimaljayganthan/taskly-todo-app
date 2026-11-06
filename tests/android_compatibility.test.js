@@ -21,10 +21,10 @@ describe('Android Device Compatibility & Responsive Layout Suite', () => {
       );
     });
 
-    test('public/index.html defaults data-theme to "pastel"', () => {
+    test('public/index.html defaults data-theme to "pet"', () => {
       assert.ok(
-        indexHtml.includes('data-theme="pastel"'),
-        'index.html default data-theme must be pastel'
+        indexHtml.includes('data-theme="pet"'),
+        'index.html default data-theme must be pet'
       );
     });
 

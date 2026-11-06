@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2048 2048" width="2048" height="2048">
+  <defs>
+    <filter id="shadow5" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#3D1C0B" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+  <g id="cat_waving" filter="url(#shadow5)">
+    <ellipse cx="1024" cy="1240" rx="420" ry="420" fill="#FFA44D" stroke="#3D1C0B" stroke-width="40"/>
+    <ellipse cx="1024" cy="1320" rx="220" ry="280" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+
+    <polygon points="620,680 740,320 960,540" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="680,640 760,400 900,540" fill="#FFA8A8"/>
+
+    <polygon points="1428,680 1308,320 1088,540" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44" stroke-linejoin="round"/>
+    <polygon points="1368,640 1288,400 1148,540" fill="#FFA8A8"/>
+
+    <ellipse cx="1024" cy="760" rx="460" ry="360" fill="#FFA44D" stroke="#3D1C0B" stroke-width="44"/>
+
+    <path d="M 1024 460 L 1024 580 M 940 500 L 970 600 M 1108 500 L 1078 600"
+          stroke="#D36C18" stroke-width="32" stroke-linecap="round"/>
+
+    <ellipse cx="680" cy="820" rx="72" ry="44" fill="#FF9480" opacity="0.45"/>
+    <ellipse cx="1368" cy="820" rx="72" ry="44" fill="#FF9480" opacity="0.45"/>
+
+    <ellipse cx="1024" cy="830" rx="200" ry="140" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="32"/>
+    <polygon points="992,780 1056,780 1024,820" fill="#E66666" stroke="#3D1C0B" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M 960 840 Q 1024 890 1024 820 Q 1024 890 1088 840" fill="none" stroke="#3D1C0B" stroke-width="28" stroke-linecap="round"/>
+
+    <path d="M 660 810 L 440 790 M 650 850 L 430 860 M 660 890 L 460 930" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+    <path d="M 1388 810 L 1608 790 M 1398 850 L 1618 860 M 1388 890 L 1588 930" stroke="#4E250E" stroke-width="24" stroke-linecap="round"/>
+
+    <ellipse cx="828" cy="720" rx="52" ry="72" fill="#221108"/>
+    <circle cx="812" cy="692" r="22" fill="#FFFFFF"/>
+    <circle cx="848" cy="740" r="10" fill="#FFFFFF"/>
+
+    <ellipse cx="1220" cy="720" rx="52" ry="72" fill="#221108"/>
+    <circle cx="1204" cy="692" r="22" fill="#FFFFFF"/>
+    <circle cx="1240" cy="740" r="10" fill="#FFFFFF"/>
+
+    <ellipse cx="720" cy="1240" rx="90" ry="68" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+
+    <!-- Right Paw Waving Up Cheerfully -->
+    <path d="M 1320 1160 Q 1540 960 1600 760" stroke="#FFA44D" stroke-width="128" stroke-linecap="round"/>
+    <ellipse cx="1600" cy="760" rx="84" ry="72" fill="#FFF8F0" stroke="#3D1C0B" stroke-width="36"/>
+    <circle cx="1600" cy="760" r="28" fill="#FF9480"/>
+  </g>
+</svg>

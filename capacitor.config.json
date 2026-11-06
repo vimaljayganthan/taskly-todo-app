@@ -23,6 +23,11 @@
       "resize": "body",
       "style": "DARK",
       "resizeOnFullScreen": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_launcher_round",
+      "iconColor": "#F88438",
+      "sound": "beep.wav"
     }
   }
 }
