@@ -1123,6 +1123,101 @@ const TasklyNotifications = {
   SCHEDULE_REGISTRY_KEY: 'taskly_scheduled_reminders',
   MIGRATION_FLAG_KEY: 'taskly_channel_migrated_v3',
 
+  // Notification Settings Storage Keys
+  STORAGE_KEY_MASTER: 'taskly_notifications_enabled',
+  STORAGE_KEY_SOUND_ENABLED: 'taskly_notifications_sound_enabled',
+  STORAGE_KEY_SELECTED_SOUND: 'taskly_notification_selected_sound',
+
+  // 10 custom notification sound choices bundled locally in both android raw & web assets
+  SOUND_OPTIONS: [
+    {
+      id: 'cat_meow',
+      name: 'Cat Meow',
+      description: "Taskly's signature cat meow (Default)",
+      file: 'taskly_meow.wav',
+      channelId: 'taskly-reminders-v3',
+      channelName: 'Taskly Reminders (Cat Meow)'
+    },
+    {
+      id: 'gentle_chime',
+      name: 'Gentle Chime',
+      description: 'Soft harmonic ascending chime',
+      file: 'taskly_chime.wav',
+      channelId: 'taskly-sound-gentle-chime',
+      channelName: 'Taskly Reminders (Gentle Chime)'
+    },
+    {
+      id: 'soft_bell',
+      name: 'Soft Bell',
+      description: 'Warm acoustic bell tone',
+      file: 'taskly_soft_bell.wav',
+      channelId: 'taskly-sound-soft-bell',
+      channelName: 'Taskly Reminders (Soft Bell)'
+    },
+    {
+      id: 'classic',
+      name: 'Classic Notification',
+      description: 'Friendly two-tone alert',
+      file: 'taskly_classic.wav',
+      channelId: 'taskly-sound-classic',
+      channelName: 'Taskly Reminders (Classic)'
+    },
+    {
+      id: 'digital_pop',
+      name: 'Digital Pop',
+      description: 'Snappy modern bubble pop',
+      file: 'taskly_pop.wav',
+      channelId: 'taskly-sound-pop',
+      channelName: 'Taskly Reminders (Digital Pop)'
+    },
+    {
+      id: 'bubble',
+      name: 'Bubble',
+      description: 'Smooth upward bubbly tone',
+      file: 'taskly_bubble.wav',
+      channelId: 'taskly-sound-bubble',
+      channelName: 'Taskly Reminders (Bubble)'
+    },
+    {
+      id: 'glass_tap',
+      name: 'Glass Tap',
+      description: 'Crystalline resonant chime',
+      file: 'taskly_glass.wav',
+      channelId: 'taskly-sound-glass',
+      channelName: 'Taskly Reminders (Glass Tap)'
+    },
+    {
+      id: 'soft_marimba',
+      name: 'Soft Marimba',
+      description: 'Warm acoustic wooden mallet',
+      file: 'taskly_marimba.wav',
+      channelId: 'taskly-sound-marimba',
+      channelName: 'Taskly Reminders (Soft Marimba)'
+    },
+    {
+      id: 'calm_melody',
+      name: 'Calm Melody',
+      description: 'Gentle 3-note arpeggio',
+      file: 'taskly_melody.wav',
+      channelId: 'taskly-sound-melody',
+      channelName: 'Taskly Reminders (Calm Melody)'
+    },
+    {
+      id: 'water_drop',
+      name: 'Water Drop',
+      description: 'Organic liquid droplet sound',
+      file: 'taskly_water_drop.wav',
+      channelId: 'taskly-sound-water-drop',
+      channelName: 'Taskly Reminders (Water Drop)'
+    }
+  ],
+
+  SILENT_CHANNEL_ID: 'taskly-sound-silent',
+
+  // Audio preview state
+  currentPreviewAudio: null,
+  currentPreviewSoundId: null,
+
   isNative() {
     return Boolean(
       typeof window !== 'undefined' &&
@@ -1140,8 +1235,453 @@ const TasklyNotifications = {
     return null;
   },
 
+  areNotificationsEnabled() {
+    try {
+      if (typeof localStorage === 'undefined') return true;
+      const val = localStorage.getItem(this.STORAGE_KEY_MASTER);
+      return val === null ? true : val !== 'false';
+    } catch (_) {
+      return true;
+    }
+  },
+
+  isSoundEnabled() {
+    try {
+      if (typeof localStorage === 'undefined') return true;
+      const val = localStorage.getItem(this.STORAGE_KEY_SOUND_ENABLED);
+      return val === null ? true : val !== 'false';
+    } catch (_) {
+      return true;
+    }
+  },
+
+  getSelectedSoundId() {
+    try {
+      if (typeof localStorage === 'undefined') return 'cat_meow';
+      const val = localStorage.getItem(this.STORAGE_KEY_SELECTED_SOUND);
+      return val || 'cat_meow';
+    } catch (_) {
+      return 'cat_meow';
+    }
+  },
+
+  getSettings() {
+    return {
+      masterEnabled: this.areNotificationsEnabled(),
+      soundEnabled: this.isSoundEnabled(),
+      selectedSound: this.getSelectedSoundId()
+    };
+  },
+
+  getActiveChannelConfig() {
+    if (!this.areNotificationsEnabled()) {
+      return { enabled: false, channelId: null, sound: null };
+    }
+    if (!this.isSoundEnabled()) {
+      return {
+        enabled: true,
+        channelId: this.SILENT_CHANNEL_ID,
+        sound: undefined
+      };
+    }
+    const soundId = this.getSelectedSoundId();
+    const soundOpt = this.SOUND_OPTIONS.find(s => s.id === soundId) || this.SOUND_OPTIONS[0];
+    return {
+      enabled: true,
+      channelId: soundOpt.channelId,
+      sound: soundOpt.file
+    };
+  },
+
+  async setMasterEnabled(enabled) {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.STORAGE_KEY_MASTER, enabled ? 'true' : 'false');
+      }
+    } catch (_) {}
+    this.updateProfileBadge();
+    if (!enabled) {
+      const plugin = this.getPlugin();
+      const reg = this.getScheduledRegistry();
+      if (plugin && reg.length > 0) {
+        try {
+          await plugin.cancel({ notifications: reg.map(r => ({ id: r.id })) });
+        } catch (_) {}
+      }
+      this.saveScheduledRegistry([]);
+    } else {
+      await this.rescheduleAllEligibleReminders();
+    }
+  },
+
+  async setSoundEnabled(enabled) {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.STORAGE_KEY_SOUND_ENABLED, enabled ? 'true' : 'false');
+      }
+    } catch (_) {}
+    if (this.areNotificationsEnabled()) {
+      await this.rescheduleAllEligibleReminders();
+    }
+  },
+
+  async setSelectedSound(soundId) {
+    const soundOpt = this.SOUND_OPTIONS.find(s => s.id === soundId);
+    if (!soundOpt) return;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(this.STORAGE_KEY_SELECTED_SOUND, soundId);
+      }
+    } catch (_) {}
+    this.updateSoundSelectionUI(soundId);
+    if (this.areNotificationsEnabled() && this.isSoundEnabled()) {
+      await this.rescheduleAllEligibleReminders();
+    }
+  },
+
+  async rescheduleAllEligibleReminders() {
+    const plugin = this.getPlugin();
+    const reg = this.getScheduledRegistry();
+    if (plugin && reg.length > 0) {
+      try {
+        await plugin.cancel({ notifications: reg.map(r => ({ id: r.id })) });
+      } catch (_) {}
+    }
+    this.saveScheduledRegistry([]);
+
+    if (!this.areNotificationsEnabled()) return;
+
+    // Reschedule active incomplete tasks with reminders
+    const tasks = state.todos || [];
+    for (const task of tasks) {
+      if (!task.completed && task.dueDate && task.reminder === true) {
+        await this.scheduleTaskDeadlines(task);
+      }
+    }
+
+    // Reschedule active quick notes with reminders
+    const notes = state.quickNotes || [];
+    const now = Date.now();
+    for (const note of notes) {
+      if (note.reminderDate && new Date(note.reminderDate).getTime() > (now + 1000)) {
+        await this.scheduleQuickNoteReminder(note, note.reminderDate);
+      }
+    }
+  },
+
+  updateProfileBadge() {
+    if (typeof document === 'undefined') return;
+    const badge = document.getElementById('profile-notifications-badge');
+    if (badge) {
+      badge.textContent = this.areNotificationsEnabled() ? 'On' : 'Off';
+    }
+  },
+
+  previewSound(soundId) {
+    const soundEntry = this.SOUND_OPTIONS.find(s => s.id === soundId);
+    if (!soundEntry) return;
+
+    // If currently previewing this sound, toggle off
+    if (this.currentPreviewSoundId === soundId && this.currentPreviewAudio) {
+      this.stopSoundPreview();
+      return;
+    }
+
+    this.stopSoundPreview();
+
+    try {
+      if (typeof window !== 'undefined' && typeof Audio !== 'undefined') {
+        const audio = new Audio(`/assets/sounds/${soundEntry.file}`);
+        audio.volume = 0.85;
+        this.currentPreviewAudio = audio;
+        this.currentPreviewSoundId = soundId;
+        this.updatePreviewButtonsUI();
+
+        audio.addEventListener('ended', () => {
+          this.currentPreviewAudio = null;
+          this.currentPreviewSoundId = null;
+          this.updatePreviewButtonsUI();
+        });
+
+        audio.addEventListener('error', () => {
+          this.currentPreviewAudio = null;
+          this.currentPreviewSoundId = null;
+          this.updatePreviewButtonsUI();
+        });
+
+        audio.play().catch(err => {
+          console.warn('[NotificationSettings] Preview playback notice:', err);
+          this.currentPreviewAudio = null;
+          this.currentPreviewSoundId = null;
+          this.updatePreviewButtonsUI();
+        });
+      }
+    } catch (e) {
+      console.warn('[NotificationSettings] Audio instantiation notice:', e);
+    }
+  },
+
+  stopSoundPreview() {
+    if (this.currentPreviewAudio) {
+      try {
+        this.currentPreviewAudio.pause();
+        this.currentPreviewAudio.currentTime = 0;
+      } catch (_) {}
+      this.currentPreviewAudio = null;
+    }
+    this.currentPreviewSoundId = null;
+    this.updatePreviewButtonsUI();
+  },
+
+  updatePreviewButtonsUI() {
+    if (typeof document === 'undefined') return;
+    const buttons = document.querySelectorAll('.btn-sound-preview');
+    buttons.forEach(btn => {
+      const soundId = btn.getAttribute('data-sound-id');
+      const isPlaying = (this.currentPreviewSoundId === soundId);
+      const iconPlay = btn.querySelector('.icon-play');
+      const iconStop = btn.querySelector('.icon-stop');
+      if (isPlaying) {
+        btn.classList.add('playing');
+        btn.setAttribute('aria-label', `Stop previewing ${soundId}`);
+        if (iconPlay) iconPlay.style.display = 'none';
+        if (iconStop) iconStop.style.display = 'block';
+      } else {
+        btn.classList.remove('playing');
+        btn.setAttribute('aria-label', `Preview ${soundId}`);
+        if (iconPlay) iconPlay.style.display = 'block';
+        if (iconStop) iconStop.style.display = 'none';
+      }
+    });
+  },
+
+  updateSoundSelectionUI(soundId) {
+    if (typeof document === 'undefined') return;
+    const cards = document.querySelectorAll('.sound-option-card');
+    cards.forEach(card => {
+      const id = card.getAttribute('data-sound-id');
+      const isSelected = (id === soundId);
+      card.classList.toggle('active', isSelected);
+      card.setAttribute('aria-checked', String(isSelected));
+    });
+  },
+
+  async checkAndDisplayPermissionStatus() {
+    const warning = document.getElementById('notif-permission-warning');
+    if (!warning) return;
+    const plugin = this.getPlugin();
+    if (plugin && typeof plugin.checkPermissions === 'function') {
+      try {
+        const perm = await plugin.checkPermissions();
+        if (perm && (perm.display === 'denied' || perm.receive === 'denied')) {
+          warning.style.display = 'flex';
+          return;
+        }
+      } catch (_) {}
+    } else if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'denied') {
+        warning.style.display = 'flex';
+        return;
+      }
+    }
+    warning.style.display = 'none';
+  },
+
+  async openSettingsModal() {
+    if (typeof document === 'undefined') return;
+    this.stopSoundPreview();
+
+    const masterToggle = document.getElementById('toggle-master-notifications');
+    const soundToggle = document.getElementById('toggle-notification-sound');
+    if (masterToggle) masterToggle.checked = this.areNotificationsEnabled();
+    if (soundToggle) soundToggle.checked = this.isSoundEnabled();
+
+    this.updateSoundSelectionUI(this.getSelectedSoundId());
+    await this.checkAndDisplayPermissionStatus();
+
+    const modal = document.getElementById('modal-notification-settings');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeSettingsModal() {
+    this.stopSoundPreview();
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-notification-settings');
+    if (modal) modal.classList.remove('active');
+  },
+
+  initNotificationSettingsUI() {
+    if (typeof document === 'undefined') return;
+
+    this.updateProfileBadge();
+
+    const isWired = (el) => {
+      if (!el) return true;
+      if (el.dataset && el.dataset.wired) return true;
+      if (typeof el.getAttribute === 'function') return el.getAttribute('data-wired') === 'true';
+      return Boolean(el._wired);
+    };
+
+    const markWired = (el) => {
+      if (!el) return;
+      if (el.dataset) el.dataset.wired = 'true';
+      if (typeof el.setAttribute === 'function') el.setAttribute('data-wired', 'true');
+      el._wired = true;
+    };
+
+    const masterToggle = document.getElementById('toggle-master-notifications');
+    const soundToggle = document.getElementById('toggle-notification-sound');
+
+    if (masterToggle && !isWired(masterToggle)) {
+      markWired(masterToggle);
+      masterToggle.checked = this.areNotificationsEnabled();
+      if (typeof masterToggle.addEventListener === 'function') {
+        masterToggle.addEventListener('change', async (e) => {
+          await this.setMasterEnabled(e.target.checked);
+        });
+      }
+    }
+
+    if (soundToggle && !isWired(soundToggle)) {
+      markWired(soundToggle);
+      soundToggle.checked = this.isSoundEnabled();
+      if (typeof soundToggle.addEventListener === 'function') {
+        soundToggle.addEventListener('change', async (e) => {
+          await this.setSoundEnabled(e.target.checked);
+        });
+      }
+    }
+
+    const cards = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('.sound-option-card') : [];
+    if (cards && typeof cards.forEach === 'function') {
+      cards.forEach(card => {
+        if (!isWired(card)) {
+          markWired(card);
+          const soundId = typeof card.getAttribute === 'function' ? card.getAttribute('data-sound-id') : null;
+          if (typeof card.addEventListener === 'function') {
+            card.addEventListener('click', async (e) => {
+              if (e.target && typeof e.target.closest === 'function' && e.target.closest('.btn-sound-preview')) return;
+              if (soundId) await this.setSelectedSound(soundId);
+            });
+            card.addEventListener('keydown', async (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                if (typeof e.preventDefault === 'function') e.preventDefault();
+                if (soundId) await this.setSelectedSound(soundId);
+              }
+            });
+          }
+        }
+      });
+    }
+
+    const previewBtns = typeof document.querySelectorAll === 'function' ? document.querySelectorAll('.btn-sound-preview') : [];
+    if (previewBtns && typeof previewBtns.forEach === 'function') {
+      previewBtns.forEach(btn => {
+        if (!isWired(btn)) {
+          markWired(btn);
+          const soundId = typeof btn.getAttribute === 'function' ? btn.getAttribute('data-sound-id') : null;
+          if (typeof btn.addEventListener === 'function') {
+            btn.addEventListener('click', (e) => {
+              if (typeof e.stopPropagation === 'function') e.stopPropagation();
+              if (soundId) this.previewSound(soundId);
+            });
+          }
+        }
+      });
+    }
+
+    this.updateSoundSelectionUI(this.getSelectedSoundId());
+
+    const btnClose = document.getElementById('btn-close-notification-settings');
+    const btnDone = document.getElementById('btn-notification-settings-done');
+    const modalSettings = document.getElementById('modal-notification-settings');
+
+    if (btnClose && !isWired(btnClose)) {
+      markWired(btnClose);
+      if (typeof btnClose.addEventListener === 'function') {
+        btnClose.addEventListener('click', () => this.closeSettingsModal());
+      }
+    }
+    if (btnDone && !isWired(btnDone)) {
+      markWired(btnDone);
+      if (typeof btnDone.addEventListener === 'function') {
+        btnDone.addEventListener('click', () => this.closeSettingsModal());
+      }
+    }
+    if (modalSettings && !isWired(modalSettings)) {
+      markWired(modalSettings);
+      if (typeof modalSettings.addEventListener === 'function') {
+        modalSettings.addEventListener('click', (e) => {
+          if (e.target === modalSettings) this.closeSettingsModal();
+        });
+      }
+    }
+
+    const menuNotifications = document.getElementById('menu-notifications');
+    const btnOpenNotifications = document.getElementById('btn-open-notification-settings');
+    if (menuNotifications && !isWired(menuNotifications)) {
+      markWired(menuNotifications);
+      if (typeof menuNotifications.addEventListener === 'function') {
+        menuNotifications.addEventListener('click', () => this.openSettingsModal());
+      }
+    }
+    if (btnOpenNotifications && !isWired(btnOpenNotifications)) {
+      markWired(btnOpenNotifications);
+      if (typeof btnOpenNotifications.addEventListener === 'function') {
+        btnOpenNotifications.addEventListener('click', () => this.openSettingsModal());
+      }
+    }
+  },
+
+  async createAllChannels(plugin) {
+    if (!plugin || typeof plugin.createChannel !== 'function') return;
+
+    // Create high-importance channel for cat meow (default)
+    await plugin.createChannel({
+      id: this.CHANNEL_ID,
+      name: 'Taskly Reminders & Tasks',
+      description: 'Task deadlines, updates, and Quick Note reminders with cute cat meow sound',
+      importance: 5,
+      visibility: 1,
+      sound: this.NOTIFICATION_SOUND,
+      vibration: true,
+      lights: true,
+      lightColor: '#F88438'
+    }).catch(err => console.warn('[Notifications] createChannel warning:', err));
+
+    // Create dedicated channels for each other custom sound
+    for (const opt of this.SOUND_OPTIONS) {
+      if (opt.channelId !== this.CHANNEL_ID) {
+        await plugin.createChannel({
+          id: opt.channelId,
+          name: opt.channelName,
+          description: `Taskly notifications with ${opt.name} sound`,
+          importance: 5,
+          visibility: 1,
+          sound: opt.file,
+          vibration: true,
+          lights: true,
+          lightColor: '#F88438'
+        }).catch(err => console.warn(`[Notifications] createChannel for ${opt.id} warning:`, err));
+      }
+    }
+
+    // Create dedicated silent channel (importance: 3, vibration: true, no sound)
+    await plugin.createChannel({
+      id: this.SILENT_CHANNEL_ID,
+      name: 'Taskly Silent Reminders',
+      description: 'Taskly notifications delivered silently with vibration',
+      importance: 3,
+      visibility: 1,
+      sound: undefined,
+      vibration: true,
+      lights: true,
+      lightColor: '#F88438'
+    }).catch(err => console.warn('[Notifications] createChannel for silent warning:', err));
+  },
+
   playMeow(force = false) {
-    // In Android native app, sound is played by Android OS notification channel (taskly-reminders-v3).
+    // In Android native app, sound is played by Android OS notification channel.
     // In-app HTML5 audio should NEVER play on native Android, preventing duplicate sounds and startup noise.
     if (this.isNative() && !force) return;
     try {
@@ -1161,11 +1701,13 @@ const TasklyNotifications = {
   async init() {
     this.loadHistory();
     this.updateBadges();
+    this.updateProfileBadge();
+    this.initNotificationSettingsUI();
 
     const plugin = this.getPlugin();
     if (plugin) {
       try {
-        // Safe Channel Migration: Remove old silent channel
+        // Safe Channel Migration: Remove old legacy channels
         try {
           if (typeof plugin.deleteChannel === 'function') {
             for (const legacyId of this.LEGACY_CHANNELS) {
@@ -1183,18 +1725,8 @@ const TasklyNotifications = {
           }
         } catch (_) {}
 
-        // Create new high-importance channel with bundled sound and vibration
-        await plugin.createChannel({
-          id: this.CHANNEL_ID,
-          name: 'Taskly Reminders & Tasks',
-          description: 'Task deadlines, updates, and Quick Note reminders with cute cat meow sound',
-          importance: 5,
-          visibility: 1,
-          sound: this.NOTIFICATION_SOUND,
-          vibration: true,
-          lights: true,
-          lightColor: '#F88438'
-        }).catch(err => console.warn('[Notifications] createChannel warning:', err));
+        // Create all 10 sound channels and the silent channel
+        await this.createAllChannels(plugin);
 
         // Register Action Types for notifications
         if (typeof plugin.registerActionTypes === 'function') {
@@ -1240,6 +1772,7 @@ const TasklyNotifications = {
               this.reconcileScheduledReminders();
               this.loadHistory();
               this.updateBadges();
+              this.updateProfileBadge();
             }
           });
         }
@@ -1406,6 +1939,11 @@ const TasklyNotifications = {
     const plugin = this.getPlugin();
     if (plugin) {
       try {
+        const activeConfig = this.getActiveChannelConfig();
+        if (!activeConfig.enabled) {
+          return;
+        }
+
         const id = this.getStableId(`immediate_${Date.now()}`, Math.floor(Math.random() * 1000));
         let summaryText = 'Taskly';
         if (type === 'task_created') summaryText = 'Task Created';
@@ -1425,8 +1963,8 @@ const TasklyNotifications = {
               body: safeHeadline || safeDescription,
               largeBody,
               summaryText,
-              channelId: this.CHANNEL_ID,
-              sound: this.NOTIFICATION_SOUND,
+              channelId: activeConfig.channelId,
+              sound: activeConfig.sound,
               smallIcon: 'ic_stat_paw',
               largeIcon: icons.largeIcon,
               iconColor: '#F88438',
@@ -1450,6 +1988,8 @@ const TasklyNotifications = {
   async scheduleTaskDeadlines(task) {
     if (!task || !task.dueDate || task.completed) return;
     if (task.reminder === false) return; // Individual task reminder control: OFF schedules no notifications
+    const activeConfig = this.getActiveChannelConfig();
+    if (!activeConfig.enabled) return; // Master notifications disabled
 
     const deadline = parseTaskDeadline(task.dueDate, task.time);
     if (!deadline || isNaN(deadline.getTime())) return;
@@ -1483,8 +2023,8 @@ const TasklyNotifications = {
         largeBody: `Your deadline is getting closer!\n"${taskTitle}" is due in ${leadMinutes} minutes.${taskDesc}`,
         summaryText: 'Reminder',
         schedule: { at: approachingTime, allowWhileIdle: true },
-        channelId: this.CHANNEL_ID,
-        sound: this.NOTIFICATION_SOUND,
+        channelId: activeConfig.channelId,
+        sound: activeConfig.sound,
         smallIcon: 'ic_stat_paw',
         largeIcon: 'notif_cat_upcoming',
         iconColor: '#F88438',
@@ -1505,8 +2045,8 @@ const TasklyNotifications = {
         largeBody: `Your task deadline has arrived!\n"${taskTitle}" is due now.${taskDesc}`,
         summaryText: 'Deadline',
         schedule: { at: reachedTime, allowWhileIdle: true },
-        channelId: this.CHANNEL_ID,
-        sound: this.NOTIFICATION_SOUND,
+        channelId: activeConfig.channelId,
+        sound: activeConfig.sound,
         smallIcon: 'ic_stat_paw',
         largeIcon: 'notif_cat_reached',
         iconColor: '#F88438',
@@ -1527,8 +2067,8 @@ const TasklyNotifications = {
         largeBody: `Your task is still in progress. Let's finish it!\n"${taskTitle}" is overdue by 1 hour.${taskDesc}`,
         summaryText: 'Overdue',
         schedule: { at: overdueTime, allowWhileIdle: true },
-        channelId: this.CHANNEL_ID,
-        sound: this.NOTIFICATION_SOUND,
+        channelId: activeConfig.channelId,
+        sound: activeConfig.sound,
         smallIcon: 'ic_stat_paw',
         largeIcon: 'notif_cat_overdue',
         iconColor: '#F88438',
@@ -1550,6 +2090,9 @@ const TasklyNotifications = {
 
   async scheduleSnoozedTaskReminder(task, snoozeDate) {
     if (!task || !snoozeDate) return;
+    const activeConfig = this.getActiveChannelConfig();
+    if (!activeConfig.enabled) return;
+
     const rawTitle = task.title && typeof task.title === 'string' ? task.title.trim() : '';
     const taskTitle = rawTitle || 'Untitled Task';
     const shortTitle = taskTitle.length > 55 ? (taskTitle.substring(0, 52) + '...') : taskTitle;
@@ -1572,8 +2115,8 @@ const TasklyNotifications = {
               largeBody,
               summaryText: 'Deadline',
               schedule: { at: snoozeDate, allowWhileIdle: true },
-              channelId: this.CHANNEL_ID,
-              sound: this.NOTIFICATION_SOUND,
+              channelId: activeConfig.channelId,
+              sound: activeConfig.sound,
               smallIcon: 'ic_stat_paw',
               largeIcon: 'notif_cat_reached',
               iconColor: '#F88438',
@@ -1612,6 +2155,9 @@ const TasklyNotifications = {
 
   async scheduleQuickNoteReminder(note, reminderDate) {
     if (!note || !reminderDate) return;
+    const activeConfig = this.getActiveChannelConfig();
+    if (!activeConfig.enabled) return;
+
     const atDate = new Date(reminderDate);
     if (isNaN(atDate.getTime()) || atDate.getTime() <= (Date.now() + 1000)) return;
 
@@ -1636,8 +2182,8 @@ const TasklyNotifications = {
               largeBody,
               summaryText: 'Quick Note Reminder',
               schedule: { at: atDate, allowWhileIdle: true },
-              channelId: this.CHANNEL_ID,
-              sound: this.NOTIFICATION_SOUND,
+              channelId: activeConfig.channelId,
+              sound: activeConfig.sound,
               smallIcon: 'ic_stat_paw',
               largeIcon: 'notif_cat_quicknote',
               iconColor: '#F88438',
@@ -6721,6 +7267,11 @@ function setupEventListeners() {
     modalDeleteCat.addEventListener('click', (e) => {
       if (e.target === modalDeleteCat) closeDeleteCategoryModal();
     });
+  }
+
+  // Initialize Notification Settings modal controls & event listeners
+  if (typeof TasklyNotifications !== 'undefined' && typeof TasklyNotifications.initNotificationSettingsUI === 'function') {
+    TasklyNotifications.initNotificationSettingsUI();
   }
 }
 

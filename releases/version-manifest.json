@@ -1,16 +1,48 @@
 {
-  "latestVersion": "1.6.0",
-  "versionCode": 7,
-  "title": "Permanent Release History & What's New System",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.6.0/taskly-v1.6.0.apk",
-  "releaseNotes": "Taskly v1.6.0 introduces an integrated Permanent Release History and interactive What's New feature showcase in Profile → Version, allowing users to browse historical release notes across all 4 themes and compare versions with responsive compact-screen support.",
+  "latestVersion": "1.7.0",
+  "versionCode": 8,
+  "title": "Notification Settings & 10 Custom Notification Sounds",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk",
+  "releaseNotes": "Taskly v1.7.0 introduces dedicated Notification Settings with 10 custom chimes, a silent notification mode, a master notifications toggle, and multichannel Android audio routing.",
   "releaseDate": "2026-11-07",
   "minimumSupportedVersion": "1.0.0",
-  "fileSize": "17.0 MB",
-  "fileSizeBytes": 17851188,
-  "sha256": "913a24200eb88d6abaa61dba64bd26876eabfc0a5537cd0309e46b1b01d2ebc0",
+  "fileSize": "17.7 MB",
+  "fileSizeBytes": 18512481,
+  "sha256": "1a14e720c6ff2f1a11306de44ffb9033c2882f3b7f6a3e49b0764727fc3eb77e",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "1.7.0",
+      "versionName": "1.7.0",
+      "versionCode": 8,
+      "releaseDate": "2026-11-07",
+      "title": "Notification Settings & 10 Custom Notification Sounds",
+      "summary": "Taskly v1.7.0 introduces dedicated Notification Settings with 10 custom chimes, a silent notification mode, a master notifications toggle, and multichannel Android audio routing.",
+      "features": [
+        "Dedicated Notification Settings screen accessible from Profile item 6",
+        "10 custom notification chimes bundled locally (Cat Meow, Gentle Chime, Soft Bell, Classic Notification, Digital Pop, Bubble, Glass Tap, Soft Marimba, Calm Melody, and Water Drop)",
+        "Master Notifications switch to toggle reminder delivery with pending schedule restoration",
+        "Notification Sound switch with dedicated silent channel and vibration preservation",
+        "In-app audio preview player to listen to chimes without scheduling alerts"
+      ],
+      "improvements": [
+        "Multichannel Android notification architecture with dedicated channels per sound",
+        "Persistent user notification preferences stored across app restarts",
+        "System permission indicator warning if OS-level notification permissions are denied"
+      ],
+      "performance": [],
+      "fixes": [
+        "Resolved reminder scheduling edge case when editing task deadlines past midnight"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v1.7.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18512481,
+      "sha256": "1a14e720c6ff2f1a11306de44ffb9033c2882f3b7f6a3e49b0764727fc3eb77e",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
     {
       "version": "1.6.0",
       "versionName": "1.6.0",

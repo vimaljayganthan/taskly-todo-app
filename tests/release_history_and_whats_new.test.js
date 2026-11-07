@@ -483,8 +483,9 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
     test('publishRelease strictly preserves existing release history when appending new release', () => {
       const origManifest = JSON.parse(fs.readFileSync(releaseManager.MANIFEST_PATH, 'utf8'));
       const nextCode = (origManifest.versionCode || 6) + 1;
+      const nextVersion = `99.0.${nextCode}`;
       const testDraft = {
-        latestVersion: '1.7.0',
+        latestVersion: nextVersion,
         versionCode: nextCode,
         title: 'Productivity Powerpack',
         releaseNotes: 'Brand new release with high-impact features.',
@@ -494,7 +495,7 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
         fileSizeBytes: 18035500,
         sha256: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
         mandatoryUpdate: false,
-        apkDownloadUrl: 'https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk',
+        apkDownloadUrl: `https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v${nextVersion}/taskly-v${nextVersion}.apk`,
         apkSourceFile: 'android/app/build/outputs/apk/release/app-release.apk',
         features: ['Feature 1'],
         improvements: ['Improvement 1'],
@@ -510,7 +511,7 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
         const published = releaseManager.publishRelease({ 'confirm-owner-approval': true });
 
         // Verify new release is at index 0
-        assert.strictEqual(published.latestVersion, '1.7.0');
+        assert.strictEqual(published.latestVersion, nextVersion);
         assert.strictEqual(published.versionCode, nextCode);
         assert.strictEqual(published.history[0].versionCode, nextCode);
         assert.strictEqual(published.history[0].title, 'Productivity Powerpack');
@@ -595,9 +596,10 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
       const origPublic = fs.readFileSync(releaseManager.PUBLIC_MANIFEST_PATH, 'utf8');
       const origData = JSON.parse(origManifest);
       const nextCode = (origData.versionCode || 6) + 1;
+      const nextVersion = `99.0.${nextCode}`;
 
       const testDraft = {
-        latestVersion: '1.7.0',
+        latestVersion: nextVersion,
         versionCode: nextCode,
         title: 'Rollback Test Candidate',
         releaseNotes: 'Testing atomic rollback before second rename',
@@ -607,7 +609,7 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
         fileSizeBytes: 18035500,
         sha256: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
         mandatoryUpdate: false,
-        apkDownloadUrl: 'https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk',
+        apkDownloadUrl: `https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v${nextVersion}/taskly-v${nextVersion}.apk`,
         apkSourceFile: 'android/app/build/outputs/apk/release/app-release.apk',
         features: ['Feature A']
       };
@@ -639,9 +641,10 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
       const origPublic = fs.readFileSync(releaseManager.PUBLIC_MANIFEST_PATH, 'utf8');
       const origData = JSON.parse(origManifest);
       const nextCode = (origData.versionCode || 6) + 1;
+      const nextVersion = `99.0.${nextCode}`;
 
       const testDraft = {
-        latestVersion: '1.7.0',
+        latestVersion: nextVersion,
         versionCode: nextCode,
         title: 'Critical Recovery Test',
         releaseNotes: 'Testing recovery file preservation',
@@ -651,7 +654,7 @@ describe("Taskly Permanent Release History & What's New System Suite", () => {
         fileSizeBytes: 18035500,
         sha256: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
         mandatoryUpdate: false,
-        apkDownloadUrl: 'https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk',
+        apkDownloadUrl: `https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v${nextVersion}/taskly-v${nextVersion}.apk`,
         apkSourceFile: 'android/app/build/outputs/apk/release/app-release.apk',
         features: ['Feature X']
       };

@@ -8985,3 +8985,596 @@ html {
     font-size: 10.5px !important;
   }
 }
+
+/* ==========================================================================
+   Notification Settings & Custom Notification Sounds UI
+   ========================================================================== */
+.modal-card-notification-settings {
+  max-width: 480px !important;
+  width: 94% !important;
+  max-height: calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  border-radius: 24px !important;
+  overflow: hidden !important;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-card-notification-settings .modal-head {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.modal-head-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-head-icon-box {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-hover);
+  flex-shrink: 0;
+}
+
+.notification-settings-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notification-settings-scroll-body::-webkit-scrollbar {
+  width: 5px;
+}
+.notification-settings-scroll-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+/* Permission warning banner */
+.notif-permission-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #FEF3C7;
+  border: 1.5px solid #FCD34D;
+  color: #92400E;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.notif-permission-alert .alert-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.notif-permission-alert .alert-title {
+  font-weight: 800;
+  margin-bottom: 3px;
+  color: #78350F;
+}
+
+.notif-permission-alert .alert-desc {
+  color: #92400E;
+}
+
+/* Setting cards */
+.notif-setting-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.notif-card-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.notif-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-card-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.notif-card-desc {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.notif-toggle-switch {
+  flex-shrink: 0;
+}
+
+/* Sound Selection Section */
+.notif-sound-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.notif-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notif-section-title {
+  font-size: 0.9375rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.notif-section-subtitle {
+  font-size: 0.78125rem;
+  color: var(--text-secondary);
+}
+
+.sound-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sound-option-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+  min-height: 54px;
+}
+
+.sound-option-card:hover {
+  border-color: var(--primary-hover);
+  background: var(--app-bg);
+}
+
+.sound-option-card.active {
+  border-color: var(--primary-hover);
+  background: rgba(248, 132, 56, 0.08);
+}
+
+.sound-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sound-name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sound-desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sound preview button */
+.btn-sound-preview {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--app-bg);
+  color: var(--primary-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s, background 0.15s, color 0.15s, border-color 0.15s;
+  padding: 0;
+}
+
+.btn-sound-preview:hover {
+  transform: scale(1.08);
+  background: var(--primary-hover);
+  color: #FFFFFF;
+  border-color: var(--primary-hover);
+}
+
+.btn-sound-preview.playing {
+  background: var(--primary-hover);
+  color: #FFFFFF;
+  border-color: var(--primary-hover);
+  animation: pulse-preview 1s infinite alternate;
+}
+
+@keyframes pulse-preview {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.06); }
+}
+
+/* Radio indicator */
+.sound-radio-pill {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  color: transparent;
+}
+
+.sound-option-card.active .sound-radio-pill {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #FFFFFF;
+}
+
+.sound-check-icon {
+  font-size: 0.6875rem;
+  font-weight: 900;
+  display: none;
+  line-height: 1;
+}
+
+.sound-option-card.active .sound-check-icon {
+  display: block;
+}
+
+.modal-actions-footer {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Theme-Specific Overrides for Notification Settings
+   ========================================================================== */
+
+/* 1. Light Theme & Day Theme */
+[data-theme="light"] .modal-card-notification-settings,
+[data-theme="day"] .modal-card-notification-settings {
+  background: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+}
+
+[data-theme="light"] .modal-head-icon-box,
+[data-theme="day"] .modal-head-icon-box {
+  background: #E0F2FE !important;
+  color: #0284C7 !important;
+  border-color: #BAE6FD !important;
+}
+
+[data-theme="light"] .notif-setting-card,
+[data-theme="day"] .notif-setting-card {
+  background: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+[data-theme="light"] .sound-option-card,
+[data-theme="day"] .sound-option-card {
+  background: #F8FAFC !important;
+  border-color: #E2E8F0 !important;
+}
+
+[data-theme="light"] .sound-option-card:hover,
+[data-theme="day"] .sound-option-card:hover {
+  border-color: #0284C7 !important;
+  background: #F0F9FF !important;
+}
+
+[data-theme="light"] .sound-option-card.active,
+[data-theme="day"] .sound-option-card.active {
+  border-color: #0284C7 !important;
+  background: #E0F2FE !important;
+}
+
+[data-theme="light"] .sound-option-card.active .sound-radio-pill,
+[data-theme="day"] .sound-option-card.active .sound-radio-pill {
+  background: #0284C7 !important;
+  border-color: #0284C7 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="light"] .btn-sound-preview,
+[data-theme="day"] .btn-sound-preview {
+  background: #E0F2FE !important;
+  border-color: #BAE6FD !important;
+  color: #0284C7 !important;
+}
+
+[data-theme="light"] .btn-sound-preview:hover,
+[data-theme="light"] .btn-sound-preview.playing,
+[data-theme="day"] .btn-sound-preview:hover,
+[data-theme="day"] .btn-sound-preview.playing {
+  background: #0284C7 !important;
+  border-color: #0284C7 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="light"] .modal-actions-footer,
+[data-theme="day"] .modal-actions-footer {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+/* 2. Dark Theme */
+[data-theme="dark"] .modal-card-notification-settings {
+  background: #1C2733 !important;
+  border: 1.5px solid #3B4B5C !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.60) !important;
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .modal-head-icon-box {
+  background: #253241 !important;
+  border-color: #3B4B5C !important;
+  color: #38BDF8 !important;
+}
+
+[data-theme="dark"] .notif-permission-alert {
+  background: #2D2010 !important;
+  border-color: #78350F !important;
+  color: #FDE68A !important;
+}
+
+[data-theme="dark"] .notif-permission-alert .alert-title {
+  color: #FCD34D !important;
+}
+
+[data-theme="dark"] .notif-permission-alert .alert-desc {
+  color: #FDE68A !important;
+}
+
+[data-theme="dark"] .notif-setting-card {
+  background: #141D26 !important;
+  border-color: #2B3A4A !important;
+}
+
+[data-theme="dark"] .sound-option-card {
+  background: #141D26 !important;
+  border-color: #2B3A4A !important;
+}
+
+[data-theme="dark"] .sound-option-card:hover {
+  border-color: #38BDF8 !important;
+  background: #1C2733 !important;
+}
+
+[data-theme="dark"] .sound-option-card.active {
+  border-color: #38BDF8 !important;
+  background: rgba(56, 189, 248, 0.12) !important;
+}
+
+[data-theme="dark"] .sound-option-card.active .sound-radio-pill {
+  background: #38BDF8 !important;
+  border-color: #38BDF8 !important;
+  color: #0F172A !important;
+}
+
+[data-theme="dark"] .btn-sound-preview {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  color: #38BDF8 !important;
+}
+
+[data-theme="dark"] .btn-sound-preview:hover,
+[data-theme="dark"] .btn-sound-preview.playing {
+  background: #38BDF8 !important;
+  border-color: #38BDF8 !important;
+  color: #0F172A !important;
+}
+
+[data-theme="dark"] .sound-desc,
+[data-theme="dark"] .notif-card-desc,
+[data-theme="dark"] .notif-section-subtitle {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .modal-actions-footer {
+  background: #1C2733 !important;
+  border-color: #2B3A4A !important;
+}
+
+/* 3. Pet Theme */
+[data-theme="pet"] .modal-card-notification-settings {
+  background: #FFFDF9 !important;
+  border: 1.5px solid #F3E8DF !important;
+}
+
+[data-theme="pet"] .modal-head-icon-box {
+  background: #FFF1E6 !important;
+  border-color: #FED7AA !important;
+  color: #F88438 !important;
+}
+
+[data-theme="pet"] .notif-setting-card {
+  background: #FFFFFF !important;
+  border-color: #F3E8DF !important;
+}
+
+[data-theme="pet"] .sound-option-card {
+  background: #FFFFFF !important;
+  border-color: #F3E8DF !important;
+}
+
+[data-theme="pet"] .sound-option-card:hover {
+  border-color: #F88438 !important;
+  background: #FFF8F3 !important;
+}
+
+[data-theme="pet"] .sound-option-card.active {
+  border-color: #F88438 !important;
+  background: #FFF1E6 !important;
+}
+
+[data-theme="pet"] .sound-option-card.active .sound-radio-pill {
+  background: #F88438 !important;
+  border-color: #F88438 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="pet"] .btn-sound-preview {
+  background: #FFF1E6 !important;
+  border-color: #FED7AA !important;
+  color: #F88438 !important;
+}
+
+[data-theme="pet"] .btn-sound-preview:hover,
+[data-theme="pet"] .btn-sound-preview.playing {
+  background: #F88438 !important;
+  border-color: #F88438 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="pet"] .modal-actions-footer {
+  background: #FFFDF9 !important;
+  border-color: #F3E8DF !important;
+}
+
+/* 4. Pastel Theme */
+[data-theme="pastel"] .modal-card-notification-settings {
+  background: #FFFFFF !important;
+  border: 1.5px solid #DDD6FE !important;
+}
+
+[data-theme="pastel"] .modal-head-icon-box {
+  background: #EDE9FE !important;
+  border-color: #DDD6FE !important;
+  color: #7C3AED !important;
+}
+
+[data-theme="pastel"] .notif-setting-card {
+  background: #FAF8FF !important;
+  border-color: #DDD6FE !important;
+}
+
+[data-theme="pastel"] .sound-option-card {
+  background: #FAF8FF !important;
+  border-color: #DDD6FE !important;
+}
+
+[data-theme="pastel"] .sound-option-card:hover {
+  border-color: #7C3AED !important;
+  background: #F5F3FF !important;
+}
+
+[data-theme="pastel"] .sound-option-card.active {
+  border-color: #7C3AED !important;
+  background: #EDE9FE !important;
+}
+
+[data-theme="pastel"] .sound-option-card.active .sound-radio-pill {
+  background: #7C3AED !important;
+  border-color: #7C3AED !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="pastel"] .btn-sound-preview {
+  background: #EDE9FE !important;
+  border-color: #DDD6FE !important;
+  color: #7C3AED !important;
+}
+
+[data-theme="pastel"] .btn-sound-preview:hover,
+[data-theme="pastel"] .btn-sound-preview.playing {
+  background: #7C3AED !important;
+  border-color: #7C3AED !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="pastel"] .modal-actions-footer {
+  background: #FFFFFF !important;
+  border-color: #DDD6FE !important;
+}
+
+/* Compact Mobile Responsiveness */
+@media (max-width: 360px) {
+  .modal-card-notification-settings {
+    width: 98% !important;
+    border-radius: 18px !important;
+  }
+
+  .notification-settings-scroll-body {
+    padding: 12px 14px 16px !important;
+    gap: 10px !important;
+  }
+
+  .notif-setting-card {
+    padding: 12px 12px !important;
+  }
+
+  .sound-option-card {
+    padding: 8px 10px !important;
+    gap: 10px !important;
+    min-height: 48px !important;
+  }
+
+  .btn-sound-preview {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .sound-name {
+    font-size: 0.8125rem !important;
+  }
+
+  .sound-desc {
+    font-size: 0.6875rem !important;
+  }
+}
+
+@media (max-width: 320px) {
+  .sound-desc {
+    display: none !important;
+  }
+  
+  .notif-card-desc {
+    font-size: 0.75rem !important;
+  }
+}

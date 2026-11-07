@@ -789,6 +789,20 @@
                   <span class="menu-chevron">›</span>
                 </button>
 
+                <!-- 6. Notifications (NEW) -->
+                <button type="button" class="profile-menu-item" id="menu-notifications" aria-label="Notification Settings">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    </div>
+                    <span class="menu-item-label">Notifications</span>
+                  </div>
+                  <div class="menu-item-right-wrap">
+                    <span class="menu-item-val" id="profile-notifications-badge">On</span>
+                    <span class="menu-chevron">›</span>
+                  </div>
+                </button>
+
                 <!-- Theme Selection Item -->
                 <button type="button" class="profile-menu-item" id="btn-toggle-theme" aria-label="Select Theme">
                   <div class="menu-item-left">
@@ -829,6 +843,7 @@
                 <button type="button" id="btn-open-tour" style="display: none;"></button>
                 <button type="button" id="btn-open-about" style="display: none;"></button>
                 <button type="button" id="btn-open-version" style="display: none;"></button>
+                <button type="button" id="btn-open-notification-settings" style="display: none;"></button>
               </div>
 
               <!-- Bottom Log Out Button -->
@@ -1944,6 +1959,227 @@
               </div>
             </div>
 
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Notification Settings -->
+      <div id="modal-notification-settings" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-notification-settings-title">
+        <div class="modal-card modal-card-notification-settings">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+              </div>
+              <h3 class="modal-title" id="modal-notification-settings-title">Notification Settings</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-notification-settings" aria-label="Close">×</button>
+          </div>
+
+          <div class="notification-settings-scroll-body">
+            <!-- System Permission Warning Banner (displayed when notifications are blocked in OS settings) -->
+            <div id="notif-permission-warning" class="notif-permission-alert" style="display: none;" role="alert">
+              <div class="alert-icon">⚠️</div>
+              <div class="alert-text">
+                <div class="alert-title">Notifications Blocked in System Settings</div>
+                <div class="alert-desc">System notification permission is disabled for Taskly in your device settings. To receive task deadline reminders, please allow notifications in your phone's App Settings.</div>
+              </div>
+            </div>
+
+            <!-- Card 1: Master Notifications Switch -->
+            <div class="notif-setting-card">
+              <div class="notif-card-main">
+                <div class="notif-card-info">
+                  <span class="notif-card-title">Enable Notifications</span>
+                  <p class="notif-card-desc">Receive reminders for upcoming deadlines, approaching tasks, and Quick Notes.</p>
+                </div>
+                <label class="switch notif-toggle-switch" for="toggle-master-notifications">
+                  <input type="checkbox" id="toggle-master-notifications" checked aria-label="Enable Notifications">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Card 2: Notification Sound Switch -->
+            <div class="notif-setting-card" id="card-notification-sound">
+              <div class="notif-card-main">
+                <div class="notif-card-info">
+                  <span class="notif-card-title">Notification Sound</span>
+                  <p class="notif-card-desc">Play a sound when notifications arrive. When off, notifications are delivered silently with vibration.</p>
+                </div>
+                <label class="switch notif-toggle-switch" for="toggle-notification-sound">
+                  <input type="checkbox" id="toggle-notification-sound" checked aria-label="Notification Sound">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Section 3: Sound Selection -->
+            <div class="notif-sound-section" id="section-sound-selection">
+              <div class="notif-section-header">
+                <span class="notif-section-title">Choose Notification Sound</span>
+                <span class="notif-section-subtitle">Tap to choose and preview your alert chime</span>
+              </div>
+
+              <div class="sound-options-list" id="sound-options-list" role="radiogroup" aria-label="Notification Sounds">
+                <!-- 1. Cat Meow (Default) -->
+                <div class="sound-option-card active" data-sound-id="cat_meow" role="radio" aria-checked="true" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="cat_meow" aria-label="Preview Cat Meow sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Cat Meow</span>
+                    <span class="sound-desc">Taskly's signature cat meow (Default)</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 2. Gentle Chime -->
+                <div class="sound-option-card" data-sound-id="gentle_chime" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="gentle_chime" aria-label="Preview Gentle Chime sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Gentle Chime</span>
+                    <span class="sound-desc">Soft harmonic ascending chime</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 3. Soft Bell -->
+                <div class="sound-option-card" data-sound-id="soft_bell" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="soft_bell" aria-label="Preview Soft Bell sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Soft Bell</span>
+                    <span class="sound-desc">Warm acoustic bell tone</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 4. Classic Notification -->
+                <div class="sound-option-card" data-sound-id="classic" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="classic" aria-label="Preview Classic Notification sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Classic Notification</span>
+                    <span class="sound-desc">Friendly two-tone alert</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 5. Digital Pop -->
+                <div class="sound-option-card" data-sound-id="digital_pop" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="digital_pop" aria-label="Preview Digital Pop sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Digital Pop</span>
+                    <span class="sound-desc">Snappy modern bubble pop</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 6. Bubble -->
+                <div class="sound-option-card" data-sound-id="bubble" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="bubble" aria-label="Preview Bubble sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Bubble</span>
+                    <span class="sound-desc">Smooth upward bubbly tone</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 7. Glass Tap -->
+                <div class="sound-option-card" data-sound-id="glass_tap" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="glass_tap" aria-label="Preview Glass Tap sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Glass Tap</span>
+                    <span class="sound-desc">Crystalline resonant chime</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 8. Soft Marimba -->
+                <div class="sound-option-card" data-sound-id="soft_marimba" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="soft_marimba" aria-label="Preview Soft Marimba sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Soft Marimba</span>
+                    <span class="sound-desc">Warm acoustic wooden mallet</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 9. Calm Melody -->
+                <div class="sound-option-card" data-sound-id="calm_melody" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="calm_melody" aria-label="Preview Calm Melody sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Calm Melody</span>
+                    <span class="sound-desc">Gentle 3-note arpeggio</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+
+                <!-- 10. Water Drop -->
+                <div class="sound-option-card" data-sound-id="water_drop" role="radio" aria-checked="false" tabindex="0">
+                  <button type="button" class="btn-sound-preview" data-sound-id="water_drop" aria-label="Preview Water Drop sound" title="Preview sound">
+                    <svg class="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg class="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                  <div class="sound-card-text">
+                    <span class="sound-name">Water Drop</span>
+                    <span class="sound-desc">Organic liquid droplet sound</span>
+                  </div>
+                  <div class="sound-radio-pill" aria-hidden="true">
+                    <span class="sound-check-icon">✓</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-actions-footer">
+            <button type="button" class="btn-primary-wide" id="btn-notification-settings-done">Done</button>
           </div>
         </div>
       </div>

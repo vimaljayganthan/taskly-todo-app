@@ -176,6 +176,7 @@ describe('Taskly Task Reminder Control & Notification Scheduling Suite', () => {
       const mm1 = String(d1.getMinutes()).padStart(2, '0');
 
       const d2 = new Date(Date.now() + (4 * 60 * 60 * 1000));
+      const ymd2 = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}-${String(d2.getDate()).padStart(2, '0')}`;
       const hh2 = String(d2.getHours()).padStart(2, '0');
       const mm2 = String(d2.getMinutes()).padStart(2, '0');
 
@@ -193,6 +194,7 @@ describe('Taskly Task Reminder Control & Notification Scheduling Suite', () => {
 
       // Edit deadline
       await app.TasklyNotifications.cancelTaskReminders(task.id);
+      task.dueDate = ymd2;
       task.time = `${hh2}:${mm2}`;
       await app.TasklyNotifications.scheduleTaskDeadlines(task);
 
