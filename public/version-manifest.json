@@ -1,16 +1,51 @@
 {
-  "latestVersion": "1.7.0",
-  "versionCode": 8,
-  "title": "Notification Settings & 10 Custom Notification Sounds",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk",
-  "releaseNotes": "Taskly v1.7.0 introduces dedicated Notification Settings with 10 custom chimes, a silent notification mode, a master notifications toggle, and multichannel Android audio routing.",
+  "latestVersion": "1.8.0",
+  "versionCode": 9,
+  "title": "Custom Category Persistence & Data Consistency",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.8.0/taskly-v1.8.0.apk",
+  "releaseNotes": "Critical bug fixes for custom category persistence, calendar indicators, and data consistency across devices.",
   "releaseDate": "2026-11-07",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.7 MB",
-  "fileSizeBytes": 18512481,
-  "sha256": "1a14e720c6ff2f1a11306de44ffb9033c2882f3b7f6a3e49b0764727fc3eb77e",
+  "fileSizeBytes": 18517801,
+  "sha256": "33d90003e9e6ac876a954a6818094bacd1a0f9ec496d2fd17f86881a3c10b294",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "1.8.0",
+      "versionName": "1.8.0",
+      "versionCode": 9,
+      "releaseDate": "2026-11-07",
+      "title": "Custom Category Persistence & Data Consistency",
+      "summary": "Critical bug fixes for custom category persistence, calendar indicators, and data consistency across devices.",
+      "features": [
+        "Custom category creation and cross-device persistence",
+        "Direct authenticated Supabase CRUD integration",
+        "Custom-category Yellow (#FACC15) calendar workload indicators",
+        "Synchronized Add Task and Edit Task dynamic category selection"
+      ],
+      "improvements": [
+        "Release History and What's New authoritative manifest synchronization",
+        "Seamless multi-device custom category discovery from stored tasks and user metadata"
+      ],
+      "performance": [
+        "Instant targeted DOM updates for task cards and calendar upon database confirmation"
+      ],
+      "fixes": [
+        "Prevented custom categories from reverting to Personal",
+        "Fixed calendar date indicators to properly display custom category Yellow without breaking priority aggregation",
+        "Eliminated hung task saves with 10-second timeout guard and database ID verification",
+        "Synchronized Add Task category pill selector with category dropdown"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v1.8.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18517801,
+      "sha256": "33d90003e9e6ac876a954a6818094bacd1a0f9ec496d2fd17f86881a3c10b294",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.8.0/taskly-v1.8.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
     {
       "version": "1.7.0",
       "versionName": "1.7.0",

@@ -380,8 +380,17 @@ app.post('/api/todos', async (req, res, next) => {
     const validPriorities = ['High', 'Medium', 'Low'];
     const parsedPriority = validPriorities.includes(priority) ? priority : 'Medium';
 
-    const validCategories = ['Project', 'Work', 'Study', 'Personal'];
-    const parsedCategory = validCategories.includes(category) ? category : 'Personal';
+    let parsedCategory = 'Personal';
+    if (typeof category === 'string' && category.trim()) {
+      const trimmedCat = category.trim().slice(0, 50);
+      const standard = ['project', 'work', 'study', 'personal'];
+      const matchedStandard = standard.find(s => s.toLowerCase() === trimmedCat.toLowerCase());
+      if (matchedStandard) {
+        parsedCategory = matchedStandard.charAt(0).toUpperCase() + matchedStandard.slice(1);
+      } else {
+        parsedCategory = trimmedCat;
+      }
+    }
 
     const newTodo = {
       id: crypto.randomUUID(),
@@ -451,8 +460,17 @@ app.patch('/api/todos/:id', async (req, res, next) => {
       updateFields.priority = priority;
     }
 
-    if (['Project', 'Work', 'Study', 'Personal'].includes(category)) {
-      updateFields.category = category;
+    if (category !== undefined) {
+      if (typeof category === 'string' && category.trim()) {
+        const trimmedCat = category.trim().slice(0, 50);
+        const standard = ['project', 'work', 'study', 'personal'];
+        const matchedStandard = standard.find(s => s.toLowerCase() === trimmedCat.toLowerCase());
+        updateFields.category = matchedStandard
+          ? matchedStandard.charAt(0).toUpperCase() + matchedStandard.slice(1)
+          : trimmedCat;
+      } else {
+        updateFields.category = 'Personal';
+      }
     }
 
     if (time !== undefined) {

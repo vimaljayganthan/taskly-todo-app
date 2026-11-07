@@ -582,6 +582,9 @@ function syncAuthSignOut() {
     localStorage.removeItem('taskly_active_flow');
     localStorage.removeItem('taskly_active_tab');
   } catch (_) {}
+  if (typeof syncCustomCategoriesToDOM === 'function') {
+    syncCustomCategoriesToDOM('Personal');
+  }
   updatePreviewUI();
   renderAll();
 }
@@ -3202,6 +3205,9 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
   renderAll();
   if (tabName === 'add') {
     initAddTaskDateTime();
+    if (typeof syncCustomCategoriesToDOM === 'function') {
+      syncCustomCategoriesToDOM();
+    }
   }
   if (tabName === 'calendar') {
     setTimeout(updateCalendarTimelineRope, 20);
@@ -3259,22 +3265,59 @@ async function fetchTodos() {
     return;
   }
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
-      headers: {
-        'Authorization': `Bearer ${state.userToken}`
+    let rawTodos = null;
+
+    // 1. Direct Supabase query if client is authenticated
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { data: dbRows, error: dbError } = await supabaseClient
+          .from('todos')
+          .select('*')
+          .eq('user_id', state.user.id)
+          .order('created_at', { ascending: false });
+
+        if (!dbError && Array.isArray(dbRows)) {
+          rawTodos = dbRows.map(row => ({
+            id: row.id,
+            userId: row.user_id,
+            user_id: row.user_id,
+            title: row.title,
+            completed: Boolean(row.completed),
+            dueDate: row.due_date || row.dueDate || null,
+            time: row.time || null,
+            description: row.description || '',
+            priority: row.priority || 'Medium',
+            category: row.category || 'Personal',
+            reminder: Boolean(row.reminder === true),
+            createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+            updatedAt: row.updated_at || row.updatedAt || null
+          }));
+        }
+      } catch (sbErr) {
+        console.warn('[Supabase Direct Fetch]: Fallback to API endpoint due to:', sbErr);
       }
-    });
-    if (res.status === 401) {
-      handleAuthExpiry();
-      return;
     }
-    if (res.status === 403) {
-      const errData = await res.json().catch(() => ({}));
-      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
-      return;
+
+    // 2. Fallback to API endpoint if not retrieved via direct Supabase client
+    if (!rawTodos) {
+      const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
+        headers: {
+          'Authorization': `Bearer ${state.userToken}`
+        }
+      });
+      if (res.status === 401) {
+        handleAuthExpiry();
+        return;
+      }
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({}));
+        handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+        return;
+      }
+      if (!res.ok) throw new Error('Failed to load tasks');
+      rawTodos = await res.json();
     }
-    if (!res.ok) throw new Error('Failed to load tasks');
-    const rawTodos = await res.json();
+
     state.todos = Array.isArray(rawTodos) ? rawTodos.map(t => {
       if (t && typeof t === 'object') {
         t.reminder = Boolean(t.reminder === true);
@@ -3282,6 +3325,15 @@ async function fetchTodos() {
       return t;
     }) : [];
     state.todosLoaded = true;
+
+    // Discover custom categories and synchronize to DOM
+    if (typeof getStoredCustomCategories === 'function') {
+      getStoredCustomCategories();
+    }
+    if (typeof syncCustomCategoriesToDOM === 'function') {
+      syncCustomCategoriesToDOM();
+    }
+
     renderAll();
     TasklyNotifications.reconcileScheduledReminders();
   } catch (err) {
@@ -3323,13 +3375,20 @@ async function handleAddTask(e) {
     const activePriorityBtn = document.querySelector('#add-priority-selector .pill-opt.active');
     const priority = activePriorityBtn ? activePriorityBtn.dataset.val : 'Medium';
 
+    const addCatSelect = document.getElementById('add-task-category');
     const activeCategoryBtn = document.querySelector('#add-category-selector .pill-opt.active');
-    let category = activeCategoryBtn ? activeCategoryBtn.dataset.val : 'Personal';
-    if (category === 'Custom') {
-      const customInput = document.getElementById('input-new-custom-category');
+    let category = 'Personal';
+    if (activeCategoryBtn && activeCategoryBtn.dataset && activeCategoryBtn.dataset.val && activeCategoryBtn.dataset.val !== 'Custom') {
+      category = activeCategoryBtn.dataset.val;
+    } else if (addCatSelect && addCatSelect.value && addCatSelect.value !== '__new_custom__' && addCatSelect.value !== 'Custom') {
+      category = addCatSelect.value;
+    }
+
+    const customInput = document.getElementById('input-new-custom-category');
+    if (category === 'Custom' || (addCatSelect && addCatSelect.value === '__new_custom__') || (customInput && customInput.value.trim() && customInput.offsetParent !== null)) {
       if (customInput && customInput.value.trim()) {
         try {
-          category = saveCustomCategory(customInput.value);
+          category = saveCustomCategory(customInput.value.trim());
         } catch (e) {
           category = customInput.value.trim();
         }
@@ -3383,32 +3442,99 @@ async function handleAddTask(e) {
     }
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${state.userToken}`
-        },
-        body: JSON.stringify(payload)
-      });
+      let created = null;
 
-      if (res.status === 401) {
-        handleAuthExpiry();
-        return;
-      }
-      if (res.status === 403) {
-        const errData = await res.json().catch(() => ({}));
-        handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
-        return;
+      // 1. Direct Supabase insert if client is authenticated
+      if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+        try {
+          const newId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : ('task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9));
+
+          const insertRow = {
+            id: newId,
+            user_id: state.user.id,
+            title: payload.title,
+            description: payload.description,
+            due_date: payload.dueDate,
+            time: payload.time,
+            priority: payload.priority,
+            category: payload.category,
+            reminder: payload.reminder,
+            completed: false,
+            created_at: new Date().toISOString()
+          };
+
+          const { data: dbData, error: dbError } = await supabaseClient
+            .from('todos')
+            .insert(insertRow)
+            .select()
+            .single();
+
+          if (!dbError && dbData) {
+            created = {
+              id: dbData.id,
+              userId: dbData.user_id,
+              user_id: dbData.user_id,
+              title: dbData.title,
+              completed: Boolean(dbData.completed),
+              dueDate: dbData.due_date || dbData.dueDate || payload.dueDate,
+              time: dbData.time || payload.time,
+              description: dbData.description || payload.description,
+              priority: dbData.priority || payload.priority,
+              category: dbData.category || payload.category,
+              reminder: Boolean(dbData.reminder === true),
+              createdAt: dbData.created_at || new Date().toISOString(),
+              updatedAt: dbData.updated_at || null
+            };
+          }
+        } catch (sbErr) {
+          console.warn('[Supabase Direct Insert]: Fallback to API endpoint due to:', sbErr);
+        }
       }
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to save task.');
+      // 2. Fallback to API endpoint
+      if (!created) {
+        const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${state.userToken}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.status === 401) {
+          handleAuthExpiry();
+          return;
+        }
+        if (res.status === 403) {
+          const errData = await res.json().catch(() => ({}));
+          handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+          return;
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to save task.');
+        }
+
+        created = await res.json();
+        // Guard against stale proxy overwriting custom category with Personal
+        if (payload.category && payload.category !== 'Personal' && created && created.category === 'Personal') {
+          created.category = payload.category;
+        }
       }
 
-      const created = await res.json();
       state.todos.unshift(created);
+
+      // Discover custom categories and synchronize DOM
+      if (typeof getStoredCustomCategories === 'function') {
+        getStoredCustomCategories();
+      }
+      if (typeof syncCustomCategoriesToDOM === 'function') {
+        syncCustomCategoriesToDOM();
+      }
       TasklyNotifications.notifyImmediate({
         title: 'Taskly · Task Created',
         headline: 'Your new task is ready! 🎉',
@@ -3433,7 +3559,9 @@ async function handleAddTask(e) {
       showMainFlow(targetTab);
     } catch (err) {
       console.error('Add task error:', err);
-      alert(`Could not create task: ${err.message}`);
+      if (typeof alert !== 'undefined') {
+        alert(`Could not create task: ${err.message}`);
+      }
     }
   } finally {
     if (submitBtn) submitBtn.disabled = false;
@@ -3555,67 +3683,161 @@ async function handleDeleteTask(event, id) {
 }
 
 async function updateTask(id, updates) {
-  if (!id || !updates) return null;
+  if (!id || !updates) throw new Error('Task ID and updates are required');
   const task = state.todos.find(t => t.id === id);
-  if (!task) return null;
+  if (!task) throw new Error(`Task with ID "${id}" was not found`);
 
-  // Apply updates locally
-  Object.assign(task, updates);
-  renderAll();
-
-  TasklyNotifications.cancelTaskReminders(task.id);
-  if (!task.completed && task.reminder === true) {
-    TasklyNotifications.scheduleTaskDeadlines(task);
-  }
-
-  const triggerUpdateNotification = () => {
+  const triggerUpdateNotification = (updatedTask) => {
     const opSuccessAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     TasklyNotifications.notifyImmediate({
       title: 'Taskly · Task Updated',
       headline: 'Your task details have been updated.',
-      description: `"${task.title}" details have been updated.`,
+      description: `"${updatedTask.title}" details have been updated.`,
       type: 'task_updated',
       largeIcon: 'notif_cat_updated',
-      sourceId: task.id,
+      sourceId: updatedTask.id,
       sourceType: 'task',
       opSuccessTimestamp: opSuccessAt
     });
   };
 
   if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) {
-    triggerUpdateNotification();
+    Object.assign(task, updates);
+    TasklyNotifications.cancelTaskReminders(task.id);
+    if (!task.completed && task.reminder === true) {
+      TasklyNotifications.scheduleTaskDeadlines(task);
+    }
+    renderHome();
+    renderCalendar();
+    renderAnalytics();
+    triggerUpdateNotification(task);
     return task;
   }
 
+  // Network call with 10-second timeout to prevent hung saves
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 10000) : null;
+
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${state.userToken}`
-      },
-      body: JSON.stringify(updates)
-    });
-    if (res.status === 401) {
-      handleAuthExpiry();
-      return task;
+    let updated = null;
+
+    // 1. Direct Supabase update if client is authenticated
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const dbFields = {
+          updated_at: new Date().toISOString()
+        };
+        if (updates.title !== undefined) dbFields.title = updates.title;
+        if (updates.description !== undefined) dbFields.description = updates.description;
+        if (updates.dueDate !== undefined) dbFields.due_date = updates.dueDate;
+        if (updates.time !== undefined) dbFields.time = updates.time;
+        if (updates.priority !== undefined) dbFields.priority = updates.priority;
+        if (updates.category !== undefined) dbFields.category = updates.category;
+        if (updates.completed !== undefined) dbFields.completed = Boolean(updates.completed);
+        if (updates.reminder !== undefined) dbFields.reminder = Boolean(updates.reminder);
+
+        const { data: dbData, error: dbError } = await supabaseClient
+          .from('todos')
+          .update(dbFields)
+          .eq('id', id)
+          .eq('user_id', state.user.id)
+          .select()
+          .single();
+
+        if (!dbError && dbData) {
+          updated = {
+            id: dbData.id,
+            userId: dbData.user_id,
+            user_id: dbData.user_id,
+            title: dbData.title,
+            completed: Boolean(dbData.completed),
+            dueDate: dbData.due_date || dbData.dueDate || updates.dueDate,
+            time: dbData.time || updates.time,
+            description: dbData.description || updates.description,
+            priority: dbData.priority || updates.priority,
+            category: dbData.category || updates.category,
+            reminder: Boolean(dbData.reminder === true),
+            createdAt: dbData.created_at,
+            updatedAt: dbData.updated_at
+          };
+        }
+      } catch (sbErr) {
+        console.warn('[Supabase Direct Update]: Fallback to API endpoint due to:', sbErr);
+      }
     }
-    if (res.status === 403) {
-      const errData = await res.json().catch(() => ({}));
-      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
-      return task;
+
+    // 2. Fallback to API endpoint
+    if (!updated) {
+      const fetchOptions = {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.userToken}`
+        },
+        body: JSON.stringify(updates)
+      };
+      if (controller) {
+        fetchOptions.signal = controller.signal;
+      }
+
+      const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, fetchOptions);
+      if (timeoutId) clearTimeout(timeoutId);
+
+      if (res.status === 401) {
+        handleAuthExpiry();
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({}));
+        handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+        throw new Error(errData.error || 'Please verify your email address to access Taskly.');
+      }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned error (${res.status}) while saving task`);
+      }
+
+      updated = await res.json();
+      if (updated && updated.id && updated.id !== id) {
+        throw new Error('Database response ID mismatch: confirmed update does not match targeted task');
+      }
+      // Guard against stale proxy overwriting custom category with Personal
+      if (updates.category && updates.category !== 'Personal' && updated && updated.category === 'Personal') {
+        updated.category = updates.category;
+      }
     }
-    if (res.ok) {
-      const updated = await res.json();
-      Object.assign(task, updated);
-      renderAll();
-      triggerUpdateNotification();
-      return updated;
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+    // Apply confirmed updates to local state
+    Object.assign(task, updated || updates);
+
+    // Discover custom categories and synchronize DOM
+    if (typeof getStoredCustomCategories === 'function') {
+      getStoredCustomCategories();
     }
+    if (typeof syncCustomCategoriesToDOM === 'function') {
+      syncCustomCategoriesToDOM();
+    }
+
+    TasklyNotifications.cancelTaskReminders(task.id);
+    if (!task.completed && task.reminder === true) {
+      TasklyNotifications.scheduleTaskDeadlines(task);
+    }
+
+    // Targeted DOM updates (Home task card, calendar, analytics) without full page reload
+    renderHome();
+    renderCalendar();
+    renderAnalytics();
+    triggerUpdateNotification(task);
+    return task;
   } catch (err) {
-    console.warn('Update task warning:', err);
+    if (timeoutId) clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Save request timed out. Please check your network connection and retry.');
+    }
+    throw err;
   }
-  return task;
 }
 
 function handleOpenEditTaskModal(event, id) {
@@ -3636,8 +3858,27 @@ function handleOpenEditTaskModal(event, id) {
   if (descInput) descInput.value = task.description || '';
   if (dateInput) dateInput.value = task.dueDate || '';
   if (priorityInput) priorityInput.value = task.priority || 'Medium';
-  syncCustomCategoriesToDOM(task.category || 'Personal');
-  if (catInput) catInput.value = task.category || 'Personal';
+  const currentCategory = task.category || 'Personal';
+  syncCustomCategoriesToDOM(currentCategory);
+  if (catInput) {
+    let found = false;
+    if (catInput.options) {
+      for (let i = 0; i < catInput.options.length; i++) {
+        if (catInput.options[i] && catInput.options[i].value.toLowerCase() === currentCategory.toLowerCase()) {
+          catInput.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found) {
+      try {
+        const opt = new Option(`${currentCategory} (Custom)`, currentCategory, true, true);
+        catInput.add(opt);
+      } catch (_) {}
+    }
+    catInput.value = currentCategory;
+  }
 
   const reminderInput = document.getElementById('edit-task-reminder');
   if (reminderInput) {
@@ -3655,12 +3896,27 @@ function handleOpenEditTaskModal(event, id) {
     }
   }
 
+  const errBanner = document.getElementById('edit-task-error-banner');
+  if (errBanner) errBanner.style.display = 'none';
+  const saveBtn = document.getElementById('btn-save-edit-task') || (modal && modal.querySelector('button[type="submit"]'));
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Changes';
+  }
+
   if (modal) modal.classList.add('active');
 }
 
 function closeEditTaskModal() {
   const modal = document.getElementById('modal-edit-task');
   if (modal) modal.classList.remove('active');
+  const errBanner = document.getElementById('edit-task-error-banner');
+  if (errBanner) errBanner.style.display = 'none';
+  const saveBtn = document.getElementById('btn-save-edit-task') || (modal && modal.querySelector('button[type="submit"]'));
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Changes';
+  }
 }
 
 async function handleClearCompleted() {
@@ -3916,19 +4172,67 @@ function getCustomCategoriesStorageKey() {
 }
 
 function getStoredCustomCategories() {
+  const standard = ['project', 'work', 'study', 'personal'];
+  const categoriesMap = new Map();
+
   try {
-    if (typeof localStorage === 'undefined') return [];
-    const raw = localStorage.getItem(getCustomCategoriesStorageKey());
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.filter(c => typeof c === 'string' && c.trim().length > 0);
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(getCustomCategoriesStorageKey());
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(c => {
+            if (typeof c === 'string' && c.trim().length > 0) {
+              const trimmed = c.trim();
+              if (!standard.includes(trimmed.toLowerCase())) {
+                categoriesMap.set(trimmed.toLowerCase(), trimmed);
+              }
+            }
+          });
+        }
       }
     }
   } catch (err) {
-    console.warn('Failed to read custom categories:', err);
+    console.warn('Failed to read custom categories from storage:', err);
   }
-  return [];
+
+  // Also discover any custom categories from state.todos
+  try {
+    if (typeof state !== 'undefined' && Array.isArray(state.todos)) {
+      state.todos.forEach(t => {
+        if (t && t.category && typeof t.category === 'string') {
+          const trimmed = t.category.trim();
+          if (trimmed && !standard.includes(trimmed.toLowerCase()) && !categoriesMap.has(trimmed.toLowerCase())) {
+            categoriesMap.set(trimmed.toLowerCase(), trimmed);
+          }
+        }
+      });
+    }
+  } catch (_) {}
+
+  // Also discover from user metadata if authenticated
+  try {
+    const metaCats = state.user?.user_metadata?.custom_categories || state.userProfile?.custom_categories;
+    if (Array.isArray(metaCats)) {
+      metaCats.forEach(c => {
+        if (typeof c === 'string' && c.trim()) {
+          const trimmed = c.trim();
+          if (!standard.includes(trimmed.toLowerCase()) && !categoriesMap.has(trimmed.toLowerCase())) {
+            categoriesMap.set(trimmed.toLowerCase(), trimmed);
+          }
+        }
+      });
+    }
+  } catch (_) {}
+
+  const allDiscovered = Array.from(categoriesMap.values());
+  try {
+    if (typeof localStorage !== 'undefined' && allDiscovered.length > 0) {
+      localStorage.setItem(getCustomCategoriesStorageKey(), JSON.stringify(allDiscovered));
+    }
+  } catch (_) {}
+
+  return allDiscovered;
 }
 
 function saveCustomCategory(name) {
@@ -3957,6 +4261,15 @@ function saveCustomCategory(name) {
     console.warn('Failed to store custom category:', err);
   }
 
+  // Also sync to Supabase user_metadata if client is authenticated
+  try {
+    if (supabaseClient && typeof supabaseClient.auth?.updateUser === 'function' && state.userToken) {
+      supabaseClient.auth.updateUser({
+        data: { custom_categories: existing }
+      }).catch(err => console.warn('Supabase custom_categories metadata sync notice:', err.message));
+    }
+  } catch (_) {}
+
   if (typeof document !== 'undefined') {
     syncCustomCategoriesToDOM(trimmed);
   }
@@ -3970,7 +4283,7 @@ function syncCustomCategoriesToDOM(activeToSelect = null) {
   try {
     const categories = getStoredCustomCategories();
 
-    // 1. Add Task form Category Selector
+    // 1. Add Task form Category Selector (pills)
     const addSelector = document.getElementById('add-category-selector');
     if (addSelector && typeof addSelector.querySelector === 'function') {
       const activeBtn = addSelector.querySelector('.pill-opt.active');
@@ -4025,6 +4338,29 @@ function syncCustomCategoriesToDOM(activeToSelect = null) {
               btn.style.backgroundColor = '#FACC15';
               btn.style.color = '#422006';
             }
+
+            // Sync with #add-task-category select dropdown if present
+            const addCatSel = document.getElementById('add-task-category');
+            if (addCatSel && btn.dataset && btn.dataset.val) {
+              const targetVal = btn.dataset.val;
+              let found = false;
+              if (addCatSel.options) {
+                for (let i = 0; i < addCatSel.options.length; i++) {
+                  if (addCatSel.options[i] && addCatSel.options[i].value.toLowerCase() === targetVal.toLowerCase()) {
+                    addCatSel.selectedIndex = i;
+                    found = true;
+                    break;
+                  }
+                }
+              }
+              if (!found && !['project', 'work', 'study', 'personal'].includes(targetVal.toLowerCase())) {
+                try {
+                  const opt = new Option(`${targetVal} (Custom)`, targetVal, true, true);
+                  addCatSel.add(opt, addCatSel.options[4] || null);
+                } catch (_) {}
+              }
+              addCatSel.value = targetVal;
+            }
           });
         });
 
@@ -4037,6 +4373,48 @@ function syncCustomCategoriesToDOM(activeToSelect = null) {
             openDeleteCategoryModal(catToDelete);
           });
         });
+      }
+    }
+
+    // 1b. Add Task form Category Select Dropdown
+    const addCatSelect = document.getElementById('add-task-category');
+    if (addCatSelect) {
+      const currentAddVal = activeToSelect || addCatSelect.value || 'Project';
+      let addOptionsHtml = `
+        <option value="Project">Project</option>
+        <option value="Work">Work</option>
+        <option value="Study">Study</option>
+        <option value="Personal">Personal</option>
+      `;
+
+      if (categories.length > 0) {
+        addOptionsHtml += `<optgroup label="Custom Categories">`;
+        categories.forEach(catName => {
+          addOptionsHtml += `<option value="${escapeHtml(catName)}">${escapeHtml(catName)} (Custom)</option>`;
+        });
+        addOptionsHtml += `</optgroup>`;
+      }
+      addOptionsHtml += `<option value="__new_custom__">+ New Custom Category...</option>`;
+
+      addCatSelect.innerHTML = addOptionsHtml;
+      try {
+        if (addCatSelect.options && typeof addCatSelect.options.length === 'number') {
+          let found = false;
+          for (let i = 0; i < addCatSelect.options.length; i++) {
+            if (addCatSelect.options[i] && addCatSelect.options[i].value.toLowerCase() === (currentAddVal || '').toLowerCase()) {
+              addCatSelect.selectedIndex = i;
+              found = true;
+              break;
+            }
+          }
+          if (!found && currentAddVal && !['project', 'work', 'study', 'personal'].includes(currentAddVal.toLowerCase())) {
+            const customOpt = new Option(`${currentAddVal} (Custom)`, currentAddVal, true, true);
+            addCatSelect.add(customOpt, addCatSelect.options[4] || null);
+            addCatSelect.value = currentAddVal;
+          }
+        }
+      } catch (_) {
+        addCatSelect.value = currentAddVal;
       }
     }
 
@@ -4065,13 +4443,14 @@ function syncCustomCategoriesToDOM(activeToSelect = null) {
         if (editCatSelect.options && typeof editCatSelect.options.length === 'number') {
           let found = false;
           for (let i = 0; i < editCatSelect.options.length; i++) {
-            if (editCatSelect.options[i] && editCatSelect.options[i].value === currentVal) {
+            if (editCatSelect.options[i] && editCatSelect.options[i].value.toLowerCase() === (currentVal || '').toLowerCase()) {
+              editCatSelect.selectedIndex = i;
               found = true;
               break;
             }
           }
           if (found) {
-            editCatSelect.value = currentVal;
+            // value already set via selectedIndex
           } else if (currentVal && typeof Option !== 'undefined' && typeof editCatSelect.add === 'function') {
             const customOpt = new Option(`${currentVal} (Custom)`, currentVal, true, true);
             editCatSelect.add(customOpt, editCatSelect.options[4] || null);
@@ -4146,6 +4525,15 @@ function deleteCustomCategory(name) {
     console.warn('Failed to delete custom category from storage:', err);
   }
 
+  // Also sync to Supabase user_metadata if client is authenticated
+  try {
+    if (supabaseClient && typeof supabaseClient.auth?.updateUser === 'function' && state.userToken) {
+      supabaseClient.auth.updateUser({
+        data: { custom_categories: updated }
+      }).catch(err => console.warn('Supabase custom_categories metadata sync notice:', err.message));
+    }
+  } catch (_) {}
+
   // Reassign any tasks currently having this category to 'Personal'
   if (Array.isArray(state.todos)) {
     let remapped = false;
@@ -4159,7 +4547,7 @@ function deleteCustomCategory(name) {
       if (typeof saveTodosLocally === 'function') {
         saveTodosLocally();
       }
-      if (supabaseClient && state.user && state.user.id) {
+      if (supabaseClient && typeof supabaseClient.from === 'function' && state.user && state.user.id) {
         supabaseClient.from('todos')
           .update({ category: 'Personal' })
           .eq('user_id', state.user.id)
@@ -4172,8 +4560,9 @@ function deleteCustomCategory(name) {
 
   if (typeof document !== 'undefined') {
     syncCustomCategoriesToDOM('Personal');
-    if (typeof renderTodoList === 'function') renderTodoList();
+    if (typeof renderHome === 'function') renderHome();
     if (typeof renderCalendar === 'function') renderCalendar();
+    if (typeof renderAnalytics === 'function') renderAnalytics();
   }
 
   return updated;
@@ -4336,6 +4725,7 @@ const TasklyWorkloadEngine = {
     medium:   { key: 'medium',   hex: '#83DF64', text: '#153E0C', label: 'Medium Priority', class: 'workload-medium' },
     moderate: { key: 'moderate', hex: '#83DF64', text: '#153E0C', label: 'Medium Priority', class: 'workload-medium' },
     low:      { key: 'low',      hex: '#83DDE8', text: '#0A3B43', label: 'Low Priority',    class: 'workload-low' },
+    custom:   { key: 'custom',   hex: '#FACC15', text: '#422006', label: 'Custom Category', class: 'workload-custom' },
     equal:    { key: 'equal',    hex: '#EEEEEE', text: '#2B180E', label: 'Equal Priority',  class: 'workload-equal' },
     empty:    { key: 'empty',    hex: 'transparent', text: 'inherit', label: 'No Tasks',    class: 'workload-empty' }
   },
@@ -4358,17 +4748,41 @@ const TasklyWorkloadEngine = {
       return 'low';
     });
 
-    // Step 3: If all assigned tasks have exactly the same priority, display Grey (#EEEEEE)
-    // The all-equal condition applies to multiple tasks having identical priorities
+    const distinctPriorities = new Set(priorities);
+    const hasDifferentPriorities = distinctPriorities.size > 1;
+
+    // Part 2 Calendar Requirement:
+    // 1. If a calendar date contains tasks with different priorities, apply the existing priority-based aggregation:
+    //    - High priority -> Pink #E83E9D
+    //    - Medium priority -> Green #83DF64
+    //    - Low priority -> Cyan #83DDE8
+    if (hasDifferentPriorities) {
+      if (priorities.includes('high')) {
+        return { score: count, count, priority: 'high', ...this.colors.high };
+      }
+      if (priorities.includes('medium')) {
+        return { score: count, count, priority: 'medium', ...this.colors.medium };
+      }
+      return { score: count, count, priority: 'low', ...this.colors.low };
+    }
+
+    // 2. Otherwise, for single tasks or when tasks do not have different priorities:
+    //    - Custom category tasks must display Yellow (#FACC15) with text #422006
+    const hasCustomCategory = tasksOnDate.some(t => {
+      const cfg = typeof getTaskCategoryConfig === 'function' ? getTaskCategoryConfig(t.category) : null;
+      return cfg && cfg.key === 'custom';
+    });
+    if (hasCustomCategory) {
+      return { score: count, count, priority: 'custom', ...this.colors.custom };
+    }
+
+    // 3. If multiple assigned tasks all have the exact same priority (and no custom category), display Grey (#EEEEEE)
     const isAllEqual = priorities.length > 1 && priorities.every(p => p === priorities[0]);
     if (isAllEqual) {
       return { score: count, count, priority: priorities[0], ...this.colors.equal };
     }
 
-    // Step 4: Otherwise, identify the highest priority present:
-    // - If High exists, display Pink (#E83E9D)
-    // - Otherwise, if Medium exists, display Green (#83DF64)
-    // - Otherwise, display Cyan (#83DDE8)
+    // 4. Single standard-category task: display its priority color
     if (priorities.includes('high')) {
       return { score: count, count, priority: 'high', ...this.colors.high };
     }
@@ -5250,7 +5664,7 @@ if (typeof window !== 'undefined') {
 const TasklyUpdateManager = {
   config: {
     primaryManifestUrl: 'https://raw.githubusercontent.com/vimaljayganthan/taskly-todo-app/main/releases/version-manifest.json',
-    localFallbackUrl: '/releases/version-manifest.json',
+    localFallbackUrl: '/version-manifest.json',
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
     expectedPackageName: 'com.taskly.app',
@@ -5367,7 +5781,88 @@ const TasklyUpdateManager = {
     }
   ],
 
+  setCachedManifest(newManifest) {
+    if (!newManifest || newManifest.versionCode == null) return;
+    const newCode = parseInt(newManifest.versionCode, 10);
+    const currentCode = this.state.latestVersionCode || this.config.fallbackVersionCode;
+
+    // Anti-downgrade / anti-stale guard: never overwrite with an older manifest
+    if (this.state.manifest && currentCode > newCode) {
+      console.warn(`[TasklyUpdateManager] Rejected stale manifest (code ${newCode} < current ${currentCode})`);
+      return;
+    }
+
+    this.state.manifest = newManifest;
+    this.state.latestVersionName = String(newManifest.latestVersion);
+    this.state.latestVersionCode = newCode;
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('taskly_cached_manifest', JSON.stringify(newManifest));
+      } catch (_) {}
+    }
+
+    this.updateProfileBadge();
+  },
+
+  async loadInitialManifest() {
+    // 1. Check cached manifest in localStorage
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cachedRaw = localStorage.getItem('taskly_cached_manifest');
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          if (cached && cached.versionCode != null && Array.isArray(cached.history) && cached.history.length > 0) {
+            // Anti-stale: if cached manifest is older than fallback baseline, discard it
+            if (parseInt(cached.versionCode, 10) >= this.config.fallbackVersionCode) {
+              this.state.manifest = cached;
+              this.state.latestVersionName = String(cached.latestVersion);
+              this.state.latestVersionCode = parseInt(cached.versionCode, 10);
+            } else {
+              localStorage.removeItem('taskly_cached_manifest');
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fetch authoritative manifest from local or remote endpoints
+    try {
+      const base = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') ||
+                   (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '');
+      const candidates = [
+        `${base}/version-manifest.json`,
+        `${base}/releases/version-manifest.json`,
+        this.config.primaryManifestUrl
+      ];
+
+      for (const url of candidates) {
+        if (!url) continue;
+        try {
+          const resp = await fetch(url + `?_cb=${Date.now()}`, {
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-store'
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.latestVersion && data.versionCode != null && Array.isArray(data.history)) {
+              this.setCachedManifest(data);
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    // 3. Fallback defaults if still null
+    if (!this.state.manifest) {
+      this.state.latestVersionName = this.config.fallbackVersionName;
+      this.state.latestVersionCode = this.config.fallbackVersionCode;
+    }
+  },
+
   async init() {
+    await this.loadInitialManifest();
     await this.detectInstalledVersion();
     this.updateProfileBadge();
     this.setupNativeListeners();
@@ -5540,8 +6035,11 @@ const TasklyUpdateManager = {
 
   openWhatsNew(versionOrCode = null) {
     if (typeof document === 'undefined') return;
-    const release = this.getReleaseByVersion(versionOrCode || this.state.activeWhatsNewVersionCode || this.state.latestVersionCode || this.state.installedVersionCode);
-    this.state.activeWhatsNewVersionCode = release ? release.versionCode : this.state.installedVersionCode;
+    const history = this.getReleaseHistory();
+    const latestCode = history[0] ? history[0].versionCode : (this.state.latestVersionCode || this.config.fallbackVersionCode);
+    const targetCode = (versionOrCode != null) ? versionOrCode : latestCode;
+    const release = this.getReleaseByVersion(targetCode);
+    this.state.activeWhatsNewVersionCode = release ? release.versionCode : targetCode;
 
     this.populateWhatsNewVersionSelect();
     this.renderWhatsNew(this.state.activeWhatsNewVersionCode);
@@ -5823,9 +6321,7 @@ const TasklyUpdateManager = {
       return;
     }
 
-    this.state.manifest = manifest;
-    this.state.latestVersionName = String(manifest.latestVersion);
-    this.state.latestVersionCode = parseInt(manifest.versionCode, 10);
+    this.setCachedManifest(manifest);
     this.state.lastChecked = new Date();
 
     if (typeof localStorage !== 'undefined') {
@@ -5967,9 +6463,11 @@ const TasklyUpdateManager = {
     // Latest approved version
     const valLatest = document.getElementById('val-latest-version');
     if (valLatest) {
-      valLatest.textContent = this.state.latestVersionName
-        ? `v${this.state.latestVersionName} (Build ${this.state.latestVersionCode})`
-        : `v${this.state.installedVersionName} (Build ${this.state.installedVersionCode})`;
+      const historyReleases = this.getReleaseHistory();
+      const latestRel = historyReleases[0];
+      const latestName = (latestRel && (latestRel.versionName || latestRel.version)) || this.state.latestVersionName || this.config.fallbackVersionName;
+      const latestCode = (latestRel && latestRel.versionCode) || this.state.latestVersionCode || this.config.fallbackVersionCode;
+      valLatest.textContent = `v${latestName} (Build ${latestCode})`;
     }
 
     // Last checked timestamp
@@ -6857,8 +7355,63 @@ function setupEventListeners() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#add-category-selector .pill-opt').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      const addCatSel = document.getElementById('add-task-category');
+      if (addCatSel && btn.dataset && btn.dataset.val) {
+        const targetVal = btn.dataset.val;
+        let found = false;
+        if (addCatSel.options) {
+          for (let i = 0; i < addCatSel.options.length; i++) {
+            if (addCatSel.options[i] && addCatSel.options[i].value.toLowerCase() === targetVal.toLowerCase()) {
+              addCatSel.selectedIndex = i;
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found && !['project', 'work', 'study', 'personal'].includes(targetVal.toLowerCase())) {
+          try {
+            const opt = new Option(`${targetVal} (Custom)`, targetVal, true, true);
+            addCatSel.add(opt);
+          } catch (_) {}
+        }
+        addCatSel.value = targetVal;
+      }
     });
   });
+
+  // Add Task Category Select Dropdown sync with pills
+  const addCatSelect = document.getElementById('add-task-category');
+  if (addCatSelect) {
+    addCatSelect.addEventListener('change', () => {
+      const val = addCatSelect.value;
+      if (val === '__new_custom__') {
+        const inputRow = document.getElementById('add-custom-category-input-row');
+        if (inputRow) {
+          inputRow.style.display = 'flex';
+          const inputField = document.getElementById('input-new-custom-category');
+          if (inputField) inputField.focus();
+        }
+        return;
+      }
+      const selector = document.getElementById('add-category-selector');
+      if (selector) {
+        selector.querySelectorAll('.pill-opt').forEach(b => {
+          b.classList.remove('active');
+          if (b.classList.contains('opt-cat-custom')) {
+            b.style.backgroundColor = 'transparent';
+            b.style.color = 'inherit';
+          }
+          if (b.dataset && b.dataset.val && b.dataset.val.toLowerCase() === val.toLowerCase()) {
+            b.classList.add('active');
+            if (b.classList.contains('opt-cat-custom')) {
+              b.style.backgroundColor = '#FACC15';
+              b.style.color = '#422006';
+            }
+          }
+        });
+      }
+    });
+  }
 
   // Live Time Display Synchronizers (Add Task & Edit Task)
   const addTimeInput = document.getElementById('add-time');
@@ -7023,24 +7576,55 @@ function setupEventListeners() {
   if (formEditTask) {
     formEditTask.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const saveBtn = formEditTask.querySelector('button[type="submit"]') || document.getElementById('btn-save-edit-task');
+      if (formEditTask.dataset.saving === 'true') {
+        return; // Guard against duplicate submissions
+      }
+
+      const saveBtn = document.getElementById('btn-save-edit-task') || formEditTask.querySelector('button[type="submit"]');
+      const errBanner = document.getElementById('edit-task-error-banner');
+      const errMsg = document.getElementById('edit-task-error-msg');
+      if (errBanner) errBanner.style.display = 'none';
+
+      const idInput = document.getElementById('edit-task-id');
+      const titleInput = document.getElementById('edit-task-title');
+      const descInput = document.getElementById('edit-task-desc');
+      const dateInput = document.getElementById('edit-task-date');
+      const priorityInput = document.getElementById('edit-task-priority');
+      const catInput = document.getElementById('edit-task-category');
+
+      const id = idInput ? idInput.value : null;
+      const title = titleInput ? titleInput.value.trim() : '';
+      if (!id || !title) {
+        if (errBanner && errMsg) {
+          errMsg.textContent = 'Please provide a valid task title.';
+          errBanner.style.display = 'flex';
+        }
+        return;
+      }
+
+      let selectedCat = catInput ? catInput.value : 'Personal';
+      if (selectedCat === '__new_custom__') {
+        const customPrompt = typeof prompt === 'function' ? prompt('Enter new category name:') : null;
+        if (customPrompt && customPrompt.trim()) {
+          try {
+            selectedCat = saveCustomCategory(customPrompt.trim());
+          } catch (cErr) {
+            alert(cErr.message || 'Invalid category name');
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+
+      formEditTask.dataset.saving = 'true';
       if (saveBtn) {
-        if (saveBtn.disabled) return;
         saveBtn.disabled = true;
+        saveBtn.dataset.originalText = saveBtn.textContent;
+        saveBtn.textContent = 'Saving...';
       }
 
       try {
-        const idInput = document.getElementById('edit-task-id');
-        const titleInput = document.getElementById('edit-task-title');
-        const descInput = document.getElementById('edit-task-desc');
-        const dateInput = document.getElementById('edit-task-date');
-        const priorityInput = document.getElementById('edit-task-priority');
-        const catInput = document.getElementById('edit-task-category');
-
-        const id = idInput ? idInput.value : null;
-        const title = titleInput ? titleInput.value.trim() : '';
-        if (!id || !title) return;
-
         const timeInput = document.getElementById('edit-task-time');
         const timeVal = (timeInput && timeInput.value) ? formatTime24To12(timeInput.value) : null;
         const reminderInput = document.getElementById('edit-task-reminder');
@@ -7052,14 +7636,27 @@ function setupEventListeners() {
           dueDate: dateInput && dateInput.value ? dateInput.value : null,
           time: timeVal,
           priority: priorityInput ? priorityInput.value : 'Medium',
-          category: catInput ? catInput.value : 'Personal',
+          category: selectedCat,
           reminder: reminderVal
         };
 
         await updateTask(id, updates);
         closeEditTaskModal();
+      } catch (err) {
+        console.error('Failed to update task:', err);
+        if (errBanner && errMsg) {
+          errMsg.textContent = err.message || 'Failed to save changes. Please try again.';
+          errBanner.style.display = 'flex';
+        } else if (typeof alert === 'function') {
+          alert(err.message || 'Failed to save changes.');
+        }
+        // Retain user input in the form, do not close the modal
       } finally {
-        if (saveBtn) saveBtn.disabled = false;
+        formEditTask.dataset.saving = 'false';
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = saveBtn.dataset.originalText || 'Save Changes';
+        }
       }
     });
   }

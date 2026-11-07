@@ -1411,6 +1411,13 @@ body.keyboard-open #main-flow {
   color: #2B180E !important;
 }
 
+.workload-custom {
+  background-color: #FACC15 !important;
+}
+.workload-custom .day-num {
+  color: #422006 !important;
+}
+
 .workload-empty {
   /* Neutral empty-date appearance: no background override */
 }

@@ -507,13 +507,22 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
               </div>
               <div class="row-content flex-between-pill">
-                <span class="row-label">Category</span>
-                <div class="pill-selector" id="add-category-selector">
-                  <button type="button" class="pill-opt opt-cat active" data-val="Project">Project</button>
-                  <button type="button" class="pill-opt opt-cat" data-val="Work">Work</button>
-                  <button type="button" class="pill-opt opt-cat" data-val="Study">Study</button>
-                  <button type="button" class="pill-opt opt-cat" data-val="Personal">Personal</button>
-                  <button type="button" class="pill-opt opt-cat opt-custom-trigger" id="btn-custom-category-trigger" data-val="Custom">+ Custom</button>
+                <label for="add-task-category" class="row-label">Category</label>
+                <div style="display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px;">
+                  <select id="add-task-category" class="form-input add-category-select" style="width: 100%; padding: 6px 12px; font-size: 0.875rem; border-radius: 10px; font-weight: 600;">
+                    <option value="Project">Project</option>
+                    <option value="Work">Work</option>
+                    <option value="Study">Study</option>
+                    <option value="Personal">Personal</option>
+                    <option value="__new_custom__">+ New Custom Category...</option>
+                  </select>
+                  <div class="pill-selector" id="add-category-selector">
+                    <button type="button" class="pill-opt opt-cat active" data-val="Project">Project</button>
+                    <button type="button" class="pill-opt opt-cat" data-val="Work">Work</button>
+                    <button type="button" class="pill-opt opt-cat" data-val="Study">Study</button>
+                    <button type="button" class="pill-opt opt-cat" data-val="Personal">Personal</button>
+                    <button type="button" class="pill-opt opt-cat opt-custom-trigger" id="btn-custom-category-trigger" data-val="Custom">+ Custom</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1314,9 +1323,12 @@
                 <span class="slider round"></span>
               </label>
             </div>
+            <div id="edit-task-error-banner" class="modal-error-banner" style="display: none; color: #dc2626; font-size: 0.8125rem; margin-bottom: 10px; padding: 8px 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px;">
+              <span id="edit-task-error-msg"></span>
+            </div>
             <div class="modal-actions">
               <button type="button" class="btn-modal-cancel" id="btn-cancel-edit-task">Cancel</button>
-              <button type="submit" class="btn-primary-compact">Save Changes</button>
+              <button type="submit" id="btn-save-edit-task" class="btn-primary-compact">Save Changes</button>
             </div>
           </form>
         </div>
