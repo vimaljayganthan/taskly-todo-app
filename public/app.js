@@ -1176,6 +1176,13 @@ const TasklyNotifications = {
           console.warn('[Notifications] Channel migration notice:', mErr);
         }
 
+        // Clear any stale delivered notifications from previous app builds/channels
+        try {
+          if (typeof plugin.removeAllDeliveredNotifications === 'function') {
+            await plugin.removeAllDeliveredNotifications().catch(() => {});
+          }
+        } catch (_) {}
+
         // Create new high-importance channel with bundled sound and vibration
         await plugin.createChannel({
           id: this.CHANNEL_ID,
@@ -4701,7 +4708,8 @@ const TasklyUpdateManager = {
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
     expectedPackageName: 'com.taskly.app',
-    autoCheckIntervalMs: 15 * 60 * 1000 // 15 minutes between automatic checks
+    autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
+    storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
   },
 
   state: {
@@ -4716,13 +4724,108 @@ const TasklyUpdateManager = {
     manifest: null,
     errorMessage: null,
     downloadProgress: { downloadedBytes: 0, totalBytes: 0, percent: 0 },
-    historyExpanded: false
+    historyExpanded: false,
+    activeWhatsNewVersionCode: null
   },
+
+  fallbackHistory: [
+    {
+      version: '1.5.0',
+      versionName: '1.5.0',
+      versionCode: 6,
+      releaseDate: '2026-11-07',
+      title: 'Official Notification Branding & In-App APK Updates',
+      summary: 'Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.',
+      features: [
+        'Official Taskly Cat & Dog branding for system notices and app identity',
+        'Monochrome paw status-bar icon for Android 13+ notifications',
+        'Cute cat mascot alerts for approaching and overdue task deadlines',
+        'In-app APK update checking, downloading, and package installer integration in Profile → Version',
+        'Automatic SHA-256 package checksum verification and downgrade protection before installation'
+      ],
+      improvements: [
+        "Configured persistent Android notification channel 'taskly-reminders-v3'",
+        'Streamlined Profile screen with new Version & Updates option'
+      ],
+      performance: [],
+      fixes: [
+        'Replaced legacy red paper rocket icon on Android notifications',
+        'Normalized delivered notification management on application startup'
+      ],
+      security: [
+        'Verified package download and installation safeguards against unauthorized or corrupted APKs',
+        'Strict Android versionCode downgrade prevention'
+      ]
+    },
+    {
+      version: '1.4.0',
+      versionName: '1.4.0',
+      versionCode: 5,
+      releaseDate: '2026-11-07',
+      title: 'Brand Refresh & Dynamic Calendar Priority Intelligence',
+      summary: 'Brand refresh, dynamic calendar priority intelligence & cute cat meow notifications',
+      features: [
+        'New Taskly Cat & Dog logo across Android launcher and web application',
+        'Dynamic calendar priority workload colors (Pink for High, Green for Medium, Cyan for Low, Grey for Homogeneous)',
+        'Custom category deletion with safe task reassignment to Personal',
+        'Cute Cat Meow notification sound on Android task reminders'
+      ],
+      improvements: [
+        'High-contrast Dark Mode styling for Quick Capture cards and badges',
+        'Logout confirmation modal with duplicate-tap protection',
+        'Preserved Supabase authentication session across app updates'
+      ],
+      performance: [],
+      fixes: [
+        'Fixed CSS declaration structure in public/styles.css',
+        'Separated Android monochrome notification icon from cute cat mascots'
+      ],
+      security: []
+    },
+    {
+      version: '1.2.0',
+      versionName: '1.2.0',
+      versionCode: 3,
+      releaseDate: '2026-11-05',
+      title: 'Multi-User Cloud Synchronization',
+      summary: 'Multi-user cloud synchronization & Supabase authentication',
+      features: [
+        'Supabase cloud database synchronization for tasks and notes',
+        'Secure user registration and email confirmation workflow'
+      ],
+      improvements: [
+        'Offline-first local cache fallback when network is unavailable'
+      ],
+      performance: [],
+      fixes: [
+        'Improved deadline reminder notification scheduling across device sleep cycles'
+      ],
+      security: []
+    },
+    {
+      version: '1.0.0',
+      versionName: '1.0.0',
+      versionCode: 1,
+      releaseDate: '2026-11-01',
+      title: 'Initial Taskly Release',
+      summary: 'Initial Taskly release',
+      features: [
+        'Smart task management and progress tracking',
+        'Quick notes capture with pin functionality',
+        'Interactive calendar view and four theme system'
+      ],
+      improvements: [],
+      performance: [],
+      fixes: [],
+      security: []
+    }
+  ],
 
   async init() {
     await this.detectInstalledVersion();
     this.updateProfileBadge();
     this.setupNativeListeners();
+    this.checkPostUpgradeWhatsNew();
 
     // Restore cached lastChecked timestamp
     if (typeof localStorage !== 'undefined') {
@@ -4838,6 +4941,260 @@ const TasklyUpdateManager = {
   toggleHistory() {
     this.state.historyExpanded = !this.state.historyExpanded;
     this.renderUI();
+  },
+
+  getReleaseHistory() {
+    let list = (this.state.manifest && Array.isArray(this.state.manifest.history) && this.state.manifest.history.length > 0)
+      ? this.state.manifest.history
+      : this.fallbackHistory;
+    return [...list].sort((a, b) => (parseInt(b.versionCode, 10) || 0) - (parseInt(a.versionCode, 10) || 0));
+  },
+
+  getReleaseByVersion(versionOrCode) {
+    const history = this.getReleaseHistory();
+    let rel = null;
+    if (versionOrCode == null) {
+      rel = history[0] || null;
+    } else {
+      const strVal = String(versionOrCode).trim().replace(/^v/i, '');
+      const numVal = parseInt(strVal, 10);
+      rel = history.find(r => {
+        if (!isNaN(numVal) && (r.versionCode === numVal || parseInt(r.versionCode, 10) === numVal)) {
+          return true;
+        }
+        const v = String(r.versionName || r.version || '').replace(/^v/i, '');
+        return v === strVal;
+      }) || history[0] || null;
+    }
+
+    if (!rel) return null;
+
+    // Correct v1.5.0 historical release notes if loaded from a manifest containing placeholder "Approved production release"
+    if (parseInt(rel.versionCode, 10) === 6) {
+      const isPlaceholder = Array.isArray(rel.features) &&
+        (rel.features.length === 0 || (rel.features.length === 1 && rel.features[0] === 'Approved production release'));
+      if (isPlaceholder) {
+        const approvedFallback = this.fallbackHistory.find(h => h.versionCode === 6);
+        if (approvedFallback) {
+          rel = {
+            ...rel,
+            title: (rel.title && rel.title !== 'Taskly v1.5.0') ? rel.title : approvedFallback.title,
+            features: approvedFallback.features,
+            improvements: (rel.improvements && rel.improvements.length > 0) ? rel.improvements : approvedFallback.improvements,
+            performance: [],
+            fixes: (rel.fixes && rel.fixes.length > 0) ? rel.fixes : approvedFallback.fixes,
+            security: (rel.security && rel.security.length > 0) ? rel.security : approvedFallback.security
+          };
+        }
+      }
+    }
+
+    return rel;
+  },
+
+  openWhatsNew(versionOrCode = null) {
+    if (typeof document === 'undefined') return;
+    const release = this.getReleaseByVersion(versionOrCode || this.state.activeWhatsNewVersionCode || this.state.latestVersionCode || this.state.installedVersionCode);
+    this.state.activeWhatsNewVersionCode = release ? release.versionCode : this.state.installedVersionCode;
+
+    this.populateWhatsNewVersionSelect();
+    this.renderWhatsNew(this.state.activeWhatsNewVersionCode);
+
+    const modal = document.getElementById('modal-whats-new');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeWhatsNew() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-whats-new');
+    if (modal) modal.classList.remove('active');
+  },
+
+  dismissWhatsNew() {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(this.config.storageKeyWhatsNewSeen, String(this.state.installedVersionCode));
+      } catch (_) {}
+    }
+    this.closeWhatsNew();
+  },
+
+  checkPostUpgradeWhatsNew() {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const lastSeen = localStorage.getItem(this.config.storageKeyWhatsNewSeen);
+      const currentCode = this.state.installedVersionCode || this.config.fallbackVersionCode;
+      if (lastSeen === null) {
+        // First app installation on this device: register version without popping up
+        localStorage.setItem(this.config.storageKeyWhatsNewSeen, String(currentCode));
+        return;
+      }
+      const lastSeenCode = parseInt(lastSeen, 10);
+      if (!isNaN(lastSeenCode) && currentCode > lastSeenCode) {
+        // Just upgraded to a newer APK! Show What's New once for the newly installed release
+        this.openWhatsNew(currentCode);
+        localStorage.setItem(this.config.storageKeyWhatsNewSeen, String(currentCode));
+      }
+    } catch (e) {
+      console.warn('[TasklyUpdateManager] checkPostUpgradeWhatsNew error:', e);
+    }
+  },
+
+  populateWhatsNewVersionSelect() {
+    if (typeof document === 'undefined') return;
+    const select = document.getElementById('select-whats-new-version');
+    if (!select) return;
+    select.innerHTML = '';
+    const history = this.getReleaseHistory();
+    history.forEach((rel, index) => {
+      const opt = document.createElement('option');
+      opt.value = String(rel.versionCode);
+      const isLatest = (index === 0);
+      const isInstalled = (rel.versionCode === this.state.installedVersionCode);
+      let label = `v${rel.versionName || rel.version} (Build ${rel.versionCode})`;
+      if (isLatest && isInstalled) {
+        label += ' — Latest & Installed';
+      } else if (isLatest) {
+        label += ' — Latest Approved';
+      } else if (isInstalled) {
+        label += ' — Currently Installed';
+      }
+      opt.textContent = label;
+      if (rel.versionCode === this.state.activeWhatsNewVersionCode) {
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    });
+  },
+
+  renderWhatsNew(versionOrCode = null) {
+    if (typeof document === 'undefined') return;
+    const rel = this.getReleaseByVersion(versionOrCode || this.state.activeWhatsNewVersionCode);
+    if (!rel) return;
+    this.state.activeWhatsNewVersionCode = rel.versionCode;
+
+    // Sync select element
+    const select = document.getElementById('select-whats-new-version');
+    if (select && select.value !== String(rel.versionCode)) {
+      select.value = String(rel.versionCode);
+    }
+
+    // Installed vs Selected Version Diff Banner
+    const diffBanner = document.getElementById('whats-new-diff-banner');
+    const diffIcon = document.getElementById('whats-new-diff-icon');
+    const diffText = document.getElementById('whats-new-diff-text');
+    if (diffBanner && diffIcon && diffText) {
+      diffBanner.className = 'whats-new-diff-banner';
+      if (rel.versionCode > this.state.installedVersionCode) {
+        diffBanner.classList.add('diff-upgrade-available');
+        diffIcon.textContent = '📥';
+        diffText.innerHTML = `<strong>Upgrade Available:</strong> You are currently on <strong>v${this.state.installedVersionName} (Build ${this.state.installedVersionCode})</strong>. Upgrading to <strong>v${rel.versionName || rel.version}</strong> brings the improvements shown below.`;
+      } else if (rel.versionCode === this.state.installedVersionCode) {
+        diffBanner.classList.add('diff-current-installed');
+        diffIcon.textContent = '✓';
+        diffText.innerHTML = `<strong>Installed Version:</strong> You are running <strong>v${this.state.installedVersionName} (Build ${this.state.installedVersionCode})</strong>. All features below are active on your device.`;
+      } else {
+        diffBanner.classList.add('diff-older-version');
+        diffIcon.textContent = '⏮️';
+        diffText.innerHTML = `<strong>Historical Release:</strong> Showing notes for <strong>v${rel.versionName || rel.version} (Build ${rel.versionCode})</strong>. Your device is running newer <strong>v${this.state.installedVersionName} (Build ${this.state.installedVersionCode})</strong>.`;
+      }
+    }
+
+    // Hero Card
+    const heroPill = document.getElementById('whats-new-hero-version-pill');
+    if (heroPill) heroPill.textContent = `Version ${rel.versionName || rel.version} (Build ${rel.versionCode})`;
+
+    const heroDate = document.getElementById('whats-new-hero-date');
+    if (heroDate) heroDate.textContent = rel.releaseDate || '';
+
+    const heroTitle = document.getElementById('whats-new-hero-title');
+    if (heroTitle) heroTitle.textContent = rel.title || `Taskly v${rel.versionName || rel.version}`;
+
+    const heroSummary = document.getElementById('whats-new-hero-summary');
+    if (heroSummary) heroSummary.textContent = rel.summary || 'Official production release notes.';
+
+    // Categorized Release Notes (5 buckets)
+    const categoriesContainer = document.getElementById('whats-new-categories-container');
+    const emptyState = document.getElementById('whats-new-empty-state');
+    if (categoriesContainer) {
+      categoriesContainer.innerHTML = '';
+      const buckets = [
+        { key: 'features', title: 'New Features', icon: '🚀', className: 'cat-features' },
+        { key: 'improvements', title: 'Improvements', icon: '⚡', className: 'cat-improvements' },
+        { key: 'performance', title: 'Performance Enhancements', icon: '🏎️', className: 'cat-performance' },
+        { key: 'fixes', title: 'Bug Fixes', icon: '🐞', className: 'cat-fixes' },
+        { key: 'security', title: 'Security & Reliability', icon: '🛡️', className: 'cat-security' }
+      ];
+
+      let totalItems = 0;
+      buckets.forEach(bucket => {
+        const items = rel[bucket.key];
+        if (Array.isArray(items) && items.length > 0) {
+          totalItems += items.length;
+          const catCard = document.createElement('div');
+          catCard.className = `whats-new-cat-card ${bucket.className}`;
+
+          const catHead = document.createElement('div');
+          catHead.className = 'whats-new-cat-head';
+          const badge = document.createElement('span');
+          badge.className = 'whats-new-cat-badge';
+          badge.textContent = `${bucket.icon} ${bucket.title}`;
+          catHead.appendChild(badge);
+          catCard.appendChild(catHead);
+
+          const itemsWrap = document.createElement('div');
+          itemsWrap.className = 'whats-new-cat-items';
+
+          items.forEach(item => {
+            if (typeof item === 'string') {
+              const itemRow = document.createElement('div');
+              itemRow.className = 'whats-new-item-simple';
+              const dot = document.createElement('span');
+              dot.className = 'whats-new-item-bullet';
+              dot.textContent = '•';
+              const txt = document.createElement('span');
+              txt.className = 'whats-new-item-text';
+              txt.textContent = item;
+              itemRow.appendChild(dot);
+              itemRow.appendChild(txt);
+              itemsWrap.appendChild(itemRow);
+            } else if (item && typeof item === 'object') {
+              const itemCard = document.createElement('div');
+              itemCard.className = 'whats-new-item-rich';
+              if (item.title) {
+                const itemTitle = document.createElement('div');
+                itemTitle.className = 'whats-new-rich-title';
+                itemTitle.textContent = item.title;
+                itemCard.appendChild(itemTitle);
+              }
+              if (item.description) {
+                const itemDesc = document.createElement('div');
+                itemDesc.className = 'whats-new-rich-desc';
+                itemDesc.textContent = item.description;
+                itemCard.appendChild(itemDesc);
+              }
+              if (item.benefit) {
+                const itemBenefit = document.createElement('div');
+                itemBenefit.className = 'whats-new-rich-benefit';
+                const benefitPill = document.createElement('span');
+                benefitPill.className = 'benefit-pill';
+                benefitPill.textContent = `💡 User Benefit: ${item.benefit}`;
+                itemBenefit.appendChild(benefitPill);
+                itemCard.appendChild(itemBenefit);
+              }
+              itemsWrap.appendChild(itemCard);
+            }
+          });
+
+          catCard.appendChild(itemsWrap);
+          categoriesContainer.appendChild(catCard);
+        }
+      });
+
+      if (emptyState) {
+        emptyState.style.display = totalItems === 0 ? 'flex' : 'none';
+      }
+    }
   },
 
   /**
@@ -5201,6 +5558,16 @@ const TasklyUpdateManager = {
         : (this.state.updateStatus === 'error' ? 'Retry Check' : 'Check for Updates');
     }
 
+    // Update What's New banner subtitle in Version Modal
+    const whatsNewBannerSub = document.getElementById('whats-new-banner-subtitle');
+    if (whatsNewBannerSub) {
+      const historyReleases = this.getReleaseHistory();
+      const latestRel = historyReleases[0];
+      whatsNewBannerSub.textContent = latestRel
+        ? `v${latestRel.versionName || latestRel.version} • ${latestRel.title || 'Latest features & updates'}`
+        : 'Explore everything introduced in recent updates.';
+    }
+
     // Render History Timeline
     const historyBody = document.getElementById('version-history-body');
     const chevron = document.getElementById('history-toggle-chevron');
@@ -5212,26 +5579,55 @@ const TasklyUpdateManager = {
     }
 
     const historyList = document.getElementById('version-history-list');
-    if (historyList && this.state.manifest?.history && this.state.manifest.history.length > 0) {
+    const history = this.getReleaseHistory();
+    if (historyList && history.length > 0) {
       historyList.innerHTML = '';
-      this.state.manifest.history.forEach(rel => {
+      history.forEach((rel, index) => {
         const item = document.createElement('div');
         item.className = 'history-item';
+        if (index === 0) {
+          item.classList.add('history-item-latest');
+        }
 
         const head = document.createElement('div');
         head.className = 'history-item-head';
 
+        const verWrap = document.createElement('div');
+        verWrap.className = 'history-head-ver-wrap';
+
         const ver = document.createElement('span');
         ver.className = 'history-version-tag';
-        ver.textContent = `v${rel.version} (Build ${rel.versionCode})`;
+        ver.textContent = `v${rel.versionName || rel.version} (Build ${rel.versionCode})`;
+        verWrap.appendChild(ver);
+
+        if (index === 0) {
+          const latestBadge = document.createElement('span');
+          latestBadge.className = 'badge-latest-release';
+          latestBadge.textContent = '🌟 Latest';
+          verWrap.appendChild(latestBadge);
+        }
+
+        if (rel.versionCode === this.state.installedVersionCode) {
+          const installedBadge = document.createElement('span');
+          installedBadge.className = 'badge-installed-release';
+          installedBadge.textContent = '✓ Installed';
+          verWrap.appendChild(installedBadge);
+        }
 
         const date = document.createElement('span');
         date.className = 'history-date-tag';
         date.textContent = rel.releaseDate || '';
 
-        head.appendChild(ver);
+        head.appendChild(verWrap);
         head.appendChild(date);
         item.appendChild(head);
+
+        if (rel.title) {
+          const title = document.createElement('div');
+          title.className = 'history-item-title';
+          title.textContent = rel.title;
+          item.appendChild(title);
+        }
 
         if (rel.summary) {
           const summary = document.createElement('div');
@@ -5243,13 +5639,27 @@ const TasklyUpdateManager = {
         if (rel.features && rel.features.length > 0) {
           const ul = document.createElement('ul');
           ul.className = 'history-features-list';
-          rel.features.forEach(feat => {
+          rel.features.slice(0, 3).forEach(feat => {
             const li = document.createElement('li');
-            li.textContent = feat;
+            li.textContent = typeof feat === 'string' ? feat : (feat.title || feat.description || '');
             ul.appendChild(li);
           });
           item.appendChild(ul);
         }
+
+        // Dedicated What's New trigger for this historical version
+        const whatsNewBtnRow = document.createElement('div');
+        whatsNewBtnRow.className = 'history-actions-row';
+        const btnViewWhatsNew = document.createElement('button');
+        btnViewWhatsNew.type = 'button';
+        btnViewWhatsNew.className = 'btn-history-whats-new';
+        btnViewWhatsNew.textContent = "✨ What's New in this version";
+        btnViewWhatsNew.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.openWhatsNew(rel.versionCode);
+        });
+        whatsNewBtnRow.appendChild(btnViewWhatsNew);
+        item.appendChild(whatsNewBtnRow);
 
         historyList.appendChild(item);
       });
@@ -6227,6 +6637,40 @@ function setupEventListeners() {
   if (modalVersion) {
     modalVersion.addEventListener('click', (e) => {
       if (e.target === modalVersion) TasklyUpdateManager.closeModal();
+    });
+  }
+
+  // What's New Modal Event Listeners
+  const btnOpenWhatsNew = document.getElementById('btn-open-whats-new-modal');
+  const modalWhatsNew = document.getElementById('modal-whats-new');
+  const btnCloseWhatsNew = document.getElementById('btn-close-whats-new-modal');
+  const btnWhatsNewBackVersion = document.getElementById('btn-whats-new-back-version');
+  const btnWhatsNewDismiss = document.getElementById('btn-whats-new-dismiss');
+  const selectWhatsNewVersion = document.getElementById('select-whats-new-version');
+
+  if (btnOpenWhatsNew) {
+    btnOpenWhatsNew.addEventListener('click', () => TasklyUpdateManager.openWhatsNew());
+  }
+  if (btnCloseWhatsNew) {
+    btnCloseWhatsNew.addEventListener('click', () => TasklyUpdateManager.closeWhatsNew());
+  }
+  if (btnWhatsNewBackVersion) {
+    btnWhatsNewBackVersion.addEventListener('click', () => {
+      TasklyUpdateManager.closeWhatsNew();
+      TasklyUpdateManager.openModal();
+    });
+  }
+  if (btnWhatsNewDismiss) {
+    btnWhatsNewDismiss.addEventListener('click', () => TasklyUpdateManager.dismissWhatsNew());
+  }
+  if (selectWhatsNewVersion) {
+    selectWhatsNewVersion.addEventListener('change', (e) => {
+      TasklyUpdateManager.renderWhatsNew(e.target.value);
+    });
+  }
+  if (modalWhatsNew) {
+    modalWhatsNew.addEventListener('click', (e) => {
+      if (e.target === modalWhatsNew) TasklyUpdateManager.closeWhatsNew();
     });
   }
 

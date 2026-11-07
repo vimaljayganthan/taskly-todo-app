@@ -8301,3 +8301,687 @@ html {
 [data-theme="pastel"] .history-version-tag {
   color: #8B5CF6 !important;
 }
+
+/* ==========================================================================
+   Taskly What's New & Permanent Release History Enhancements
+   ========================================================================== */
+
+/* What's New Quick Banner inside Version Modal */
+.version-whats-new-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(248, 132, 56, 0.08) 100%);
+  border: 1px solid rgba(79, 70, 229, 0.20);
+  border-radius: 12px;
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+
+.whats-new-banner-icon-col {
+  flex-shrink: 0;
+}
+
+.whats-new-sparkle-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 20px;
+  background: #EEF2FF;
+  color: #4F46E5;
+  border: 1px solid rgba(79, 70, 229, 0.25);
+  white-space: nowrap;
+}
+
+.whats-new-banner-text-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.whats-new-banner-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 2px 0;
+  line-height: 1.3;
+}
+
+.whats-new-banner-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-whats-new-launch {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+/* History Timeline Enhancements */
+.history-item-latest {
+  border: 1.5px solid rgba(79, 70, 229, 0.45) !important;
+  background: rgba(79, 70, 229, 0.03) !important;
+}
+
+.history-head-ver-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.badge-latest-release {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #B45309;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.badge-installed-release {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.history-item-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 4px 0 2px 0;
+}
+
+.history-actions-row {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-history-whats-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--primary, #4F46E5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-history-whats-new:hover {
+  background: rgba(79, 70, 229, 0.08);
+  border-color: var(--primary, #4F46E5);
+}
+
+/* ==========================================================================
+   What's New Modal Component
+   ========================================================================== */
+
+.modal-card-whats-new {
+  max-width: 560px !important;
+  max-height: 85vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: var(--surface) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18) !important;
+  overflow: hidden !important;
+}
+
+.whats-new-head-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.whats-new-head-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(79, 70, 229, 0.10);
+  color: var(--primary, #4F46E5);
+  border: 1px solid rgba(79, 70, 229, 0.25);
+}
+
+.whats-new-scroll-body {
+  overflow-y: auto !important;
+  flex: 1 !important;
+  padding: 16px 20px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.whats-new-version-picker-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  background: var(--surface-card, #F8FAFC);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.whats-new-picker-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.whats-new-select-wrapper {
+  flex: 1 1 200px;
+  min-width: 150px;
+  max-width: 100%;
+}
+
+.whats-new-version-select {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.whats-new-version-select:focus {
+  border-color: var(--primary, #4F46E5);
+}
+
+/* Diff Banner */
+.whats-new-diff-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.whats-new-diff-banner .diff-banner-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.whats-new-diff-banner.diff-upgrade-available {
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #1E40AF;
+}
+
+.whats-new-diff-banner.diff-current-installed {
+  background: rgba(16, 185, 129, 0.10);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #065F46;
+}
+
+.whats-new-diff-banner.diff-older-version {
+  background: rgba(100, 116, 139, 0.10);
+  border: 1px solid rgba(100, 116, 139, 0.30);
+  color: #334155;
+}
+
+/* Hero Card */
+.whats-new-hero-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface-card, #F8FAFC);
+  border: 1px solid var(--border);
+}
+
+.whats-new-hero-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.whats-new-hero-version-pill {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(79, 70, 229, 0.12);
+  color: var(--primary, #4F46E5);
+}
+
+.whats-new-hero-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.whats-new-hero-title {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px 0;
+  line-height: 1.35;
+}
+
+.whats-new-hero-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* Categorized Cards */
+.whats-new-categories-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.whats-new-cat-card {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.whats-new-cat-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.whats-new-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.cat-features .whats-new-cat-badge {
+  background: rgba(139, 92, 246, 0.12);
+  color: #7C3AED;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.cat-improvements .whats-new-cat-badge {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563EB;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.cat-performance .whats-new-cat-badge {
+  background: rgba(245, 158, 11, 0.12);
+  color: #D97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.cat-fixes .whats-new-cat-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.cat-security .whats-new-cat-badge {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4F46E5;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.whats-new-cat-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.whats-new-item-simple {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  padding: 2px 0;
+}
+
+.whats-new-item-bullet {
+  color: var(--primary, #4F46E5);
+  font-weight: bold;
+  user-select: none;
+}
+
+.whats-new-item-rich {
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.whats-new-rich-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.whats-new-rich-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.whats-new-rich-benefit {
+  margin-top: 2px;
+}
+
+.benefit-pill {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #B45309;
+  border: 1px solid rgba(245, 158, 11, 0.30);
+}
+
+/* Empty State */
+.whats-new-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  text-align: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.whats-new-empty-state .empty-state-icon {
+  font-size: 32px;
+}
+
+.whats-new-empty-state .empty-state-text {
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.whats-new-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* --------------------------------------------------------------------------
+   Four-Theme Compatibility Overrides for What's New Modal
+   -------------------------------------------------------------------------- */
+
+/* Dark Mode Overrides */
+[data-theme="dark"] .modal-card-whats-new {
+  background: #1C2733 !important;
+  border-color: #3B4B5C !important;
+  color: #F1F5F9 !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.60) !important;
+}
+
+[data-theme="dark"] .version-whats-new-banner {
+  background: rgba(96, 165, 250, 0.08) !important;
+  border-color: #3B4B5C !important;
+}
+
+[data-theme="dark"] .whats-new-version-picker-wrap {
+  background: #253241 !important;
+  border-color: #3B4B5C !important;
+}
+
+[data-theme="dark"] .whats-new-version-select {
+  background: #1C2733 !important;
+  border-color: #3B4B5C !important;
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .whats-new-hero-card {
+  background: #253241 !important;
+  border-color: #3B4B5C !important;
+}
+
+[data-theme="dark"] .whats-new-cat-card {
+  background: #253241 !important;
+  border-color: #3B4B5C !important;
+}
+
+[data-theme="dark"] .whats-new-item-rich {
+  background: #1C2733 !important;
+  border-color: #3B4B5C !important;
+}
+
+[data-theme="dark"] .whats-new-diff-banner.diff-upgrade-available {
+  background: rgba(96, 165, 250, 0.15) !important;
+  border-color: rgba(96, 165, 250, 0.40) !important;
+  color: #93C5FD !important;
+}
+
+[data-theme="dark"] .whats-new-diff-banner.diff-current-installed {
+  background: rgba(52, 211, 153, 0.15) !important;
+  border-color: rgba(52, 211, 153, 0.40) !important;
+  color: #6EE7B7 !important;
+}
+
+[data-theme="dark"] .whats-new-diff-banner.diff-older-version {
+  background: rgba(148, 163, 184, 0.15) !important;
+  border-color: rgba(148, 163, 184, 0.40) !important;
+  color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .history-item-latest {
+  border-color: #60A5FA !important;
+  background: rgba(96, 165, 250, 0.08) !important;
+}
+
+[data-theme="dark"] .btn-history-whats-new {
+  background: #1C2733 !important;
+  border-color: #3B4B5C !important;
+  color: #93C5FD !important;
+}
+
+/* Pet Mode Overrides */
+[data-theme="pet"] .modal-card-whats-new {
+  background: #FFFDF9 !important;
+  border: 1.5px solid #F8DFC8 !important;
+}
+
+[data-theme="pet"] .version-whats-new-banner {
+  background: linear-gradient(135deg, rgba(248, 132, 56, 0.10) 0%, rgba(254, 215, 170, 0.20) 100%) !important;
+  border: 1.5px solid #F8DFC8 !important;
+}
+
+[data-theme="pet"] .whats-new-sparkle-pill {
+  background: #FFF5EC !important;
+  color: #F88438 !important;
+  border-color: #F8DFC8 !important;
+}
+
+[data-theme="pet"] .whats-new-banner-title {
+  color: #2B180E !important;
+}
+
+[data-theme="pet"] .whats-new-hero-card {
+  background: #FFF8F0 !important;
+  border: 1.5px solid #FDE4D0 !important;
+}
+
+[data-theme="pet"] .whats-new-hero-version-pill {
+  background: #FFF5EC !important;
+  color: #F88438 !important;
+}
+
+[data-theme="pet"] .whats-new-hero-title {
+  color: #2B180E !important;
+}
+
+[data-theme="pet"] .history-item-latest {
+  border: 1.5px solid #F88438 !important;
+  background: #FFF8F0 !important;
+}
+
+[data-theme="pet"] .btn-history-whats-new {
+  color: #F88438 !important;
+  border-color: #F8DFC8 !important;
+}
+
+/* Pastel Light Mode Overrides */
+[data-theme="pastel"] .modal-card-whats-new {
+  background: #FFFFFF !important;
+  border: 1.5px solid #DDD6FE !important;
+}
+
+[data-theme="pastel"] .version-whats-new-banner {
+  background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%) !important;
+  border: 1.5px solid #DDD6FE !important;
+}
+
+[data-theme="pastel"] .whats-new-sparkle-pill {
+  background: #F5F3FF !important;
+  color: #7C3AED !important;
+  border-color: #DDD6FE !important;
+}
+
+[data-theme="pastel"] .whats-new-hero-card {
+  background: #F5F3FF !important;
+  border: 1.5px solid #EDE9FE !important;
+}
+
+[data-theme="pastel"] .whats-new-hero-version-pill {
+  background: #EDE9FE !important;
+  color: #7C3AED !important;
+}
+
+[data-theme="pastel"] .history-item-latest {
+  border: 1.5px solid #8B5CF6 !important;
+  background: #FAF5FF !important;
+}
+
+[data-theme="pastel"] .btn-history-whats-new {
+  color: #7C3AED !important;
+  border-color: #DDD6FE !important;
+}
+
+/* --------------------------------------------------------------------------
+   Narrow Viewport & Compact Mobile Adaptations (320px, 340px, 360px)
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 360px) {
+  .modal-card-whats-new {
+    border-radius: 14px !important;
+    margin: 8px !important;
+    max-height: 90vh !important;
+  }
+
+  .whats-new-scroll-body {
+    padding: 12px 14px !important;
+    gap: 10px !important;
+  }
+
+  .whats-new-version-picker-wrap {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+  }
+
+  .whats-new-select-wrapper {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .whats-new-version-select {
+    font-size: 12px !important;
+    padding: 5px 8px !important;
+  }
+
+  .whats-new-diff-banner {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+    gap: 8px !important;
+  }
+
+  .whats-new-hero-card {
+    padding: 10px 12px !important;
+  }
+
+  .whats-new-hero-title {
+    font-size: 14px !important;
+  }
+
+  .whats-new-cat-card {
+    padding: 10px 12px !important;
+  }
+
+  .whats-new-cat-badge {
+    font-size: 11.5px !important;
+    padding: 2px 7px !important;
+  }
+
+  .whats-new-modal-actions {
+    padding: 10px 14px !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 320px) {
+  .whats-new-head-title-wrap .modal-title {
+    font-size: 15px !important;
+  }
+
+  .whats-new-head-badge {
+    font-size: 10.5px !important;
+  }
+
+  .benefit-pill {
+    font-size: 10.5px !important;
+  }
+}

@@ -1506,6 +1506,21 @@
               </button>
             </div>
 
+            <!-- What's New Quick Access Banner -->
+            <div class="version-whats-new-banner" id="version-whats-new-banner">
+              <div class="whats-new-banner-icon-col">
+                <span class="whats-new-sparkle-pill">✨ What's New</span>
+              </div>
+              <div class="whats-new-banner-text-col">
+                <h4 class="whats-new-banner-title">Feature Highlights & Release Notes</h4>
+                <p class="whats-new-banner-sub" id="whats-new-banner-subtitle">Explore everything introduced in recent updates.</p>
+              </div>
+              <button type="button" class="btn-primary-compact btn-whats-new-launch" id="btn-open-whats-new-modal">
+                <span>View</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+
             <!-- Release History (Collapsible) -->
             <div class="version-history-section">
               <button type="button" class="version-history-toggle" id="btn-toggle-version-history">
@@ -1527,6 +1542,59 @@
           </div>
           <div class="modal-actions">
             <button type="button" class="btn-primary-compact" id="btn-close-version-ok">Done</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: What's New (Taskly Release Notes & Feature Showcase) -->
+      <div id="modal-whats-new" class="modal-backdrop">
+        <div class="modal-card modal-card-whats-new">
+          <div class="modal-head">
+            <div class="whats-new-head-title-wrap">
+              <span class="whats-new-head-badge">✨ What's New?</span>
+              <h3 class="modal-title" id="whats-new-modal-title">Taskly Updates & Release Notes</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-whats-new-modal" aria-label="Close What's New Modal">×</button>
+          </div>
+
+          <div class="modal-body whats-new-scroll-body">
+            <!-- Version Selector / Switcher -->
+            <div class="whats-new-version-picker-wrap">
+              <label for="select-whats-new-version" class="whats-new-picker-label">Release Version:</label>
+              <div class="whats-new-select-wrapper">
+                <select id="select-whats-new-version" class="whats-new-version-select" aria-label="Select Release Version"></select>
+              </div>
+            </div>
+
+            <!-- Installed vs Selected Version Diff Banner -->
+            <div class="whats-new-diff-banner" id="whats-new-diff-banner">
+              <span class="diff-banner-icon" id="whats-new-diff-icon">✓</span>
+              <div class="diff-banner-text" id="whats-new-diff-text">You are currently running this version.</div>
+            </div>
+
+            <!-- Active Release Hero Card -->
+            <div class="whats-new-hero-card" id="whats-new-hero-card">
+              <div class="whats-new-hero-top-row">
+                <div class="whats-new-hero-version-pill" id="whats-new-hero-version-pill">Version 1.5.0 (Build 6)</div>
+                <div class="whats-new-hero-date" id="whats-new-hero-date">Nov 7, 2026</div>
+              </div>
+              <h4 class="whats-new-hero-title" id="whats-new-hero-title">Notification Branding & In-App APK Updates</h4>
+              <p class="whats-new-hero-summary" id="whats-new-hero-summary">Official production release notes.</p>
+            </div>
+
+            <!-- Dynamic Categorized Release Notes Container -->
+            <div class="whats-new-categories-container" id="whats-new-categories-container"></div>
+
+            <!-- Empty State Fallback -->
+            <div class="whats-new-empty-state" id="whats-new-empty-state" style="display: none;">
+              <div class="empty-state-icon">📋</div>
+              <div class="empty-state-text">No release notes available for this version.</div>
+            </div>
+          </div>
+
+          <div class="modal-actions whats-new-modal-actions">
+            <button type="button" class="btn-secondary-compact" id="btn-whats-new-back-version">Back to Updates</button>
+            <button type="button" class="btn-primary-compact" id="btn-whats-new-dismiss">Got It</button>
           </div>
         </div>
       </div>

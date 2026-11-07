@@ -135,6 +135,38 @@ describe('Taskly Android Notification Branding & Paper Rocket Elimination Suite'
         assert.ok(fs.statSync(pawFile).size > 200, `${f}/ic_stat_paw.png must not be empty`);
       });
     });
+
+    test('AndroidManifest.xml declares notification small icon and color metadata', () => {
+      const manifestPath = path.join(ROOT_DIR, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+      const manifestXml = fs.readFileSync(manifestPath, 'utf8');
+      assert.ok(manifestXml.includes('android:name="com.taskly.app.default_notification_icon"'));
+      assert.ok(manifestXml.includes('android:resource="@drawable/ic_stat_paw"'));
+      assert.ok(manifestXml.includes('android:name="com.taskly.app.default_notification_color"'));
+      assert.ok(manifestXml.includes('android:resource="@color/notification_icon_color"'));
+
+      const colorsPath = path.join(RES_DIR, 'values', 'colors.xml');
+      const colorsXml = fs.readFileSync(colorsPath, 'utf8');
+      assert.ok(colorsXml.includes('<color name="notification_icon_color">#F88438</color>'));
+    });
+
+    test('TasklyNotifications.init clears stale delivered notifications on app startup', async () => {
+      let removeAllCalled = false;
+      const notifs = app.TasklyNotifications;
+      const origPlugin = notifs.getPlugin;
+      notifs.getPlugin = () => ({
+        removeAllDeliveredNotifications: async () => { removeAllCalled = true; },
+        createChannel: async () => {},
+        checkPermissions: async () => ({ display: 'granted' }),
+        addListener: () => {}
+      });
+
+      try {
+        await notifs.init();
+        assert.strictEqual(removeAllCalled, true, 'init() must call removeAllDeliveredNotifications()');
+      } finally {
+        notifs.getPlugin = origPlugin;
+      }
+    });
   });
 });
 

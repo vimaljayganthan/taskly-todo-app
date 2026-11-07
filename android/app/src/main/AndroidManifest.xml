@@ -56,6 +56,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Notification small icon & color metadata fallback for system handlers -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_paw" />
+        <meta-data
+            android:name="com.taskly.app.default_notification_icon"
+            android:resource="@drawable/ic_stat_paw" />
+        <meta-data
+            android:name="com.taskly.app.default_notification_color"
+            android:resource="@color/notification_icon_color" />
     </application>
 
     <!-- Permissions -->

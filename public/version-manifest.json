@@ -1,15 +1,50 @@
 {
-  "latestVersion": "1.5.0",
-  "versionCode": 6,
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.5.0/taskly-v1.5.0.apk",
-  "releaseNotes": "Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.",
+  "latestVersion": "1.6.0",
+  "versionCode": 7,
+  "title": "Permanent Release History & What's New System",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.6.0/taskly-v1.6.0.apk",
+  "releaseNotes": "Taskly v1.6.0 introduces an integrated Permanent Release History and interactive What's New feature showcase in Profile → Version, allowing users to browse historical release notes across all 4 themes and compare versions with responsive compact-screen support.",
   "releaseDate": "2026-11-07",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.0 MB",
-  "fileSizeBytes": 17843796,
-  "sha256": "91e24ff92428e3a296a5ed7dbea1e00ff91f9dd064dc8248e27525020f3726d5",
+  "fileSizeBytes": 17851188,
+  "sha256": "913a24200eb88d6abaa61dba64bd26876eabfc0a5537cd0309e46b1b01d2ebc0",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "1.6.0",
+      "versionName": "1.6.0",
+      "versionCode": 7,
+      "releaseDate": "2026-11-07",
+      "title": "Permanent Release History & What's New System",
+      "summary": "Taskly v1.6.0 introduces an integrated Permanent Release History and interactive What's New feature showcase in Profile → Version, allowing users to browse historical release notes across all 4 themes and compare versions with responsive compact-screen support.",
+      "features": [
+        "Permanent Release History in Profile → Version & Updates tracking all published Taskly versions",
+        "Interactive What's New modal showcasing categorized feature highlights and release notes",
+        "Historical version switcher with contextual diff comparison banners",
+        "One-time post-upgrade display automatically highlighting new features after an update"
+      ],
+      "improvements": [
+        "Fully responsive What's New layout optimized for compact Android displays down to 320px",
+        "Complete multi-theme support across all 4 themes (Light, Dark, Pet, Pastel)",
+        "Interactive collapsible history list with quick What's New inspection"
+      ],
+      "performance": [],
+      "fixes": [
+        "Corrected legacy placeholder text for v1.5.0 historical release notes"
+      ],
+      "security": [
+        "Two-phase staged release-manifest publishing with atomic file replacement and automatic rollback protection",
+        "Pre-publishing schema validation and data loss prevention safeguards"
+      ],
+      "apkFileName": "taskly-v1.6.0.apk",
+      "fileSize": "17.0 MB",
+      "fileSizeBytes": 17851188,
+      "sha256": "913a24200eb88d6abaa61dba64bd26876eabfc0a5537cd0309e46b1b01d2ebc0",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.6.0/taskly-v1.6.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
     {
       "version": "1.5.0",
       "versionCode": 6,

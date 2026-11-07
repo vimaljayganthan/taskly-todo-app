@@ -157,29 +157,106 @@ function verifyApkSigning(apkPath, expectedFingerprint = EXPECTED_PROD_FINGERPRI
 }
 
 function readGradleVersion() {
-  if (!fs.existsSync(GRADLE_PATH)) return { versionName: '1.4.0', versionCode: 5 };
+  if (!fs.existsSync(GRADLE_PATH)) return { versionName: '1.4.0', versionCode: 5, packageName: 'com.taskly.app' };
   const content = fs.readFileSync(GRADLE_PATH, 'utf8');
   const codeMatch = content.match(/versionCode\s+(\d+)/);
   const nameMatch = content.match(/versionName\s+["']([^"']+)["']/);
+  const pkgMatch = content.match(/applicationId\s+["']([^"']+)["']/);
   return {
     versionCode: codeMatch ? parseInt(codeMatch[1], 10) : 5,
-    versionName: nameMatch ? standardizeVersion(nameMatch[1]) : '1.4.0'
+    versionName: nameMatch ? standardizeVersion(nameMatch[1]) : '1.4.0',
+    packageName: pkgMatch ? pkgMatch[1] : 'com.taskly.app'
   };
 }
 
-function readProductionManifest() {
-  if (!fs.existsSync(MANIFEST_PATH)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
-  } catch (e) {
-    console.error('Error parsing production manifest:', e.message);
+/**
+ * Validate manifest schema and historical entries integrity.
+ * Throws a fatal Error if any required property, version identifier, or history entry is invalid.
+ */
+function validateManifestData(data, sourceDesc = 'manifest') {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error(`Fatal Validation Error: Manifest at '${sourceDesc}' must be a valid JSON object.`);
+  }
+
+  if (data.latestVersion == null || typeof data.latestVersion !== 'string' || !data.latestVersion.trim()) {
+    throw new Error(`Fatal Validation Error: Manifest at '${sourceDesc}' is missing a valid 'latestVersion'.`);
+  }
+
+  if (data.versionCode == null || isNaN(parseInt(data.versionCode, 10)) || parseInt(data.versionCode, 10) <= 0) {
+    throw new Error(`Fatal Validation Error: Manifest at '${sourceDesc}' is missing a valid numeric 'versionCode'.`);
+  }
+
+  if (data.history !== undefined) {
+    if (!Array.isArray(data.history)) {
+      throw new Error(`Fatal Validation Error: Manifest at '${sourceDesc}' history property must be an array.`);
+    }
+
+    const seenCodes = new Set();
+    const seenVersions = new Set();
+
+    data.history.forEach((entry, idx) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error(`Fatal Validation Error: History entry at index ${idx} in '${sourceDesc}' is invalid.`);
+      }
+      if (entry.versionCode == null || isNaN(parseInt(entry.versionCode, 10)) || parseInt(entry.versionCode, 10) <= 0) {
+        throw new Error(`Fatal Validation Error: History entry at index ${idx} in '${sourceDesc}' has an invalid versionCode.`);
+      }
+      const code = parseInt(entry.versionCode, 10);
+      if (seenCodes.has(code)) {
+        throw new Error(`Fatal Validation Error: Duplicate versionCode ${code} found in history of '${sourceDesc}'.`);
+      }
+      seenCodes.add(code);
+
+      const verName = (entry.version || entry.versionName || '').trim();
+      if (!verName) {
+        throw new Error(`Fatal Validation Error: History entry at index ${idx} (versionCode: ${code}) is missing a version identifier.`);
+      }
+      if (seenVersions.has(verName)) {
+        throw new Error(`Fatal Validation Error: Duplicate version identifier '${verName}' found in history of '${sourceDesc}'.`);
+      }
+      seenVersions.add(verName);
+    });
+  }
+
+  return true;
+}
+
+/**
+ * Read and validate production manifest.
+ * Returns null ONLY when the file genuinely does not exist on disk.
+ * Throws a fatal Error if the file exists but cannot be read or parsed, or fails schema validation.
+ */
+function readProductionManifest(manifestPath = MANIFEST_PATH) {
+  if (!fs.existsSync(manifestPath)) {
     return null;
   }
+
+  let content;
+  try {
+    content = fs.readFileSync(manifestPath, 'utf8');
+  } catch (readErr) {
+    throw new Error(`Fatal I/O Error: Production manifest exists at '${manifestPath}' but cannot be read: ${readErr.message}`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (parseErr) {
+    throw new Error(`Fatal Syntax Error: Production manifest at '${manifestPath}' is corrupted or contains invalid JSON: ${parseErr.message}`);
+  }
+
+  validateManifestData(parsed, manifestPath);
+  return parsed;
 }
 
 function showStatus() {
   const gradle = readGradleVersion();
-  const manifest = readProductionManifest();
+  let manifest = null;
+  try {
+    manifest = readProductionManifest();
+  } catch (err) {
+    console.error(`\n❌ Warning: Failed to read production manifest: ${err.message}\n`);
+  }
 
   console.log('\n======================================================');
   console.log('       TASKLY RELEASE STATUS & INTEGRITY CHECK        ');
@@ -230,6 +307,22 @@ function showStatus() {
   console.log('\n======================================================\n');
 }
 
+function parseCategoryItems(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_) {}
+    }
+    return trimmed.split(/\r?\n|,\s*/).map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 /**
  * Prepare a candidate production release draft (Stage A - Strictly Private).
  * Guarantees zero fallback to debug APK.
@@ -239,7 +332,6 @@ function prepareRelease(args = {}) {
   const gradle = readGradleVersion();
   const version = standardizeVersion(args.version || gradle.versionName);
   const build = args.build ? parseInt(args.build, 10) : gradle.versionCode;
-  const notes = args.notes || 'Performance enhancements and stability improvements.';
 
   // Target APK MUST be app-release.apk (or custom path explicitly specified)
   const defaultReleaseApk = path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
@@ -261,30 +353,73 @@ function prepareRelease(args = {}) {
     throw new Error(`Production release APK not found at ${targetApk}. Fallback to debug APK is prohibited.`);
   }
 
-  // 3. Cryptographic Signature Verification
+  // 3. Validate Version Progression
+  const currentManifest = readProductionManifest();
+  if (currentManifest && currentManifest.versionCode != null) {
+    if (build <= currentManifest.versionCode) {
+      throw new Error(`Progression Violation: Candidate versionCode (${build}) must be strictly greater than current production versionCode (${currentManifest.versionCode}).`);
+    }
+  }
+
+  // 4. Explicit Title & Release Notes Validation
+  const title = typeof args.title === 'string' ? args.title.trim() : '';
+  if (!title) {
+    throw new Error('Validation Error: Explicit release title (--title) is required for production release preparation.');
+  }
+
+  let notes = typeof args.notes === 'string' ? args.notes.trim() : (typeof args.summary === 'string' ? args.summary.trim() : '');
+  if (!notes && args['notes-file']) {
+    const notesFile = path.resolve(ROOT_DIR, args['notes-file']);
+    if (fs.existsSync(notesFile)) {
+      notes = fs.readFileSync(notesFile, 'utf8').trim();
+    }
+  }
+  if (!notes) {
+    throw new Error('Validation Error: Explicit release notes (--notes, --summary, or --notes-file) are required for production release preparation.');
+  }
+
+  // 5. Cryptographic Signature Verification
   console.log(`[Integrity Check] Verifying APK signature with apksigner...`);
   const certInfo = verifyApkSigning(targetApk, EXPECTED_PROD_FINGERPRINT);
   console.log(`  ✓ Signature valid: Production Certificate verified (${certInfo.fingerprint.slice(0, 16)}...)`);
 
-  // 4. Compute metrics
+  const features = parseCategoryItems(args.features);
+  const improvements = parseCategoryItems(args.improvements);
+  const performance = parseCategoryItems(args.performance);
+  const fixes = parseCategoryItems(args.fixes);
+  const security = parseCategoryItems(args.security);
+
+  if (features.length === 0 && improvements.length === 0 && performance.length === 0 && fixes.length === 0 && security.length === 0) {
+    features.push(notes);
+  }
+
+  // 6. Compute metrics
   const apkMetrics = computeSha256(targetApk);
   const draftManifest = {
     latestVersion: version,
     versionCode: build,
+    title: title,
     apkDownloadUrl: `https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v${version}/taskly-v${version}.apk`,
     releaseNotes: notes,
+    summary: notes,
     releaseDate: new Date().toISOString().split('T')[0],
     minimumSupportedVersion: '1.0.0',
     fileSize: apkMetrics.mb,
     fileSizeBytes: apkMetrics.bytes,
     sha256: apkMetrics.sha256,
-    mandatoryUpdate: false,
-    apkSourceFile: path.relative(ROOT_DIR, targetApk)
+    mandatoryUpdate: Boolean(args.mandatory),
+    apkSourceFile: path.relative(ROOT_DIR, targetApk),
+    features: features,
+    improvements: improvements,
+    performance: performance,
+    fixes: fixes,
+    security: security
   };
 
   fs.writeFileSync(DRAFT_PATH, JSON.stringify(draftManifest, null, 2));
   console.log(`✓ Draft prepared successfully: ${DRAFT_PATH}`);
   console.log(`  Version: v${version} (Build ${build})`);
+  console.log(`  Title:   ${title}`);
   console.log(`  SHA-256: ${apkMetrics.sha256}`);
   console.log(`  Size:    ${apkMetrics.mb} (${apkMetrics.bytes} bytes)`);
   console.log('\n⚠️  IMPORTANT: This release candidate has NOT been published.');
@@ -297,6 +432,8 @@ function prepareRelease(args = {}) {
 
 /**
  * Publish candidate release to production manifest (Stage B - Owner Authorized).
+ * Implements a staged dual-manifest replacement strategy with validation, atomic renames,
+ * and recovery-safe rollback protection.
  */
 function publishRelease(args = {}) {
   if (!args['confirm-owner-approval']) {
@@ -312,30 +449,69 @@ function publishRelease(args = {}) {
     throw new Error(`Draft release file not found at ${DRAFT_PATH}`);
   }
 
-  const draft = JSON.parse(fs.readFileSync(DRAFT_PATH, 'utf8'));
+  let draft;
+  try {
+    draft = JSON.parse(fs.readFileSync(DRAFT_PATH, 'utf8'));
+  } catch (err) {
+    throw new Error(`Fatal Error: Release draft file at '${DRAFT_PATH}' is corrupted or unreadable: ${err.message}`);
+  }
 
   // Strict check: draft must not be derived from a debug APK
   if (draft.apkSourceFile && draft.apkSourceFile.toLowerCase().includes('debug')) {
     throw new Error(`Security Violation: Draft specifies a debug APK source file (${draft.apkSourceFile}). Publishing rejected.`);
   }
 
-  const currentManifest = readProductionManifest() || { history: [] };
+  // Read and validate current production manifest
+  const currentManifest = readProductionManifest(MANIFEST_PATH);
+  let history = [];
 
-  // Prepend current release to history
-  const history = currentManifest.history ? [...currentManifest.history] : [];
-  history.unshift({
+  if (currentManifest) {
+    if (!Array.isArray(currentManifest.history)) {
+      throw new Error(`Fatal: Current production manifest at '${MANIFEST_PATH}' has an invalid or missing history array.`);
+    }
+    history = [...currentManifest.history];
+
+    if (currentManifest.versionCode != null && draft.versionCode <= currentManifest.versionCode) {
+      throw new Error(`Progression Violation: Draft versionCode (${draft.versionCode}) must be strictly greater than current production versionCode (${currentManifest.versionCode}).`);
+    }
+  } else {
+    // Explicit first-release initialization path only
+    console.warn(`[Release Manager] No previous production manifest found at ${MANIFEST_PATH}. Initializing initial release.`);
+  }
+
+  // Construct new historical release entry
+  const newHistoricalEntry = {
     version: draft.latestVersion,
+    versionName: draft.latestVersion,
     versionCode: draft.versionCode,
     releaseDate: draft.releaseDate,
-    summary: draft.releaseNotes,
-    features: ['Approved production release'],
-    improvements: [],
-    fixes: []
-  });
+    title: draft.title || `Taskly v${draft.latestVersion}`,
+    summary: draft.releaseNotes || draft.summary || '',
+    features: (Array.isArray(draft.features) && draft.features.length > 0) ? draft.features : [draft.releaseNotes || 'Approved production release'],
+    improvements: Array.isArray(draft.improvements) ? draft.improvements : [],
+    performance: Array.isArray(draft.performance) ? draft.performance : [],
+    fixes: Array.isArray(draft.fixes) ? draft.fixes : [],
+    security: Array.isArray(draft.security) ? draft.security : [],
+    apkFileName: path.basename(draft.apkDownloadUrl || `taskly-v${draft.latestVersion}.apk`),
+    fileSize: draft.fileSize,
+    fileSizeBytes: draft.fileSizeBytes,
+    sha256: draft.sha256,
+    downloadUrl: draft.apkDownloadUrl,
+    minSdkVersion: draft.minSdkVersion || '24',
+    targetSdkVersion: draft.targetSdkVersion || '34'
+  };
+
+  // Filter out any duplicate versionCode if re-publishing a draft, then unshift
+  const filteredHistory = history.filter(h => h.versionCode !== newHistoricalEntry.versionCode);
+  filteredHistory.unshift(newHistoricalEntry);
+
+  // Strictly sort history by versionCode descending (newest first)
+  filteredHistory.sort((a, b) => (parseInt(b.versionCode, 10) || 0) - (parseInt(a.versionCode, 10) || 0));
 
   const productionManifest = {
     latestVersion: draft.latestVersion,
     versionCode: draft.versionCode,
+    title: newHistoricalEntry.title,
     apkDownloadUrl: draft.apkDownloadUrl,
     releaseNotes: draft.releaseNotes,
     releaseDate: draft.releaseDate,
@@ -344,18 +520,153 @@ function publishRelease(args = {}) {
     fileSizeBytes: draft.fileSizeBytes,
     sha256: draft.sha256,
     mandatoryUpdate: draft.mandatoryUpdate,
-    history: history
+    history: filteredHistory
   };
 
-  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(productionManifest, null, 2));
-  fs.writeFileSync(PUBLIC_MANIFEST_PATH, JSON.stringify(productionManifest, null, 2));
-  fs.unlinkSync(DRAFT_PATH);
+  // Validate complete constructed manifest data before touching filesystem
+  validateManifestData(productionManifest, 'generated payload');
+  const payload = JSON.stringify(productionManifest, null, 2) + '\n';
+
+  // --------------------------------------------------------------------------
+  // Staged Two-Phase Manifest Replacement Strategy with Rollback & Recovery
+  // --------------------------------------------------------------------------
+  const manifestDir = path.dirname(MANIFEST_PATH);
+  const publicDir = path.dirname(PUBLIC_MANIFEST_PATH);
+
+  const timestamp = Date.now();
+  const manifestStagePath = path.join(manifestDir, `.version-manifest.stage.${timestamp}.tmp`);
+  const publicStagePath = path.join(publicDir, `.version-manifest.stage.${timestamp}.tmp`);
+
+  const manifestBackupPath = path.join(manifestDir, `.version-manifest.backup.${timestamp}.bak`);
+  const publicBackupPath = path.join(publicDir, `.version-manifest.backup.${timestamp}.bak`);
+
+  let manifestBackupCreated = false;
+  let publicBackupCreated = false;
+  let manifestRenamed = false;
+  let publicRenamed = false;
+
+  try {
+    // Stage 1: Preserve recoverable backups of existing manifests
+    if (fs.existsSync(MANIFEST_PATH)) {
+      fs.copyFileSync(MANIFEST_PATH, manifestBackupPath);
+      manifestBackupCreated = true;
+    }
+    if (fs.existsSync(PUBLIC_MANIFEST_PATH)) {
+      fs.copyFileSync(PUBLIC_MANIFEST_PATH, publicBackupPath);
+      publicBackupCreated = true;
+    }
+
+    // Failure injection hook: before writing stage files
+    if (args._failAtStage === 'beforeWriteStageFiles') {
+      throw new Error('Simulated failure during stage file creation.');
+    }
+
+    // Stage 2: Write temporary stage files in the same directories as targets
+    fs.writeFileSync(manifestStagePath, payload, 'utf8');
+    fs.writeFileSync(publicStagePath, payload, 'utf8');
+
+    // Stage 3: Validate staged JSON before replacement
+    const staged1Content = fs.readFileSync(manifestStagePath, 'utf8');
+    const staged2Content = fs.readFileSync(publicStagePath, 'utf8');
+    if (staged1Content !== payload || staged2Content !== payload) {
+      throw new Error('Validation Error: Staged files do not match generated payload.');
+    }
+    validateManifestData(JSON.parse(staged1Content), manifestStagePath);
+    validateManifestData(JSON.parse(staged2Content), publicStagePath);
+
+    // Failure injection hook: before replacing first manifest
+    if (args._failAtStage === 'beforeRenameTarget1') {
+      throw new Error('Simulated failure before replacing first manifest.');
+    }
+
+    // Stage 4: Replace first manifest using atomic filesystem rename
+    fs.renameSync(manifestStagePath, MANIFEST_PATH);
+    manifestRenamed = true;
+
+    // Failure injection hook: before replacing second manifest
+    if (args._failAtStage === 'beforeRenameTarget2' || args._failAtStage === 'duringRollback') {
+      throw new Error('Simulated failure before replacing second manifest.');
+    }
+
+    // Stage 5: Replace second manifest using atomic filesystem rename
+    fs.renameSync(publicStagePath, PUBLIC_MANIFEST_PATH);
+    publicRenamed = true;
+
+    // Stage 6: Post-replacement dual consistency verification
+    const final1 = fs.readFileSync(MANIFEST_PATH, 'utf8');
+    const final2 = fs.readFileSync(PUBLIC_MANIFEST_PATH, 'utf8');
+    if (final1 !== final2 || final1 !== payload) {
+      throw new Error('Post-publishing verification failed: Target manifests are not identical to generated payload.');
+    }
+
+    // Stage 7: Clean up backups
+    if (manifestBackupCreated && fs.existsSync(manifestBackupPath)) fs.unlinkSync(manifestBackupPath);
+    if (publicBackupCreated && fs.existsSync(publicBackupPath)) fs.unlinkSync(publicBackupPath);
+
+    // Stage 8: Delete draft ONLY after successful dual verification
+    if (fs.existsSync(DRAFT_PATH)) {
+      fs.unlinkSync(DRAFT_PATH);
+    }
+  } catch (publishErr) {
+    console.error(`\n⚠️ Publishing encountered an error: ${publishErr.message}`);
+    console.error('Initiating staged rollback to preserve manifest integrity...');
+
+    let rollbackErrors = [];
+
+    // Simulate failure during rollback if requested
+    if (args._failAtStage === 'duringRollback') {
+      rollbackErrors.push('Simulated failure during rollback operation.');
+    } else {
+      // Roll back targets if they were renamed
+      if (manifestRenamed && manifestBackupCreated && fs.existsSync(manifestBackupPath)) {
+        try {
+          fs.copyFileSync(manifestBackupPath, MANIFEST_PATH);
+        } catch (rbErr) {
+          rollbackErrors.push(`Failed to restore ${MANIFEST_PATH}: ${rbErr.message}`);
+        }
+      }
+      if (publicRenamed && publicBackupCreated && fs.existsSync(publicBackupPath)) {
+        try {
+          fs.copyFileSync(publicBackupPath, PUBLIC_MANIFEST_PATH);
+        } catch (rbErr) {
+          rollbackErrors.push(`Failed to restore ${PUBLIC_MANIFEST_PATH}: ${rbErr.message}`);
+        }
+      }
+    }
+
+    // Clean up temporary stage files if still present
+    if (fs.existsSync(manifestStagePath)) try { fs.unlinkSync(manifestStagePath); } catch (_) {}
+    if (fs.existsSync(publicStagePath)) try { fs.unlinkSync(publicStagePath); } catch (_) {}
+
+    if (rollbackErrors.length > 0) {
+      // Recovery preservation: Keep backup files and halt with critical error
+      const recoveryMsg = `CRITICAL: Staged publishing failed AND rollback failed! Recovery backups preserved at:\n` +
+        `  - ${manifestBackupCreated ? manifestBackupPath : 'none'}\n` +
+        `  - ${publicBackupCreated ? publicBackupPath : 'none'}\n` +
+        `Rollback errors: ${rollbackErrors.join('; ')}\n` +
+        `Original error: ${publishErr.message}`;
+      console.error('\n🛑 ' + recoveryMsg + '\n');
+      throw new Error(recoveryMsg);
+    }
+
+    // Rollback succeeded cleanly — clean up backups
+    if (manifestBackupCreated && fs.existsSync(manifestBackupPath)) {
+      try { fs.unlinkSync(manifestBackupPath); } catch (_) {}
+    }
+    if (publicBackupCreated && fs.existsSync(publicBackupPath)) {
+      try { fs.unlinkSync(publicBackupPath); } catch (_) {}
+    }
+
+    // Note: DRAFT_PATH is preserved so draft is never lost!
+    throw new Error(`Staged publishing failed (safely rolled back to previous manifests): ${publishErr.message}`);
+  }
 
   console.log('\n======================================================');
   console.log('   ✓ PRODUCTION UPDATE MANIFEST PUBLISHED BY OWNER    ');
   console.log('======================================================');
   console.log(`  Latest Version: v${productionManifest.latestVersion}`);
   console.log(`  Version Code:   ${productionManifest.versionCode}`);
+  console.log(`  Title:          ${productionManifest.title}`);
   console.log(`  APK URL:        ${productionManifest.apkDownloadUrl}`);
   console.log(`  SHA-256:        ${productionManifest.sha256}`);
   console.log('\nNext steps to complete distribution:');
@@ -375,7 +686,13 @@ module.exports = {
   publishRelease,
   readGradleVersion,
   standardizeVersion,
-  EXPECTED_PROD_FINGERPRINT
+  parseCategoryItems,
+  readProductionManifest,
+  validateManifestData,
+  EXPECTED_PROD_FINGERPRINT,
+  DRAFT_PATH,
+  MANIFEST_PATH,
+  PUBLIC_MANIFEST_PATH
 };
 
 // CLI Execution (when executed directly from terminal)
@@ -392,7 +709,12 @@ if (require.main === module) {
         const val = arg.slice(eqIdx + 1);
         parsedArgs[key] = val;
       } else {
-        parsedArgs[arg.slice(2)] = true;
+        const key = arg.slice(2);
+        if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+          parsedArgs[key] = argv[++i];
+        } else {
+          parsedArgs[key] = true;
+        }
       }
     }
   }
