@@ -103,14 +103,14 @@ function computeSha256(filePath) {
  * Cryptographically verify APK signature using apksigner
  */
 function verifyApkSigning(apkPath, expectedFingerprint = EXPECTED_PROD_FINGERPRINT) {
-  if (!fs.existsSync(apkPath)) {
-    throw new Error(`APK file not found: ${apkPath}`);
-  }
-
   // 1. Strict Filename Check: Reject any debug APK
   const baseName = path.basename(apkPath).toLowerCase();
   if (baseName.includes('debug')) {
     throw new Error(`Security Violation: Debug APK '${path.basename(apkPath)}' cannot be published to production. Only production-signed release APKs (app-release.apk) are allowed.`);
+  }
+
+  if (!fs.existsSync(apkPath)) {
+    throw new Error(`APK file not found: ${apkPath}`);
   }
 
   const apksignerBin = findApksigner();
@@ -245,7 +245,13 @@ function prepareRelease(args = {}) {
   const defaultReleaseApk = path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
   const targetApk = args.apk || defaultReleaseApk;
 
-  // 1. Strict Failure if Release APK does not exist (NO FALLBACK TO DEBUG APK)
+  // 1. Reject if filename contains 'debug' (strictly prohibit debug APK targets)
+  const baseName = path.basename(targetApk).toLowerCase();
+  if (baseName.includes('debug')) {
+    throw new Error(`Security Violation: Debug APK '${targetApk}' cannot be used for production release preparation.`);
+  }
+
+  // 2. Strict Failure if Release APK does not exist (NO FALLBACK TO DEBUG APK)
   if (!fs.existsSync(targetApk)) {
     console.error(`\n❌ ERROR: Production release preparation failed!`);
     console.error(`   Required signed release APK not found at: ${targetApk}`);
@@ -253,12 +259,6 @@ function prepareRelease(args = {}) {
     console.error(`   To build a signed release APK:`);
     console.error(`   cd android && JAVA_HOME="/opt/homebrew/opt/openjdk@21" ./gradlew assembleRelease\n`);
     throw new Error(`Production release APK not found at ${targetApk}. Fallback to debug APK is prohibited.`);
-  }
-
-  // 2. Reject if filename contains 'debug'
-  const baseName = path.basename(targetApk).toLowerCase();
-  if (baseName.includes('debug')) {
-    throw new Error(`Security Violation: Debug APK '${targetApk}' cannot be used for production release preparation.`);
   }
 
   // 3. Cryptographic Signature Verification
