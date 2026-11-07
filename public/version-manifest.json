@@ -1,0 +1,75 @@
+{
+  "latestVersion": "1.5.0",
+  "versionCode": 6,
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.5.0/taskly-v1.5.0.apk",
+  "releaseNotes": "Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.",
+  "releaseDate": "2026-11-07",
+  "minimumSupportedVersion": "1.0.0",
+  "fileSize": "17.0 MB",
+  "fileSizeBytes": 17843796,
+  "sha256": "91e24ff92428e3a296a5ed7dbea1e00ff91f9dd064dc8248e27525020f3726d5",
+  "mandatoryUpdate": false,
+  "history": [
+    {
+      "version": "1.5.0",
+      "versionCode": 6,
+      "releaseDate": "2026-11-07",
+      "summary": "Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.",
+      "features": [
+        "Approved production release"
+      ],
+      "improvements": [],
+      "fixes": []
+    },
+    {
+      "version": "1.4.0",
+      "versionCode": 5,
+      "releaseDate": "2026-11-07",
+      "summary": "Brand refresh, dynamic calendar priority intelligence & cute cat meow notifications",
+      "features": [
+        "New Taskly Cat & Dog logo across Android launcher and web application",
+        "Dynamic calendar priority workload colors (Pink for High, Green for Medium, Cyan for Low, Grey for Homogeneous)",
+        "Custom category deletion with safe task reassignment to Personal",
+        "Cute Cat Meow notification sound on Android task reminders"
+      ],
+      "improvements": [
+        "High-contrast Dark Mode styling for Quick Capture cards and badges",
+        "Logout confirmation modal with duplicate-tap protection",
+        "Preserved Supabase authentication session across app updates"
+      ],
+      "fixes": [
+        "Fixed CSS declaration structure in public/styles.css",
+        "Separated Android monochrome notification icon from cute cat mascots"
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "versionCode": 3,
+      "releaseDate": "2026-11-05",
+      "summary": "Multi-user cloud synchronization & Supabase authentication",
+      "features": [
+        "Supabase cloud database synchronization for tasks and notes",
+        "Secure user registration and email confirmation workflow"
+      ],
+      "improvements": [
+        "Offline-first local cache fallback when network is unavailable"
+      ],
+      "fixes": [
+        "Improved deadline reminder notification scheduling across device sleep cycles"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "versionCode": 1,
+      "releaseDate": "2026-11-01",
+      "summary": "Initial Taskly release",
+      "features": [
+        "Smart task management and progress tracking",
+        "Quick notes capture with pin functionality",
+        "Interactive calendar view and four theme system"
+      ],
+      "improvements": [],
+      "fixes": []
+    }
+  ]
+}

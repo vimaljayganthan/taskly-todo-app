@@ -326,9 +326,14 @@ describe('Taskly End-to-End Integration Suite (All 9 Workflows)', () => {
     assert.strictEqual(global.localStorage.getItem('taskly_theme'), 'pastel');
     assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'pastel');
 
-    // 4. Fallback to pet for unknown theme
+    // 4. Apply Dark Mode
+    clientApp.applyTheme('dark');
+    assert.strictEqual(global.localStorage.getItem('taskly_theme'), 'dark');
+    assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'dark');
+
+    // 5. Fallback to default (light) for unknown theme
     clientApp.applyTheme('invalid-theme-xyz');
-    assert.strictEqual(global.localStorage.getItem('taskly_theme'), 'pet');
+    assert.strictEqual(global.localStorage.getItem('taskly_theme'), 'light');
   });
 
   // --------------------------------------------------------------------------

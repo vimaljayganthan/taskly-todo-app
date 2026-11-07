@@ -1,5 +1,5 @@
 // ==========================================================================
-// Taskly Aerodynamic 2.0 Engine
+// Taskly Engine
 // Multi-screen routing, interactive onboarding, calendar, analytics, and CRUD
 // ==========================================================================
 
@@ -42,7 +42,7 @@ const state = {
     login: false,
     signup: false
   },
-  theme: 'pet',
+  theme: 'light',
   quickNotes: [],
 
   // Active Flow & Navigation
@@ -54,7 +54,7 @@ const state = {
   // Calendar State
   calCurrentDate: new Date(),
   selectedDateStr: toYmdString(new Date()),
-  calendarViewMode: 'strip', // 'strip' | 'month'
+  calendarViewMode: 'month', // 'month' (default dynamic heatmap grid) | 'strip'
   previousTab: null,
 
   // Analytics State
@@ -62,6 +62,7 @@ const state = {
 
   // Task Store & Filters
   todos: [],
+  todosLoaded: false,
   dashboardFilter: 'all', // 'all' | 'today' | 'pending' | 'completed'
 
   // Server Configuration Cache
@@ -128,6 +129,7 @@ function updatePreviewUI() {
 
 function initPreviewData() {
   state.isPreviewSession = true;
+  state.todosLoaded = true;
   state.userToken = null; // Strictly null - preview mode NEVER issues or holds an auth token
   state.user = {
     id: 'local-preview-user',
@@ -146,6 +148,9 @@ function initPreviewData() {
     const tomorrowDate = new Date();
     tomorrowDate.setDate(tomorrowDate.getDate() + 1);
     const tomorrow = toYmdString(tomorrowDate);
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 3);
+    const dayPast = toYmdString(pastDate);
 
     state.todos = [
       {
@@ -185,8 +190,8 @@ function initPreviewData() {
         id: 'preview-4',
         title: 'Email confirmation URL redirect fix',
         description: 'Verify canonical URL resolution and environment-aware redirects.',
-        dueDate: yesterday,
-        time: '11:00 AM',
+        dueDate: dayPast,
+        time: '',
         priority: 'Low',
         category: 'Work',
         completed: true,
@@ -197,7 +202,7 @@ function initPreviewData() {
         title: 'Plan weekly grocery list and meal prep',
         description: 'Pick fresh fruits, pastel pastries, and matcha tea.',
         dueDate: tomorrow,
-        time: '06:00 PM',
+        time: '',
         priority: 'Medium',
         category: 'Personal',
         completed: false,
@@ -615,8 +620,10 @@ if (typeof document !== 'undefined') {
     loadStoredPreferences();
     applyTheme(state.theme);
     setupEventListeners();
+    setupAndroidKeyboardAndViewportHandlers();
     initAddTaskDateTime();
     await TasklyNotifications.init();
+    await TasklyUpdateManager.init();
     renderQuickNotes();
     await initSupabaseAuth();
     updatePreviewUI();
@@ -632,6 +639,54 @@ if (typeof document !== 'undefined') {
 
     // Restore the active screen/route on reload or initial visit
     restoreActiveRoute();
+  });
+}
+
+// Android Soft-Keyboard & Responsive Viewport Handlers
+function setupAndroidKeyboardAndViewportHandlers() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  // 1. Capacitor Native Keyboard Plugin Listeners
+  if (window.Capacitor?.Plugins?.Keyboard) {
+    try {
+      window.Capacitor.Plugins.Keyboard.addListener('keyboardWillShow', () => {
+        document.body.classList.add('keyboard-open');
+      });
+      window.Capacitor.Plugins.Keyboard.addListener('keyboardDidShow', () => {
+        document.body.classList.add('keyboard-open');
+      });
+      window.Capacitor.Plugins.Keyboard.addListener('keyboardWillHide', () => {
+        document.body.classList.remove('keyboard-open');
+      });
+      window.Capacitor.Plugins.Keyboard.addListener('keyboardDidHide', () => {
+        document.body.classList.remove('keyboard-open');
+      });
+    } catch (_) {}
+  }
+
+  // 2. Visual Viewport API fallback for Android WebViews & Browsers
+  if (window.visualViewport) {
+    let baseHeight = window.visualViewport.height;
+    window.visualViewport.addEventListener('resize', () => {
+      const currentHeight = window.visualViewport.height;
+      if (baseHeight - currentHeight > 140) {
+        document.body.classList.add('keyboard-open');
+      } else if (currentHeight >= baseHeight - 40) {
+        document.body.classList.remove('keyboard-open');
+        baseHeight = Math.max(baseHeight, currentHeight);
+      }
+    });
+  }
+
+  // 3. Smooth Auto-Scroll for Focused Input Fields
+  document.addEventListener('focusin', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) {
+      setTimeout(() => {
+        try {
+          e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) {}
+      }, 200);
+    }
   });
 }
 
@@ -817,29 +872,43 @@ function loadStoredPreferences() {
       state.userToken = null;
       try { localStorage.removeItem('taskly_user_token'); } catch (_) {}
     }
+    // Prevent stale email exposure if token is missing
+    if (!state.userToken) {
+      state.user.email = '';
+    }
     const storedTheme = localStorage.getItem('taskly_theme');
     if (storedTheme === 'day') {
       state.theme = 'day';
-    } else if (storedTheme === 'pastel' || storedTheme === 'light') {
+    } else if (storedTheme === 'light') {
+      state.theme = 'light';
+    } else if (storedTheme === 'dark') {
+      state.theme = 'dark';
+    } else if (storedTheme === 'pastel') {
       state.theme = 'pastel';
-    } else {
+    } else if (storedTheme === 'pet') {
       state.theme = 'pet';
+    } else {
+      state.theme = 'light';
     }
 
     try {
-      const storedQc = localStorage.getItem('taskly_quick_notes');
+      const userQcKey = state.user && state.user.id ? `taskly_quick_notes_${state.user.id}` : null;
+      let storedQc = userQcKey ? localStorage.getItem(userQcKey) : null;
+      if (!storedQc) {
+        storedQc = localStorage.getItem('taskly_quick_notes');
+      }
       if (storedQc) {
         state.quickNotes = JSON.parse(storedQc);
       } else {
         state.quickNotes = [
-          { id: 1, text: "Buy cat & dog treats" },
-          { id: 2, text: "Review mobile release v1.4" }
+          { id: 1, text: "Buy cat & dog treats", isPinned: true },
+          { id: 2, text: "Review mobile release v1.4", isPinned: false }
         ];
       }
     } catch (_) {
       state.quickNotes = [
-        { id: 1, text: "Buy cat & dog treats" },
-        { id: 2, text: "Review mobile release v1.4" }
+        { id: 1, text: "Buy cat & dog treats", isPinned: true },
+        { id: 2, text: "Review mobile release v1.4", isPinned: false }
       ];
     }
   } catch (e) {
@@ -855,11 +924,14 @@ function saveUserPreferences() {
   }
 }
 
-function applyTheme(theme = 'pet') {
-  let normalized = 'pet';
-  if (theme === 'day') normalized = 'day';
-  else if (theme === 'pastel' || theme === 'light') normalized = 'pastel';
-  else normalized = 'pet';
+function applyTheme(theme = 'light') {
+  let normalized = 'light';
+  if (theme === 'dark') normalized = 'dark';
+  else if (theme === 'pet') normalized = 'pet';
+  else if (theme === 'pastel') normalized = 'pastel';
+  else if (theme === 'day') normalized = 'day';
+  else if (theme === 'light') normalized = 'light';
+  else normalized = 'light';
   state.theme = normalized;
 
   if (typeof document !== 'undefined') {
@@ -870,7 +942,7 @@ function applyTheme(theme = 'pet') {
 
     const metaTheme = document.getElementById('meta-theme-color');
     if (metaTheme) {
-      if (normalized === 'day') {
+      if (normalized === 'light' || normalized === 'day') {
         const activeTab = state.activeTab || 'home';
         const colorMap = {
           home: '#38BDF8',
@@ -880,6 +952,8 @@ function applyTheme(theme = 'pet') {
           add: '#38BDF8'
         };
         metaTheme.setAttribute('content', colorMap[activeTab] || '#38BDF8');
+      } else if (normalized === 'dark') {
+        metaTheme.setAttribute('content', '#121820');
       } else if (normalized === 'pastel') {
         metaTheme.setAttribute('content', '#F5F3FF');
       } else {
@@ -890,22 +964,30 @@ function applyTheme(theme = 'pet') {
     // Update profile theme label
     const themeValEl = document.getElementById('theme-display-val');
     if (themeValEl) {
-      if (normalized === 'pet') {
-        themeValEl.textContent = 'Pet Theme ›';
-      } else if (normalized === 'day') {
-        themeValEl.textContent = 'Day Theme ›';
-      } else {
-        themeValEl.textContent = 'Pastel Light ›';
+      if (normalized === 'light' || normalized === 'day') {
+        themeValEl.textContent = 'Light Mode ›';
+      } else if (normalized === 'dark') {
+        themeValEl.textContent = 'Dark Mode ›';
+      } else if (normalized === 'pet') {
+        themeValEl.textContent = 'Pet Mode ›';
+      } else if (normalized === 'pastel') {
+        themeValEl.textContent = 'Pastel Light Mode ›';
       }
     }
 
     // Update modal active selection
+    const optLight = document.getElementById('theme-choice-light');
+    const optDay = document.getElementById('theme-choice-day');
+    const optDark = document.getElementById('theme-choice-dark');
     const optPet = document.getElementById('theme-choice-pet');
     const optPastel = document.getElementById('theme-choice-pastel');
-    const optDay = document.getElementById('theme-choice-day');
+
+    const isLight = normalized === 'light' || normalized === 'day';
+    if (optLight) optLight.classList.toggle('active', isLight);
+    if (optDay && optDay !== optLight) optDay.classList.toggle('active', isLight);
+    if (optDark) optDark.classList.toggle('active', normalized === 'dark');
     if (optPet) optPet.classList.toggle('active', normalized === 'pet');
     if (optPastel) optPastel.classList.toggle('active', normalized === 'pastel');
-    if (optDay) optDay.classList.toggle('active', normalized === 'day');
   }
 
   try {
@@ -1034,9 +1116,12 @@ function formatDateTimeFriendly(dateObj) {
 // Taskly Notification System (Native Capacitor & In-App Notification Centre)
 // ==========================================================================
 const TasklyNotifications = {
-  CHANNEL_ID: 'taskly-reminders',
+  CHANNEL_ID: 'taskly-reminders-v3',
+  LEGACY_CHANNELS: ['taskly-reminders', 'taskly-reminders-v2'],
+  NOTIFICATION_SOUND: 'taskly_meow.wav',
   STORAGE_KEY_PREFIX: 'taskly_notifications_',
   SCHEDULE_REGISTRY_KEY: 'taskly_scheduled_reminders',
+  MIGRATION_FLAG_KEY: 'taskly_channel_migrated_v3',
 
   isNative() {
     return Boolean(
@@ -1055,6 +1140,24 @@ const TasklyNotifications = {
     return null;
   },
 
+  playMeow(force = false) {
+    // In Android native app, sound is played by Android OS notification channel (taskly-reminders-v3).
+    // In-app HTML5 audio should NEVER play on native Android, preventing duplicate sounds and startup noise.
+    if (this.isNative() && !force) return;
+    try {
+      if (typeof window !== 'undefined' && typeof Audio !== 'undefined') {
+        const audio = new Audio('/assets/sounds/taskly_meow.wav');
+        audio.volume = 0.8;
+        audio.play().catch(() => {});
+      }
+    } catch (_) {}
+  },
+
+  // Backwards compatibility alias
+  playChime(force = false) {
+    this.playMeow(force);
+  },
+
   async init() {
     this.loadHistory();
     this.updateBadges();
@@ -1062,20 +1165,56 @@ const TasklyNotifications = {
     const plugin = this.getPlugin();
     if (plugin) {
       try {
+        // Safe Channel Migration: Remove old silent channel
+        try {
+          if (typeof plugin.deleteChannel === 'function') {
+            for (const legacyId of this.LEGACY_CHANNELS) {
+              await plugin.deleteChannel({ id: legacyId }).catch(() => {});
+            }
+          }
+        } catch (mErr) {
+          console.warn('[Notifications] Channel migration notice:', mErr);
+        }
+
+        // Create new high-importance channel with bundled sound and vibration
         await plugin.createChannel({
           id: this.CHANNEL_ID,
           name: 'Taskly Reminders & Tasks',
-          description: 'Task deadlines, updates, and Quick Note reminders',
-          importance: 4,
+          description: 'Task deadlines, updates, and Quick Note reminders with cute cat meow sound',
+          importance: 5,
           visibility: 1,
-          sound: 'beep.wav',
+          sound: this.NOTIFICATION_SOUND,
           vibration: true,
           lights: true,
           lightColor: '#F88438'
         }).catch(err => console.warn('[Notifications] createChannel warning:', err));
 
+        // Register Action Types for notifications
+        if (typeof plugin.registerActionTypes === 'function') {
+          await plugin.registerActionTypes({
+            types: [
+              {
+                id: 'TASK_DEADLINE_ACTIONS',
+                actions: [
+                  { id: 'COMPLETE_TASK', title: 'Complete' },
+                  { id: 'SNOOZE_TASK', title: 'Snooze' },
+                  { id: 'VIEW_TASK', title: 'View Task' }
+                ]
+              },
+              {
+                id: 'QUICK_NOTE_ACTIONS',
+                actions: [
+                  { id: 'OPEN_NOTE', title: 'Open Note' },
+                  { id: 'SNOOZE_NOTE', title: 'Snooze' }
+                ]
+              }
+            ]
+          }).catch(err => console.warn('[Notifications] registerActionTypes warning:', err));
+        }
+
+        // Android 13+ (POST_NOTIFICATIONS) permission handling
         const check = await plugin.checkPermissions().catch(() => ({ display: 'prompt' }));
-        if (check.display !== 'granted') {
+        if (check && check.display !== 'granted') {
           await plugin.requestPermissions().catch(err => console.warn('[Notifications] requestPermissions error:', err));
         }
 
@@ -1086,6 +1225,17 @@ const TasklyNotifications = {
         plugin.addListener('localNotificationReceived', (notification) => {
           this.handleNotificationReceived(notification);
         });
+
+        const AppPlugin = (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App);
+        if (AppPlugin && typeof AppPlugin.addListener === 'function') {
+          AppPlugin.addListener('appStateChange', (appState) => {
+            if (appState?.isActive) {
+              this.reconcileScheduledReminders();
+              this.loadHistory();
+              this.updateBadges();
+            }
+          });
+        }
       } catch (err) {
         console.warn('[Notifications] Plugin initialization warning:', err);
       }
@@ -1155,15 +1305,37 @@ const TasklyNotifications = {
     this.updateBadges();
   },
 
-  addInAppNotification({ title, description, type = 'system', icon = '🔔', sourceId = null, sourceType = null, actionUrl = null }) {
+  resolveCatIcon(type, icon = null, largeIcon = null) {
+    let resolvedLarge = 'notif_cat_created';
+    if (type === 'task_created' || type === 'task_completed') resolvedLarge = 'notif_cat_created';
+    else if (type === 'task_updated') resolvedLarge = 'notif_cat_updated';
+    else if (type === 'task_deleted') resolvedLarge = 'notif_cat_deleted';
+    else if (type === 'deadline_approaching' || type === 'reminder_upcoming') resolvedLarge = 'notif_cat_upcoming';
+    else if (type === 'deadline_reached' || type === 'deadline_snoozed') resolvedLarge = 'notif_cat_reached';
+    else if (type === 'task_overdue') resolvedLarge = 'notif_cat_overdue';
+    else if (type === 'quick_note_reminder' || type === 'quick_note_snoozed' || type?.includes('quick_note')) resolvedLarge = 'notif_cat_quicknote';
+    else if (type === 'system' || type === 'brand' || type === 'general') resolvedLarge = 'logo';
+
+    const chosenLarge = largeIcon || resolvedLarge;
+    const resolvedWeb = (chosenLarge === 'logo') ? '/logo.png' : `/assets/pets/${chosenLarge}.png`;
+    return {
+      largeIcon: chosenLarge,
+      webIcon: (icon && icon.startsWith('/')) ? icon : resolvedWeb
+    };
+  },
+
+  addInAppNotification({ title, description, headline = null, type = 'system', icon = null, largeIcon = null, sourceId = null, sourceType = null, actionUrl = null, playSound = false }) {
+    const icons = this.resolveCatIcon(type, icon, largeIcon);
     const entry = {
       id: 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
       title,
+      headline: headline || title,
       description,
       timestamp: new Date().toISOString(),
       read: false,
       type,
-      icon,
+      icon: icons.webIcon,
+      largeIcon: icons.largeIcon,
       sourceId,
       sourceType,
       actionUrl
@@ -1176,11 +1348,16 @@ const TasklyNotifications = {
     this.saveHistory();
     this.renderNotificationList();
 
+    // Play meow strictly only when explicitly requested on non-native web; never during startup or on native Android
+    if (playSound && !this.isNative()) {
+      this.playMeow(true);
+    }
+
     if (!this.isNative() && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
         new Notification(title, {
           body: description,
-          icon: '/logo.png'
+          icon: icons.webIcon || '/logo.png'
         });
       } catch (_) {}
     }
@@ -1188,27 +1365,75 @@ const TasklyNotifications = {
     return entry;
   },
 
-  async notifyImmediate({ title, description, type, icon = '🔔', sourceId = null, sourceType = null, actionUrl = null }) {
-    this.addInAppNotification({ title, description, type, icon, sourceId, sourceType, actionUrl });
+  timingMetrics: {
+    lastOperationSucceededAt: 0,
+    lastNotificationRequestedAt: 0,
+    lastNotificationDispatchedAt: 0,
+    applicationLatencyMs: 0
+  },
+
+  async notifyImmediate({ title, description, headline = null, type = 'system', icon = null, largeIcon = null, sourceId = null, sourceType = null, actionUrl = null, opSuccessTimestamp = null }) {
+    const requestStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    this.timingMetrics.lastNotificationRequestedAt = requestStart;
+    if (opSuccessTimestamp) {
+      this.timingMetrics.lastOperationSucceededAt = opSuccessTimestamp;
+    }
+
+    const safeTitle = title || 'Taskly';
+    const safeHeadline = headline || safeTitle;
+    const safeDescription = description || '';
+    const icons = this.resolveCatIcon(type, icon, largeIcon);
+    this.addInAppNotification({
+      title: safeTitle,
+      description: safeDescription,
+      headline: safeHeadline,
+      type,
+      icon: icons.webIcon,
+      largeIcon: icons.largeIcon,
+      sourceId,
+      sourceType,
+      actionUrl,
+      playSound: false
+    });
 
     const plugin = this.getPlugin();
     if (plugin) {
       try {
         const id = this.getStableId(`immediate_${Date.now()}`, Math.floor(Math.random() * 1000));
+        let summaryText = 'Taskly';
+        if (type === 'task_created') summaryText = 'Task Created';
+        else if (type === 'task_updated') summaryText = 'Task Updated';
+        else if (type === 'task_deleted') summaryText = 'Task Removed';
+        else if (type === 'task_completed') summaryText = 'Task Completed';
+
+        const largeBody = safeHeadline ? `${safeHeadline}\n${safeDescription}` : safeDescription;
+
+        // Immediate dispatch: omit schedule property so Android NotificationManager delivers instantly
+        // without routing through AlarmManager or waiting for a ~5s battery/batching cycle.
         await plugin.schedule({
           notifications: [
             {
               id,
-              title,
-              body: description,
-              schedule: { at: new Date(Date.now() + 100) },
+              title: safeTitle,
+              body: safeHeadline || safeDescription,
+              largeBody,
+              summaryText,
               channelId: this.CHANNEL_ID,
-              smallIcon: 'ic_launcher_round',
+              sound: this.NOTIFICATION_SOUND,
+              smallIcon: 'ic_stat_paw',
+              largeIcon: icons.largeIcon,
               iconColor: '#F88438',
-              extra: { sourceId, sourceType, actionUrl }
+              group: 'taskly_reminders',
+              extra: { sourceId, sourceType, actionUrl, type }
             }
           ]
         });
+
+        const dispatchEnd = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        this.timingMetrics.lastNotificationDispatchedAt = dispatchEnd;
+        const baseTime = this.timingMetrics.lastOperationSucceededAt || requestStart;
+        this.timingMetrics.applicationLatencyMs = Math.round(dispatchEnd - baseTime);
+        console.log(`[NotificationTiming] Immediate notification for "${type}" triggered in ${this.timingMetrics.applicationLatencyMs}ms`);
       } catch (err) {
         console.warn('[Notifications] Immediate schedule warning:', err);
       }
@@ -1217,9 +1442,18 @@ const TasklyNotifications = {
 
   async scheduleTaskDeadlines(task) {
     if (!task || !task.dueDate || task.completed) return;
+    if (task.reminder === false) return; // Individual task reminder control: OFF schedules no notifications
 
     const deadline = parseTaskDeadline(task.dueDate, task.time);
     if (!deadline || isNaN(deadline.getTime())) return;
+
+    const rawTitle = task.title && typeof task.title === 'string' ? task.title.trim() : '';
+    const taskTitle = rawTitle || 'Untitled Task';
+    const shortTitle = taskTitle.length > 55 ? (taskTitle.substring(0, 52) + '...') : taskTitle;
+    const taskCategory = task.category || 'General';
+    const taskPriority = task.priority || 'Medium';
+    const taskTime = task.time ? task.time : '';
+    const taskDesc = task.description && typeof task.description === 'string' && task.description.trim() ? `\n${task.description.trim()}` : '';
 
     const now = Date.now();
     const leadMinutes = state.notificationSettings?.reminderLeadMinutes || 30;
@@ -1232,52 +1466,70 @@ const TasklyNotifications = {
     const plugin = this.getPlugin();
     const notificationsToSchedule = [];
 
-    // 1. Approaching
-    if (approachingTime.getTime() > now) {
+    // 1. Approaching (strictly only future timestamps to prevent catch-up audio)
+    if (approachingTime.getTime() > (now + 1000)) {
       const notifId = this.getStableId(task.id, 'approaching');
       notificationsToSchedule.push({
         id: notifId,
-        title: 'Task deadline approaching',
-        body: `"${task.title}" is due in ${leadMinutes} minutes`,
+        title: 'Taskly · Reminder (Upcoming)',
+        body: 'Your deadline is getting closer!',
+        largeBody: `Your deadline is getting closer!\n"${taskTitle}" is due in ${leadMinutes} minutes.${taskDesc}`,
+        summaryText: 'Reminder',
         schedule: { at: approachingTime, allowWhileIdle: true },
         channelId: this.CHANNEL_ID,
-        smallIcon: 'ic_launcher_round',
+        sound: this.NOTIFICATION_SOUND,
+        smallIcon: 'ic_stat_paw',
+        largeIcon: 'notif_cat_upcoming',
         iconColor: '#F88438',
-        extra: { taskId: task.id, type: 'deadline_approaching' }
+        group: 'taskly_reminders',
+        actionTypeId: 'TASK_DEADLINE_ACTIONS',
+        extra: { taskId: task.id, type: 'deadline_approaching', sourceType: 'task' }
       });
-      this.recordScheduled(notifId, 'task', task.id, 'Task deadline approaching', `"${task.title}" is due in ${leadMinutes} minutes`, approachingTime.toISOString(), 'deadline_approaching');
+      this.recordScheduled(notifId, 'task', task.id, 'Taskly · Reminder (Upcoming)', `"${shortTitle}" is due in ${leadMinutes} minutes`, approachingTime.toISOString(), 'deadline_approaching');
     }
 
-    // 2. Reached
-    if (reachedTime.getTime() > now) {
+    // 2. Reached (strictly only future timestamps)
+    if (reachedTime.getTime() > (now + 1000)) {
       const notifId = this.getStableId(task.id, 'reached');
       notificationsToSchedule.push({
         id: notifId,
-        title: 'Task deadline reached',
-        body: `"${task.title}" deadline has arrived`,
+        title: 'Taskly · Deadline',
+        body: 'Your task deadline has arrived!',
+        largeBody: `Your task deadline has arrived!\n"${taskTitle}" is due now.${taskDesc}`,
+        summaryText: 'Deadline',
         schedule: { at: reachedTime, allowWhileIdle: true },
         channelId: this.CHANNEL_ID,
-        smallIcon: 'ic_launcher_round',
+        sound: this.NOTIFICATION_SOUND,
+        smallIcon: 'ic_stat_paw',
+        largeIcon: 'notif_cat_reached',
         iconColor: '#F88438',
-        extra: { taskId: task.id, type: 'deadline_reached' }
+        group: 'taskly_reminders',
+        actionTypeId: 'TASK_DEADLINE_ACTIONS',
+        extra: { taskId: task.id, type: 'deadline_reached', sourceType: 'task' }
       });
-      this.recordScheduled(notifId, 'task', task.id, 'Task deadline reached', `"${task.title}" deadline has arrived`, reachedTime.toISOString(), 'deadline_reached');
+      this.recordScheduled(notifId, 'task', task.id, 'Taskly · Deadline', `"${shortTitle}" deadline has arrived`, reachedTime.toISOString(), 'deadline_reached');
     }
 
-    // 3. Overdue
-    if (overdueTime.getTime() > now) {
+    // 3. Overdue (strictly only future timestamps)
+    if (overdueTime.getTime() > (now + 1000)) {
       const notifId = this.getStableId(task.id, 'overdue');
       notificationsToSchedule.push({
         id: notifId,
-        title: 'Your task is still in progress',
-        body: `"${task.title}" is now past its deadline`,
+        title: 'Taskly · Overdue',
+        body: 'Your task is still in progress. Let\'s finish it!',
+        largeBody: `Your task is still in progress. Let's finish it!\n"${taskTitle}" is overdue by 1 hour.${taskDesc}`,
+        summaryText: 'Overdue',
         schedule: { at: overdueTime, allowWhileIdle: true },
         channelId: this.CHANNEL_ID,
-        smallIcon: 'ic_launcher_round',
+        sound: this.NOTIFICATION_SOUND,
+        smallIcon: 'ic_stat_paw',
+        largeIcon: 'notif_cat_overdue',
         iconColor: '#F88438',
-        extra: { taskId: task.id, type: 'task_overdue' }
+        group: 'taskly_reminders',
+        actionTypeId: 'TASK_DEADLINE_ACTIONS',
+        extra: { taskId: task.id, type: 'task_overdue', sourceType: 'task' }
       });
-      this.recordScheduled(notifId, 'task', task.id, 'Your task is still in progress', `"${task.title}" is now past its deadline`, overdueTime.toISOString(), 'task_overdue');
+      this.recordScheduled(notifId, 'task', task.id, 'Taskly · Overdue', `"${shortTitle}" is now past its deadline`, overdueTime.toISOString(), 'task_overdue');
     }
 
     if (plugin && notificationsToSchedule.length > 0) {
@@ -1289,12 +1541,56 @@ const TasklyNotifications = {
     }
   },
 
+  async scheduleSnoozedTaskReminder(task, snoozeDate) {
+    if (!task || !snoozeDate) return;
+    const rawTitle = task.title && typeof task.title === 'string' ? task.title.trim() : '';
+    const taskTitle = rawTitle || 'Untitled Task';
+    const shortTitle = taskTitle.length > 55 ? (taskTitle.substring(0, 52) + '...') : taskTitle;
+    const taskDesc = task.description && typeof task.description === 'string' && task.description.trim() ? `\n${task.description.trim()}` : '';
+
+    const notifId = this.getStableId(task.id, 'snoozed');
+    const title = 'Taskly · Deadline';
+    const body = 'Your task deadline has arrived!';
+    const largeBody = `Your task deadline has arrived!\n"${taskTitle}" is due now.${taskDesc}`;
+
+    const plugin = this.getPlugin();
+    if (plugin) {
+      try {
+        await plugin.schedule({
+          notifications: [
+            {
+              id: notifId,
+              title,
+              body,
+              largeBody,
+              summaryText: 'Deadline',
+              schedule: { at: snoozeDate, allowWhileIdle: true },
+              channelId: this.CHANNEL_ID,
+              sound: this.NOTIFICATION_SOUND,
+              smallIcon: 'ic_stat_paw',
+              largeIcon: 'notif_cat_reached',
+              iconColor: '#F88438',
+              group: 'taskly_reminders',
+              actionTypeId: 'TASK_DEADLINE_ACTIONS',
+              extra: { taskId: task.id, type: 'deadline_reached', sourceType: 'task' }
+            }
+          ]
+        });
+      } catch (err) {
+        console.warn('[Notifications] Error scheduling snoozed task reminder:', err);
+      }
+    }
+
+    this.recordScheduled(notifId, 'task', task.id, title, `"${shortTitle}" is due now`, snoozeDate.toISOString(), 'deadline_reached');
+  },
+
   async cancelTaskReminders(taskId) {
     if (!taskId) return;
     const ids = [
       this.getStableId(taskId, 'approaching'),
       this.getStableId(taskId, 'reached'),
-      this.getStableId(taskId, 'overdue')
+      this.getStableId(taskId, 'overdue'),
+      this.getStableId(taskId, 'snoozed')
     ];
 
     const plugin = this.getPlugin();
@@ -1310,11 +1606,16 @@ const TasklyNotifications = {
   async scheduleQuickNoteReminder(note, reminderDate) {
     if (!note || !reminderDate) return;
     const atDate = new Date(reminderDate);
-    if (isNaN(atDate.getTime()) || atDate.getTime() <= Date.now()) return;
+    if (isNaN(atDate.getTime()) || atDate.getTime() <= (Date.now() + 1000)) return;
+
+    const rawText = note.text && typeof note.text === 'string' ? note.text.trim() : '';
+    const noteText = rawText || 'Quick Note Reminder';
+    const shortText = noteText.length > 55 ? (noteText.substring(0, 52) + '...') : noteText;
 
     const notifId = this.getStableId(note.id, 'quicknote');
-    const title = 'Taskly – Quick Note Reminder';
-    const body = `You wanted to remember: ${note.text}`;
+    const title = 'Taskly · Quick Note Reminder';
+    const body = 'You asked Taskly to remind you about this!';
+    const largeBody = `You asked Taskly to remind you about this!\n"${noteText}"`;
 
     const plugin = this.getPlugin();
     if (plugin) {
@@ -1325,11 +1626,17 @@ const TasklyNotifications = {
               id: notifId,
               title,
               body,
+              largeBody,
+              summaryText: 'Quick Note Reminder',
               schedule: { at: atDate, allowWhileIdle: true },
               channelId: this.CHANNEL_ID,
-              smallIcon: 'ic_launcher_round',
+              sound: this.NOTIFICATION_SOUND,
+              smallIcon: 'ic_stat_paw',
+              largeIcon: 'notif_cat_quicknote',
               iconColor: '#F88438',
-              extra: { noteId: note.id, type: 'quick_note_reminder' }
+              group: 'taskly_reminders',
+              actionTypeId: 'QUICK_NOTE_ACTIONS',
+              extra: { noteId: note.id, type: 'quick_note_reminder', sourceType: 'quick_note' }
             }
           ]
         });
@@ -1338,7 +1645,7 @@ const TasklyNotifications = {
       }
     }
 
-    this.recordScheduled(notifId, 'quick_note', note.id, title, body, atDate.toISOString(), 'quick_note_reminder');
+    this.recordScheduled(notifId, 'quick_note', note.id, title, `"${shortText}"`, atDate.toISOString(), 'quick_note_reminder');
   },
 
   async cancelQuickNoteReminder(noteId) {
@@ -1383,9 +1690,15 @@ const TasklyNotifications = {
   },
 
   async reconcileScheduledReminders() {
+    // Safety guard: if todos have not yet been loaded on startup, do not wipe the schedule registry
+    const activeTasks = state.todos;
+    if (!state.todosLoaded && (!activeTasks || activeTasks.length === 0)) {
+      return;
+    }
+
     const reg = this.getScheduledRegistry();
     const now = Date.now();
-    const activeTasks = state.todos || [];
+    const currentTasks = activeTasks || [];
     const activeNotes = state.quickNotes || [];
 
     const surviving = [];
@@ -1393,8 +1706,8 @@ const TasklyNotifications = {
 
     for (const item of reg) {
       if (item.sourceType === 'task') {
-        const task = activeTasks.find(t => String(t.id) === String(item.sourceId));
-        if (!task || task.completed) {
+        const task = currentTasks.find(t => String(t.id) === String(item.sourceId));
+        if (!task || task.completed || task.reminder === false) {
           idsToCancel.push(item.id);
           continue;
         }
@@ -1406,15 +1719,24 @@ const TasklyNotifications = {
         }
       }
 
-      if (new Date(item.scheduledAt).getTime() <= now) {
-        this.addInAppNotification({
-          title: item.title,
-          description: item.body,
-          type: item.type,
-          icon: item.sourceType === 'quick_note' ? '📌' : '⏰',
-          sourceId: item.sourceId,
-          sourceType: item.sourceType
-        });
+      const schedTime = new Date(item.scheduledAt).getTime();
+      if (schedTime <= now) {
+        // Notification timestamp has passed. It was delivered or expired while app was closed.
+        // Record in in-app notification center silently (strictly NO sound!).
+        const alreadyInHistory = (state.notifications || []).some(n => 
+          String(n.sourceId) === String(item.sourceId) && n.type === item.type
+        );
+        if (!alreadyInHistory) {
+          this.addInAppNotification({
+            title: item.title,
+            description: item.body,
+            type: item.type,
+            largeIcon: this.resolveCatIcon(item.type).largeIcon,
+            sourceId: item.sourceId,
+            sourceType: item.sourceType,
+            playSound: false
+          });
+        }
       } else {
         surviving.push(item);
       }
@@ -1431,8 +1753,8 @@ const TasklyNotifications = {
 
     this.saveScheduledRegistry(surviving);
 
-    for (const task of activeTasks) {
-      if (!task.completed && task.dueDate) {
+    for (const task of currentTasks) {
+      if (!task.completed && task.dueDate && task.reminder === true) {
         const hasScheduled = surviving.some(r => r.sourceType === 'task' && String(r.sourceId) === String(task.id));
         if (!hasScheduled) {
           await this.scheduleTaskDeadlines(task);
@@ -1441,7 +1763,7 @@ const TasklyNotifications = {
     }
 
     for (const note of activeNotes) {
-      if (note.reminderDate && new Date(note.reminderDate).getTime() > now) {
+      if (note.reminderDate && new Date(note.reminderDate).getTime() > (now + 1000)) {
         const hasScheduled = surviving.some(r => r.sourceType === 'quick_note' && String(r.sourceId) === String(note.id));
         if (!hasScheduled) {
           await this.scheduleQuickNoteReminder(note, note.reminderDate);
@@ -1501,12 +1823,79 @@ const TasklyNotifications = {
     this.renderNotificationList();
   },
 
-  handleNotificationTap(action) {
-    const extra = action?.notification?.extra || {};
-    if (extra.taskId) {
+  async handleNotificationAction(actionId, notification) {
+    const extra = notification?.extra || {};
+    const taskId = extra.taskId || extra.sourceId;
+    const noteId = extra.noteId || extra.sourceId;
+
+    if (actionId === 'COMPLETE_TASK' && taskId) {
+      await handleToggleComplete(taskId);
+      this.notifyImmediate({
+        title: 'Taskly · Task Completed',
+        headline: 'Task completed! 🎉',
+        description: 'Great job staying productive!',
+        type: 'task_completed',
+        largeIcon: 'notif_cat_created',
+        sourceId: taskId,
+        sourceType: 'task'
+      });
+      return;
+    }
+
+    if (actionId === 'SNOOZE_TASK' && taskId) {
+      const task = (state.todos || []).find(t => String(t.id) === String(taskId));
+      if (task) {
+        await this.cancelTaskReminders(taskId);
+        const snoozeDate = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+        await this.scheduleSnoozedTaskReminder(task, snoozeDate);
+        this.addInAppNotification({
+          title: 'Taskly · Reminder Snoozed',
+          headline: 'Reminder snoozed for 10 minutes',
+          description: `"${task.title}" reminder will sound again in 10 minutes.`,
+          type: 'reminder_upcoming',
+          largeIcon: 'notif_cat_upcoming',
+          sourceId: taskId,
+          sourceType: 'task'
+        });
+      }
+      return;
+    }
+
+    if (actionId === 'SNOOZE_NOTE' && noteId) {
+      const note = (state.quickNotes || []).find(n => String(n.id) === String(noteId));
+      if (note) {
+        await this.cancelQuickNoteReminder(noteId);
+        const snoozeDate = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+        note.reminderDate = snoozeDate.toISOString();
+        saveQuickNotesToStorage();
+        renderQuickNotes();
+        await this.scheduleQuickNoteReminder(note, snoozeDate);
+        this.addInAppNotification({
+          title: 'Taskly · Quick Note Snoozed',
+          headline: 'Note reminder snoozed for 1 hour',
+          description: `"${note.text}" will remind you in 1 hour.`,
+          type: 'quick_note_reminder',
+          largeIcon: 'notif_cat_quicknote',
+          sourceId: noteId,
+          sourceType: 'quick_note'
+        });
+      }
+      return;
+    }
+
+    if (actionId === 'OPEN_NOTE' || (!actionId && noteId)) {
       showMainFlow('home');
       setTimeout(() => {
-        const el = document.querySelector(`[data-task-id="${extra.taskId}"]`);
+        const sec = document.getElementById('section-quick-notes');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+      return;
+    }
+
+    if (actionId === 'VIEW_TASK' || (!actionId && taskId)) {
+      showMainFlow('home');
+      setTimeout(() => {
+        const el = document.querySelector(`[data-task-id="${taskId}"]`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           el.style.transition = 'outline 0.3s';
@@ -1514,7 +1903,40 @@ const TasklyNotifications = {
           setTimeout(() => { el.style.outline = 'none'; }, 2000);
         }
       }, 300);
-    } else if (extra.noteId) {
+    }
+  },
+
+  handleNotificationTap(action) {
+    const actionId = action?.actionId;
+    const notification = action?.notification || action;
+    if (actionId && actionId !== 'tap') {
+      this.handleNotificationAction(actionId, notification);
+    } else {
+      this.handleNotificationAction(null, notification);
+    }
+  },
+
+  async handleInAppAction(actionName, sourceId, notifId, sourceType) {
+    if (notifId) this.markAsRead(notifId);
+    if (actionName === 'Complete' && sourceId) {
+      await handleToggleComplete(sourceId);
+    } else if (actionName === 'Snooze') {
+      if (sourceType === 'quick_note') {
+        await this.handleNotificationAction('SNOOZE_NOTE', { extra: { noteId: sourceId } });
+      } else {
+        await this.handleNotificationAction('SNOOZE_TASK', { extra: { taskId: sourceId } });
+      }
+    } else if (actionName === 'View Task') {
+      this.closeModal();
+      showMainFlow('home');
+      if (sourceId) {
+        setTimeout(() => {
+          const el = document.querySelector(`[data-task-id="${sourceId}"]`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
+    } else if (actionName === 'Open Note') {
+      this.closeModal();
       showMainFlow('home');
       setTimeout(() => {
         const sec = document.getElementById('section-quick-notes');
@@ -1525,13 +1947,16 @@ const TasklyNotifications = {
 
   handleNotificationReceived(notification) {
     const extra = notification?.extra || {};
+    // Android OS already plays the notification chime on delivery.
+    // Record into in-app notification center silently with NO secondary HTML5 audio.
     this.addInAppNotification({
-      title: notification.title || 'Notification',
+      title: notification.title || 'Taskly Notification',
       description: notification.body || '',
       type: extra.type || 'system',
-      icon: extra.sourceType === 'quick_note' ? '📌' : '⏰',
+      largeIcon: notification.largeIcon || extra.largeIcon,
       sourceId: extra.taskId || extra.noteId,
-      sourceType: extra.sourceType
+      sourceType: extra.sourceType,
+      playSound: false
     });
   },
 
@@ -1551,20 +1976,48 @@ const TasklyNotifications = {
     if (emptyEl) emptyEl.style.display = 'none';
     listEl.innerHTML = notifs.map(n => {
       const timeAgo = formatTimeAgo(n.timestamp);
+      const isDeadline = n.type === 'deadline_approaching' || n.type === 'deadline_reached' || n.type === 'task_overdue' || n.type === 'reminder_upcoming';
+      const isQuickNote = n.type === 'quick_note_reminder' || n.type === 'quick_note_snoozed';
+      const hasActions = (isDeadline || isQuickNote) && n.sourceId;
+      const catImgSrc = (n.icon && n.icon.startsWith('/')) ? n.icon : (n.largeIcon === 'logo' ? '/logo.png' : (n.largeIcon ? `/assets/pets/${n.largeIcon}.png` : '/logo.png'));
+
       return `
         <div class="notif-card ${n.read ? 'read' : 'unread'}" data-notif-id="${n.id}" onclick="TasklyNotifications.handleItemClick('${n.id}')">
-          <div class="notif-icon-col">${n.icon || '🔔'}</div>
-          <div class="notif-body-col">
-            <div class="notif-head-row">
-              <span class="notif-title">${escapeHtml(n.title)}</span>
-              <span class="notif-time">${escapeHtml(timeAgo)}</span>
+          <div class="notif-top-bar">
+            <div class="notif-header-left">
+              <span class="notif-paw-badge">
+                <svg viewBox="0 0 24 24" class="notif-paw-svg"><ellipse cx="8.5" cy="5" rx="1.8" ry="2.2" /><ellipse cx="15.5" cy="5" rx="1.8" ry="2.2" /><ellipse cx="5" cy="10" rx="1.7" ry="2.1" /><ellipse cx="19" cy="10" rx="1.7" ry="2.1" /><path d="M 12 9 C 8.5 9 6.5 12 7.2 16 C 7.6 18.2 9.5 20 12 20 C 14.5 20 16.4 18.2 16.8 16 C 17.5 12 15.5 9 12 9 Z" /></svg>
+              </span>
+              <span class="notif-category-title">${escapeHtml(n.title)}</span>
             </div>
-            <div class="notif-desc">${escapeHtml(n.description)}</div>
+            <div class="notif-header-right">
+              <span class="notif-time">${escapeHtml(timeAgo)}</span>
+              <button type="button" class="btn-notif-dismiss" onclick="event.stopPropagation(); TasklyNotifications.deleteNotification('${n.id}')" title="Dismiss">×</button>
+            </div>
           </div>
-          <div class="notif-actions-col">
-            ${!n.read ? `<span class="notif-unread-dot" title="Unread"></span>` : ''}
-            <button type="button" class="btn-notif-dismiss" onclick="event.stopPropagation(); TasklyNotifications.deleteNotification('${n.id}')" title="Dismiss">×</button>
+
+          <div class="notif-content-row">
+            <div class="notif-text-col">
+              <div class="notif-headline">${escapeHtml(n.headline || n.title)}</div>
+              <div class="notif-desc">${escapeHtml(n.description)}</div>
+            </div>
+            <div class="notif-cat-col">
+              <img src="${catImgSrc}" alt="" onerror="this.style.display='none'" class="notif-cat-img">
+            </div>
           </div>
+
+          ${hasActions ? `
+            <div class="notif-actions-bar" onclick="event.stopPropagation()">
+              ${isDeadline ? `
+                <button type="button" class="btn-notif-orange" onclick="TasklyNotifications.handleInAppAction('Complete', '${n.sourceId}', '${n.id}', 'task')">✓ Complete</button>
+                <button type="button" class="btn-notif-cream" onclick="TasklyNotifications.handleInAppAction('Snooze', '${n.sourceId}', '${n.id}', 'task')">⏰ Snooze</button>
+                <button type="button" class="btn-notif-cream" onclick="TasklyNotifications.handleInAppAction('View Task', '${n.sourceId}', '${n.id}', 'task')">↗ View Task</button>
+              ` : `
+                <button type="button" class="btn-notif-orange" onclick="TasklyNotifications.handleInAppAction('Open Note', '${n.sourceId}', '${n.id}', 'quick_note')">📝 Open Note</button>
+                <button type="button" class="btn-notif-cream" onclick="TasklyNotifications.handleInAppAction('Snooze', '${n.sourceId}', '${n.id}', 'quick_note')">⏰ Snooze</button>
+              `}
+            </div>
+          ` : ''}
         </div>
       `;
     }).join('');
@@ -1640,9 +2093,70 @@ function saveQuickNote() {
 function saveQuickNotesToStorage() {
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('taskly_quick_notes', JSON.stringify(state.quickNotes));
+      const data = JSON.stringify(state.quickNotes);
+      localStorage.setItem('taskly_quick_notes', data);
+      if (state.user && state.user.id) {
+        localStorage.setItem(`taskly_quick_notes_${state.user.id}`, data);
+      }
     }
   } catch (_) {}
+}
+
+function togglePinQuickNote(id) {
+  if (!Array.isArray(state.quickNotes)) return;
+  const note = state.quickNotes.find(n => n.id === id);
+  if (!note) return;
+
+  const willPin = !note.isPinned;
+  state.quickNotes.forEach(n => {
+    if (n.id === id) {
+      n.isPinned = willPin;
+    } else if (willPin) {
+      n.isPinned = false; // Only 1 featured pinned note at a time
+    }
+  });
+
+  saveQuickNotesToStorage();
+  renderQuickNotes();
+}
+
+function renderPinnedQuickShare() {
+  if (typeof document === 'undefined') return;
+  const pinnedCard = document.getElementById('card-pinned-quick-share');
+  if (!pinnedCard) return;
+
+  const pinnedNote = (state.quickNotes || []).find(n => n.isPinned);
+  if (!pinnedNote) {
+    pinnedCard.style.display = 'none';
+    pinnedCard.innerHTML = '';
+    return;
+  }
+
+  pinnedCard.style.display = 'block';
+  const createdStr = pinnedNote.createdAt ? formatTimeAgo(pinnedNote.createdAt) : 'Recently';
+  const isScheduled = Boolean(pinnedNote.reminderDate && new Date(pinnedNote.reminderDate).getTime() > Date.now());
+  const reminderText = pinnedNote.reminderTimeStr || (isScheduled ? 'Reminder Scheduled' : 'No reminder scheduled');
+
+  pinnedCard.innerHTML = `
+    <div class="card-eyebrow-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <span class="card-badge badge-yellow">📌 PINNED QUICK SHARE</span>
+      <div class="pinned-card-actions" style="display: flex; gap: 8px;">
+        <button type="button" class="btn-pinned-action" onclick="togglePinQuickNote(${pinnedNote.id})" title="Unpin note">Unpin ✕</button>
+        <button type="button" class="btn-pinned-action" onclick="openEditQuickNoteModal(${pinnedNote.id})" title="Edit note">Edit ✎</button>
+      </div>
+    </div>
+    <div class="card-title-lg" style="font-size: 16px; margin-bottom: 8px; line-height: 1.4;">
+      ${escapeHtml(pinnedNote.text)}
+    </div>
+    <div class="pinned-reminder-banner" style="background: rgba(254, 240, 138, 0.7); border-radius: 10px; padding: 8px 12px; margin: 10px 0; font-size: 12px; font-weight: 700; color: #A16207; display: flex; align-items: center; gap: 6px;">
+      <span>⏰</span>
+      <span>${escapeHtml(reminderText)}</span>
+    </div>
+    <div class="pinned-card-footer" style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+      <span style="font-size: 11px; color: #A16207; font-weight: 600;">📌 Pinned to top • ${escapeHtml(createdStr)}</span>
+      <img src="/assets/pets/home_cat_peek.png" alt="Peeking Cat" class="pinned-cat-mascot" style="width: 50px; height: 50px; object-fit: contain; margin-top: -10px;">
+    </div>
+  `;
 }
 
 function deleteQuickNote(id) {
@@ -1683,6 +2197,7 @@ function renderQuickNotes() {
         <div class="qn-empty-sub">Jot down quick thoughts or reminders using Quick Capture above!</div>
       </div>
     `;
+    renderPinnedQuickShare();
     return;
   }
 
@@ -1690,10 +2205,11 @@ function renderQuickNotes() {
     const createdStr = n.createdAt ? formatTimeAgo(n.createdAt) : 'Recently';
     const isScheduled = Boolean(n.reminderDate && new Date(n.reminderDate).getTime() > Date.now());
     return `
-      <div class="quick-note-card" data-note-id="${n.id}">
+      <div class="quick-note-card ${n.isPinned ? 'is-pinned-item' : ''}" data-note-id="${n.id}">
         <div class="qn-card-top">
           <span class="qn-date-tag">${escapeHtml(createdStr)}</span>
           <div class="qn-card-actions">
+            <button type="button" class="btn-qn-action btn-qn-pin ${n.isPinned ? 'pinned' : ''}" onclick="togglePinQuickNote(${n.id})" title="${n.isPinned ? 'Unpin Note' : 'Pin Note'}">${n.isPinned ? '📌' : '📍'}</button>
             <button type="button" class="btn-qn-action btn-qn-edit" onclick="openEditQuickNoteModal(${n.id})" title="Edit Note">✎</button>
             <button type="button" class="btn-qn-action btn-qn-delete" onclick="deleteQuickNote(${n.id})" title="Delete Note">×</button>
           </div>
@@ -1715,6 +2231,8 @@ function renderQuickNotes() {
       </div>
     `;
   }).join('');
+
+  renderPinnedQuickShare();
 }
 
 function openQuickReminderPromptModal(noteId) {
@@ -1769,47 +2287,57 @@ async function handleConfirmQuickReminder(e) {
   if (e && e.preventDefault) e.preventDefault();
   if (typeof document === 'undefined') return;
 
-  const targetIdInput = document.getElementById('reminder-target-note-id');
-  const dateInput = document.getElementById('reminder-picker-date');
-  const timeInput = document.getElementById('reminder-picker-time');
-
-  const noteId = targetIdInput ? Number(targetIdInput.value) : null;
-  const note = (state.quickNotes || []).find(n => n.id === noteId);
-  if (!note || !dateInput || !timeInput) return;
-
-  const dateVal = dateInput.value;
-  const timeVal = timeInput.value;
-  if (!dateVal || !timeVal) {
-    alert('Please choose both a date and time.');
-    return;
+  const confirmBtn = document.getElementById('btn-confirm-quick-reminder');
+  if (confirmBtn) {
+    if (confirmBtn.disabled) return;
+    confirmBtn.disabled = true;
   }
 
-  const [year, month, day] = dateVal.split('-').map(Number);
-  const [hours, minutes] = timeVal.split(':').map(Number);
-  const targetDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+  try {
+    const targetIdInput = document.getElementById('reminder-target-note-id');
+    const dateInput = document.getElementById('reminder-picker-date');
+    const timeInput = document.getElementById('reminder-picker-time');
 
-  if (isNaN(targetDate.getTime()) || targetDate.getTime() <= Date.now()) {
-    alert('Please choose a time in the future.');
-    return;
+    const noteId = targetIdInput ? Number(targetIdInput.value) : null;
+    const note = (state.quickNotes || []).find(n => n.id === noteId);
+    if (!note || !dateInput || !timeInput) return;
+
+    const dateVal = dateInput.value;
+    const timeVal = timeInput.value;
+    if (!dateVal || !timeVal) {
+      alert('Please choose both a date and time.');
+      return;
+    }
+
+    const [year, month, day] = dateVal.split('-').map(Number);
+    const [hours, minutes] = timeVal.split(':').map(Number);
+    const targetDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+    if (isNaN(targetDate.getTime()) || targetDate.getTime() <= Date.now()) {
+      alert('Please choose a time in the future.');
+      return;
+    }
+
+    note.reminderDate = targetDate.toISOString();
+    note.reminderTimeStr = formatDateTimeFriendly(targetDate);
+    saveQuickNotesToStorage();
+    renderQuickNotes();
+
+    await TasklyNotifications.scheduleQuickNoteReminder(note, targetDate);
+
+    TasklyNotifications.addInAppNotification({
+      title: 'Taskly – Quick Note Reminder',
+      description: `Reminder scheduled for: "${note.text}" at ${note.reminderTimeStr}`,
+      type: 'quick_note_reminder',
+      icon: '⏰',
+      sourceId: note.id,
+      sourceType: 'quick_note'
+    });
+
+    closeQuickReminderPicker();
+  } finally {
+    if (confirmBtn) confirmBtn.disabled = false;
   }
-
-  note.reminderDate = targetDate.toISOString();
-  note.reminderTimeStr = formatDateTimeFriendly(targetDate);
-  saveQuickNotesToStorage();
-  renderQuickNotes();
-
-  await TasklyNotifications.scheduleQuickNoteReminder(note, targetDate);
-
-  TasklyNotifications.addInAppNotification({
-    title: 'Taskly – Quick Note Reminder',
-    description: `Reminder scheduled for: "${note.text}" at ${note.reminderTimeStr}`,
-    type: 'quick_note_reminder',
-    icon: '⏰',
-    sourceId: note.id,
-    sourceType: 'quick_note'
-  });
-
-  closeQuickReminderPicker();
 }
 
 function openEditQuickNoteModal(noteId) {
@@ -2056,7 +2584,7 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
       document.body.classList.remove('onboarding-active');
       document.body.setAttribute('data-active-tab', tabName);
     }
-    if (state.theme === 'day') {
+    if (state.theme === 'day' || state.theme === 'light') {
       const metaTheme = document.getElementById('meta-theme-color');
       if (metaTheme) {
         const colorMap = {
@@ -2068,6 +2596,9 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
         };
         metaTheme.setAttribute('content', colorMap[tabName] || '#38BDF8');
       }
+    } else if (state.theme === 'dark') {
+      const metaTheme = document.getElementById('meta-theme-color');
+      if (metaTheme) metaTheme.setAttribute('content', '#121820');
     }
   }
 
@@ -2190,129 +2721,169 @@ async function fetchTodos() {
       return;
     }
     if (!res.ok) throw new Error('Failed to load tasks');
-    state.todos = await res.json();
+    const rawTodos = await res.json();
+    state.todos = Array.isArray(rawTodos) ? rawTodos.map(t => {
+      if (t && typeof t === 'object') {
+        t.reminder = Boolean(t.reminder === true);
+      }
+      return t;
+    }) : [];
+    state.todosLoaded = true;
     renderAll();
     TasklyNotifications.reconcileScheduledReminders();
   } catch (err) {
     console.warn('[Fetch Warning]:', err.message);
     state.todos = state.todos || [];
+    state.todosLoaded = true;
     renderAll();
   }
 }
 
 async function handleAddTask(e) {
-  e.preventDefault();
-  if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) {
-    alert('Please sign in or create an account to create tasks.');
-    showOnboardingStep('profile-setup');
-    return;
-  }
+  if (e && e.preventDefault) e.preventDefault();
 
-  const titleInput = document.getElementById('add-title');
-  const descInput = document.getElementById('add-desc');
-  const dateInput = document.getElementById('add-due-date');
-  const timeInput = document.getElementById('add-time');
-  const reminderInput = document.getElementById('add-reminder');
-
-  const title = titleInput.value.trim();
-  if (!title) return;
-
-  const activePriorityBtn = document.querySelector('#add-priority-selector .pill-opt.active');
-  const priority = activePriorityBtn ? activePriorityBtn.dataset.val : 'Medium';
-
-  const activeCategoryBtn = document.querySelector('#add-category-selector .pill-opt.active');
-  const category = activeCategoryBtn ? activeCategoryBtn.dataset.val : 'Personal';
-
-  const selectedDate = (dateInput && dateInput.value) ? dateInput.value : toYmdString(new Date());
-  const rawTime = (timeInput && timeInput.value) ? timeInput.value.trim() : getRoundedLocalTime();
-  const formattedTime = formatTime24To12(rawTime);
-
-  const deadlineCheck = parseTaskDeadline(selectedDate, formattedTime);
-  if (!deadlineCheck || isNaN(deadlineCheck.getTime())) {
-    alert('Please enter a valid date and time.');
-    return;
-  }
-
-  const payload = {
-    title,
-    description: descInput ? descInput.value.trim() : '',
-    dueDate: selectedDate,
-    time: formattedTime,
-    priority,
-    category,
-    reminder: reminderInput ? reminderInput.checked : true
-  };
-
-  if (isLocalPreview() && state.isPreviewSession) {
-    const created = Object.assign({ id: 'preview-' + Date.now(), completed: false }, payload);
-    state.todos.unshift(created);
-    TasklyNotifications.notifyImmediate({
-      title: 'New task created',
-      description: `"${created.title}" has been added to your tasks.`,
-      type: 'task_created',
-      icon: '📝',
-      sourceId: created.id,
-      sourceType: 'task'
-    });
-    TasklyNotifications.scheduleTaskDeadlines(created);
-    titleInput.value = '';
-    if (descInput) descInput.value = '';
-    initAddTaskDateTime();
-    const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
-    state.previousTab = null;
-    showMainFlow(targetTab);
-    return;
+  const submitBtn = (e && e.target && e.target.querySelector ? e.target.querySelector('button[type="submit"]') : null) || (typeof document !== 'undefined' ? document.querySelector('#tab-add button[type="submit"]') : null);
+  if (submitBtn) {
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
   }
 
   try {
-    const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${state.userToken}`
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (res.status === 401) {
-      handleAuthExpiry();
+    if (!state.userToken && !(isLocalPreview() && state.isPreviewSession)) {
+      if (typeof alert !== 'undefined') {
+        alert('Please sign in or create an account to create tasks.');
+      } else {
+        console.warn('Please sign in or create an account to create tasks.');
+      }
+      showOnboardingStep('profile-setup');
       return;
     }
-    if (res.status === 403) {
-      const errData = await res.json().catch(() => ({}));
-      handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+    const titleInput = document.getElementById('add-title');
+    const descInput = document.getElementById('add-desc');
+    const dateInput = document.getElementById('add-due-date');
+    const timeInput = document.getElementById('add-time');
+    const reminderInput = document.getElementById('add-reminder');
+
+    const title = titleInput.value.trim();
+    if (!title) return;
+
+    const activePriorityBtn = document.querySelector('#add-priority-selector .pill-opt.active');
+    const priority = activePriorityBtn ? activePriorityBtn.dataset.val : 'Medium';
+
+    const activeCategoryBtn = document.querySelector('#add-category-selector .pill-opt.active');
+    let category = activeCategoryBtn ? activeCategoryBtn.dataset.val : 'Personal';
+    if (category === 'Custom') {
+      const customInput = document.getElementById('input-new-custom-category');
+      if (customInput && customInput.value.trim()) {
+        try {
+          category = saveCustomCategory(customInput.value);
+        } catch (e) {
+          category = customInput.value.trim();
+        }
+      } else {
+        category = 'Personal';
+      }
+    }
+
+    const selectedDate = (dateInput && dateInput.value) ? dateInput.value : toYmdString(new Date());
+    const rawTime = (timeInput && timeInput.value) ? timeInput.value.trim() : getRoundedLocalTime();
+    const formattedTime = formatTime24To12(rawTime);
+
+    const deadlineCheck = parseTaskDeadline(selectedDate, formattedTime);
+    if (!deadlineCheck || isNaN(deadlineCheck.getTime())) {
+      alert('Please enter a valid date and time.');
       return;
     }
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || 'Failed to save task.');
+    const payload = {
+      title,
+      description: descInput ? descInput.value.trim() : '',
+      dueDate: selectedDate,
+      time: formattedTime,
+      priority,
+      category,
+      reminder: Boolean(reminderInput ? reminderInput.checked : false)
+    };
+
+    if (isLocalPreview() && state.isPreviewSession) {
+      const created = Object.assign({ id: 'preview-' + Date.now(), completed: false }, payload);
+      state.todos.unshift(created);
+      TasklyNotifications.notifyImmediate({
+        title: 'Taskly · Task Created',
+        headline: 'Your new task is ready! 🎉',
+        description: `"${created.title}" has been added.`,
+        type: 'task_created',
+        largeIcon: 'notif_cat_created',
+        sourceId: created.id,
+        sourceType: 'task'
+      });
+      if (created.reminder === true) {
+        TasklyNotifications.scheduleTaskDeadlines(created);
+      }
+      titleInput.value = '';
+      if (descInput) descInput.value = '';
+      initAddTaskDateTime();
+      const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
+      state.previousTab = null;
+      showMainFlow(targetTab);
+      return;
     }
 
-    const created = await res.json();
-    state.todos.unshift(created);
-    TasklyNotifications.notifyImmediate({
-      title: 'New task created',
-      description: `"${created.title}" has been added to your tasks.`,
-      type: 'task_created',
-      icon: '📝',
-      sourceId: created.id,
-      sourceType: 'task'
-    });
-    TasklyNotifications.scheduleTaskDeadlines(created);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/todos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.userToken}`
+        },
+        body: JSON.stringify(payload)
+      });
 
-    // Reset Form
-    titleInput.value = '';
-    if (descInput) descInput.value = '';
-    initAddTaskDateTime();
+      if (res.status === 401) {
+        handleAuthExpiry();
+        return;
+      }
+      if (res.status === 403) {
+        const errData = await res.json().catch(() => ({}));
+        handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
+        return;
+      }
 
-    // Route back to calendar or home
-    const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
-    state.previousTab = null;
-    showMainFlow(targetTab);
-  } catch (err) {
-    console.error('Add task error:', err);
-    alert(`Could not create task: ${err.message}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to save task.');
+      }
+
+      const created = await res.json();
+      state.todos.unshift(created);
+      TasklyNotifications.notifyImmediate({
+        title: 'Taskly · Task Created',
+        headline: 'Your new task is ready! 🎉',
+        description: `"${created.title}" has been added.`,
+        type: 'task_created',
+        largeIcon: 'notif_cat_created',
+        sourceId: created.id,
+        sourceType: 'task'
+      });
+      if (created.reminder === true) {
+        TasklyNotifications.scheduleTaskDeadlines(created);
+      }
+
+      // Reset Form
+      titleInput.value = '';
+      if (descInput) descInput.value = '';
+      initAddTaskDateTime();
+
+      // Route back to calendar or home
+      const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
+      state.previousTab = null;
+      showMainFlow(targetTab);
+    } catch (err) {
+      console.error('Add task error:', err);
+      alert(`Could not create task: ${err.message}`);
+    }
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
@@ -2327,11 +2898,28 @@ async function handleToggleComplete(id) {
 
   if (nextStatus) {
     TasklyNotifications.cancelTaskReminders(id);
-  } else {
+  } else if (task.reminder === true) {
     TasklyNotifications.scheduleTaskDeadlines(task);
   }
 
-  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
+  const triggerCompletionNotification = () => {
+    const opSuccessAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    TasklyNotifications.notifyImmediate({
+      title: nextStatus ? 'Taskly · Task Completed' : 'Taskly · Task Reopened',
+      headline: nextStatus ? 'Task completed! 🎉' : 'Task reopened 📝',
+      description: nextStatus ? `"${task.title}" has been completed.` : `"${task.title}" has been reopened.`,
+      type: nextStatus ? 'task_completed' : 'task_updated',
+      largeIcon: 'notif_cat_created',
+      sourceId: task.id,
+      sourceType: 'task',
+      opSuccessTimestamp: opSuccessAt
+    });
+  };
+
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) {
+    triggerCompletionNotification();
+    return;
+  }
 
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
@@ -2351,6 +2939,9 @@ async function handleToggleComplete(id) {
       handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
       return;
     }
+    if (res.ok) {
+      triggerCompletionNotification();
+    }
   } catch (err) {
     console.warn('Update completion warning:', err);
   }
@@ -2367,16 +2958,24 @@ async function handleDeleteTask(event, id) {
   state.todos = state.todos.filter(t => t.id !== id);
   renderAll();
 
-  TasklyNotifications.notifyImmediate({
-    title: 'Task deleted',
-    description: `"${taskTitle}" has been deleted.`,
-    type: 'task_deleted',
-    icon: '🗑️',
-    sourceId: id,
-    sourceType: 'task'
-  });
+  const triggerDeleteNotification = () => {
+    const opSuccessAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    TasklyNotifications.notifyImmediate({
+      title: 'Taskly · Task Deleted',
+      headline: 'Task removed successfully.',
+      description: `"${taskTitle}" has been deleted.`,
+      type: 'task_deleted',
+      largeIcon: 'notif_cat_deleted',
+      sourceId: id,
+      sourceType: 'task',
+      opSuccessTimestamp: opSuccessAt
+    });
+  };
 
-  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return;
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) {
+    triggerDeleteNotification();
+    return;
+  }
 
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
@@ -2394,6 +2993,9 @@ async function handleDeleteTask(event, id) {
       handleUnverifiedEmail(errData.error || 'Please verify your email address to access Taskly.');
       return;
     }
+    if (res.ok) {
+      triggerDeleteNotification();
+    }
   } catch (err) {
     console.warn('Delete task warning:', err);
   }
@@ -2409,20 +3011,28 @@ async function updateTask(id, updates) {
   renderAll();
 
   TasklyNotifications.cancelTaskReminders(task.id);
-  if (!task.completed) {
+  if (!task.completed && task.reminder === true) {
     TasklyNotifications.scheduleTaskDeadlines(task);
   }
 
-  TasklyNotifications.notifyImmediate({
-    title: 'Task updated successfully',
-    description: `"${task.title}" details have been updated.`,
-    type: 'task_updated',
-    icon: '✏️',
-    sourceId: task.id,
-    sourceType: 'task'
-  });
+  const triggerUpdateNotification = () => {
+    const opSuccessAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    TasklyNotifications.notifyImmediate({
+      title: 'Taskly · Task Updated',
+      headline: 'Your task details have been updated.',
+      description: `"${task.title}" details have been updated.`,
+      type: 'task_updated',
+      largeIcon: 'notif_cat_updated',
+      sourceId: task.id,
+      sourceType: 'task',
+      opSuccessTimestamp: opSuccessAt
+    });
+  };
 
-  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) return task;
+  if ((isLocalPreview() && state.isPreviewSession) || !state.userToken) {
+    triggerUpdateNotification();
+    return task;
+  }
 
   try {
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
@@ -2446,6 +3056,7 @@ async function updateTask(id, updates) {
       const updated = await res.json();
       Object.assign(task, updated);
       renderAll();
+      triggerUpdateNotification();
       return updated;
     }
   } catch (err) {
@@ -2472,7 +3083,14 @@ function handleOpenEditTaskModal(event, id) {
   if (descInput) descInput.value = task.description || '';
   if (dateInput) dateInput.value = task.dueDate || '';
   if (priorityInput) priorityInput.value = task.priority || 'Medium';
+  syncCustomCategoriesToDOM(task.category || 'Personal');
   if (catInput) catInput.value = task.category || 'Personal';
+
+  const reminderInput = document.getElementById('edit-task-reminder');
+  if (reminderInput) {
+    // Safe default of OFF (false) if task doesn't have reminder field
+    reminderInput.checked = Boolean(task.reminder === true);
+  }
 
   const timeInput = document.getElementById('edit-task-time');
   const timeDisplay = document.getElementById('edit-task-time-display');
@@ -2527,6 +3145,7 @@ async function handleClearCompleted() {
 // Rendering Engine
 // ==========================================================================
 function renderAll() {
+  if (typeof document === 'undefined') return;
   updatePreviewUI();
   renderHome();
   renderQuickNotes();
@@ -2616,6 +3235,9 @@ function renderHome() {
   }
   if (percentText) percentText.textContent = `${percent}%`;
   if (countText) countText.textContent = `${completed} of ${total} tasks completed`;
+
+  // Render Pinned Quick Share card if present
+  renderPinnedQuickShare();
 }
 
 // Task Item HTML Template (with Checkbox, Description, Category, Priority & Delete Button)
@@ -2638,10 +3260,27 @@ function renderTaskItemHtml(t) {
   else if (catLower.includes('study')) { catClass = 'cat-badge cat-study'; catIcon = '📚'; }
   else if (catLower.includes('project')) { catClass = 'cat-badge cat-project'; catIcon = '🚀'; }
   else if (catLower.includes('personal')) { catClass = 'cat-badge cat-personal'; catIcon = '🌟'; }
-  const catBadgeHtml = `<span class="${catClass}">${catIcon} ${escapeHtml(cat)}</span>`;
+  else { catClass = 'cat-badge cat-custom cat-badge-custom'; catIcon = '✨'; }
+  const catConfig = getTaskCategoryConfig(cat);
+  const catStyle = catConfig.key === 'custom' ? `style="background-color: ${catConfig.hex} !important; color: ${catConfig.badgeText} !important; border: 1px solid #EAB308 !important;"` : '';
+  const catBadgeHtml = `<span class="${catClass}" ${catStyle}>${catIcon} ${escapeHtml(cat)}</span>`;
+
+  // Dynamic Harmonious Pastel Theme Assignment
+  let pastelClass = 'card-task-warmcream';
+  if (isChecked) {
+    pastelClass = 'card-task-buttercup';
+  } else if (t.priority === 'High') {
+    pastelClass = 'card-task-pink';
+  } else if (catLower.includes('project')) {
+    pastelClass = 'card-task-lavender';
+  } else if (catLower.includes('study')) {
+    pastelClass = 'card-task-periwinkle';
+  } else {
+    pastelClass = 'card-task-warmcream';
+  }
 
   return `
-    <div class="task-item ${isChecked ? 'completed' : ''}" data-id="${t.id}">
+    <div class="task-item ${pastelClass} ${isChecked ? 'completed' : ''}" data-id="${t.id}">
       <div class="task-item-left">
         <button type="button" class="custom-checkbox ${isChecked ? 'checked' : ''}" onclick="handleToggleComplete('${t.id}')" aria-label="Toggle task completed">
           ${isChecked ? '✓' : ''}
@@ -2706,6 +3345,376 @@ function getTimelineCategoryIcon(task) {
   return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 }
 
+// ==========================================================================
+// Task Category Color System (Independent of Date-Cell Workload)
+// Project: Pink #E83E9D | Work: Green #83DF64 | Study: Cyan #83DDE8 | Personal: Grey #EEEEEE | Custom: Yellow #FACC15
+// ==========================================================================
+const TaskCategoryColors = {
+  Project:  { key: 'project',  name: 'Project',  hex: '#E83E9D', bg: '#FFF0F7', border: '#FBCFE8', text: '#9D174D', badgeText: '#FFFFFF', icon: '🚀' },
+  Work:     { key: 'work',     name: 'Work',     hex: '#83DF64', bg: '#F2FDF0', border: '#BBF7D0', text: '#15803D', badgeText: '#153E0C', icon: '💼' },
+  Study:    { key: 'study',    name: 'Study',    hex: '#83DDE8', bg: '#F0FBFC', border: '#BAE6FD', text: '#0369A1', badgeText: '#0A3B43', icon: '📚' },
+  Personal: { key: 'personal', name: 'Personal', hex: '#EEEEEE', bg: '#F8F9FA', border: '#E5E7EB', text: '#4B5563', badgeText: '#2B180E', icon: '🌟' },
+  Custom:   { key: 'custom',   name: 'Custom',   hex: '#FACC15', bg: '#FEFCE8', border: '#FEF08A', text: '#854D0E', badgeText: '#422006', icon: '✨' }
+};
+
+function getCustomCategoriesStorageKey() {
+  const userId = (state.user && state.user.id) || (state.userProfile && state.userProfile.email) || 'guest';
+  return `taskly_custom_categories_${userId}`;
+}
+
+function getStoredCustomCategories() {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(getCustomCategoriesStorageKey());
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(c => typeof c === 'string' && c.trim().length > 0);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to read custom categories:', err);
+  }
+  return [];
+}
+
+function saveCustomCategory(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) {
+    throw new Error('Category name cannot be empty.');
+  }
+
+  const standard = ['project', 'work', 'study', 'personal'];
+  if (standard.includes(trimmed.toLowerCase())) {
+    throw new Error(`"${trimmed}" is already a built-in category.`);
+  }
+
+  const existing = getStoredCustomCategories();
+  const duplicate = existing.some(c => c.toLowerCase() === trimmed.toLowerCase());
+  if (duplicate) {
+    throw new Error(`Category "${trimmed}" already exists.`);
+  }
+
+  existing.push(trimmed);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(getCustomCategoriesStorageKey(), JSON.stringify(existing));
+    }
+  } catch (err) {
+    console.warn('Failed to store custom category:', err);
+  }
+
+  if (typeof document !== 'undefined') {
+    syncCustomCategoriesToDOM(trimmed);
+  }
+
+  return trimmed;
+}
+
+function syncCustomCategoriesToDOM(activeToSelect = null) {
+  if (typeof document === 'undefined') return;
+
+  try {
+    const categories = getStoredCustomCategories();
+
+    // 1. Add Task form Category Selector
+    const addSelector = document.getElementById('add-category-selector');
+    if (addSelector && typeof addSelector.querySelector === 'function') {
+      const activeBtn = addSelector.querySelector('.pill-opt.active');
+      const currentActive = activeToSelect || (activeBtn && activeBtn.dataset ? activeBtn.dataset.val : 'Project');
+
+      let pillsHtml = `
+        <button type="button" class="pill-opt opt-cat ${currentActive === 'Project' ? 'active' : ''}" data-val="Project">Project</button>
+        <button type="button" class="pill-opt opt-cat ${currentActive === 'Work' ? 'active' : ''}" data-val="Work">Work</button>
+        <button type="button" class="pill-opt opt-cat ${currentActive === 'Study' ? 'active' : ''}" data-val="Study">Study</button>
+        <button type="button" class="pill-opt opt-cat ${currentActive === 'Personal' ? 'active' : ''}" data-val="Personal">Personal</button>
+      `;
+
+      categories.forEach(catName => {
+        const isAct = currentActive && currentActive.toLowerCase() === catName.toLowerCase();
+        pillsHtml += `
+          <div class="custom-cat-pill-wrapper" style="position: relative; display: inline-flex; align-items: center; width: 100%;">
+            <button type="button" class="pill-opt opt-cat opt-cat-custom ${isAct ? 'active' : ''}" data-val="${escapeHtml(catName)}" style="background-color: ${isAct ? '#FACC15' : 'transparent'} !important; color: ${isAct ? '#422006' : 'inherit'} !important; border: 1.5px solid #FACC15 !important; padding-right: 28px !important; text-align: left; width: 100%;">
+              ${escapeHtml(catName)}
+            </button>
+            <button type="button" class="btn-delete-custom-cat" data-cat="${escapeHtml(catName)}" title="Delete category ${escapeHtml(catName)}" aria-label="Delete category ${escapeHtml(catName)}" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(66, 32, 6, 0.14); color: #422006; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; z-index: 3;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        `;
+      });
+
+      pillsHtml += `<button type="button" class="pill-opt opt-cat opt-custom-trigger" id="btn-custom-category-trigger" data-val="Custom" style="border: 1.5px dashed #FACC15 !important; color: #854D0E !important;">+ Custom</button>`;
+      addSelector.innerHTML = pillsHtml;
+
+      if (typeof addSelector.querySelectorAll === 'function') {
+        addSelector.querySelectorAll('.pill-opt').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (btn.id === 'btn-custom-category-trigger') {
+              const inputRow = document.getElementById('add-custom-category-input-row');
+              if (inputRow) {
+                inputRow.style.display = inputRow.style.display === 'none' ? 'flex' : 'none';
+                const inputField = document.getElementById('input-new-custom-category');
+                if (inputField && inputRow.style.display !== 'none') inputField.focus();
+              }
+              return;
+            }
+
+            addSelector.querySelectorAll('.pill-opt').forEach(b => {
+              b.classList.remove('active');
+              if (b.classList.contains('opt-cat-custom')) {
+                b.style.backgroundColor = 'transparent';
+                b.style.color = 'inherit';
+              }
+            });
+            btn.classList.add('active');
+            if (btn.classList.contains('opt-cat-custom')) {
+              btn.style.backgroundColor = '#FACC15';
+              btn.style.color = '#422006';
+            }
+          });
+        });
+
+        // Delete button listener on custom category pills
+        addSelector.querySelectorAll('.btn-delete-custom-cat').forEach(delBtn => {
+          delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const catToDelete = delBtn.dataset.cat;
+            openDeleteCategoryModal(catToDelete);
+          });
+        });
+      }
+    }
+
+    // 2. Edit Task Category Select Dropdown
+    const editCatSelect = document.getElementById('edit-task-category');
+    if (editCatSelect) {
+      const currentVal = activeToSelect || editCatSelect.value || 'Personal';
+      let optionsHtml = `
+        <option value="Project">Project</option>
+        <option value="Work">Work</option>
+        <option value="Study">Study</option>
+        <option value="Personal">Personal</option>
+      `;
+
+      if (categories.length > 0) {
+        optionsHtml += `<optgroup label="Custom Categories">`;
+        categories.forEach(catName => {
+          optionsHtml += `<option value="${escapeHtml(catName)}">${escapeHtml(catName)} (Custom)</option>`;
+        });
+        optionsHtml += `</optgroup>`;
+      }
+      optionsHtml += `<option value="__new_custom__">+ New Custom Category...</option>`;
+
+      editCatSelect.innerHTML = optionsHtml;
+      try {
+        if (editCatSelect.options && typeof editCatSelect.options.length === 'number') {
+          let found = false;
+          for (let i = 0; i < editCatSelect.options.length; i++) {
+            if (editCatSelect.options[i] && editCatSelect.options[i].value === currentVal) {
+              found = true;
+              break;
+            }
+          }
+          if (found) {
+            editCatSelect.value = currentVal;
+          } else if (currentVal && typeof Option !== 'undefined' && typeof editCatSelect.add === 'function') {
+            const customOpt = new Option(`${currentVal} (Custom)`, currentVal, true, true);
+            editCatSelect.add(customOpt, editCatSelect.options[4] || null);
+            editCatSelect.value = currentVal;
+          } else {
+            editCatSelect.value = currentVal;
+          }
+        } else {
+          editCatSelect.value = currentVal;
+        }
+      } catch (_) {
+        editCatSelect.value = currentVal;
+      }
+    }
+
+    // 3. Edit Task Custom Categories Manage Row
+    const editManageRow = document.getElementById('edit-custom-categories-manage-row');
+    if (editManageRow) {
+      if (categories.length > 0) {
+        editManageRow.style.display = 'flex';
+        let tagsHtml = `<span style="font-size: 0.75rem; color: var(--text-muted); width: 100%; margin-bottom: 2px;">Custom categories (tap × to delete):</span>`;
+        categories.forEach(catName => {
+          tagsHtml += `
+            <span class="custom-cat-manage-chip" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px; background: #FEFCE8; border: 1px solid #FEF08A; color: #854D0E; font-size: 0.8125rem; font-weight: 500;">
+              <span>${escapeHtml(catName)}</span>
+              <button type="button" class="btn-delete-custom-cat" data-cat="${escapeHtml(catName)}" title="Delete category ${escapeHtml(catName)}" aria-label="Delete category ${escapeHtml(catName)}" style="width: 16px; height: 16px; border-radius: 50%; border: none; background: rgba(66, 32, 6, 0.15); color: #422006; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;">
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </span>
+          `;
+        });
+        editManageRow.innerHTML = tagsHtml;
+        if (typeof editManageRow.querySelectorAll === 'function') {
+          editManageRow.querySelectorAll('.btn-delete-custom-cat').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              openDeleteCategoryModal(btn.dataset.cat);
+            });
+          });
+        }
+      } else {
+        editManageRow.style.display = 'none';
+        editManageRow.innerHTML = '';
+      }
+    }
+  } catch (err) {
+    console.warn('syncCustomCategoriesToDOM warning:', err);
+  }
+}
+
+let pendingCategoryToDelete = null;
+
+function deleteCustomCategory(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) {
+    throw new Error('Category name cannot be empty.');
+  }
+
+  const standard = ['project', 'work', 'study', 'personal'];
+  if (standard.includes(trimmed.toLowerCase())) {
+    throw new Error(`Built-in category "${trimmed}" cannot be deleted.`);
+  }
+
+  const existing = getStoredCustomCategories();
+  const updated = existing.filter(c => c.toLowerCase() !== trimmed.toLowerCase());
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(getCustomCategoriesStorageKey(), JSON.stringify(updated));
+    }
+  } catch (err) {
+    console.warn('Failed to delete custom category from storage:', err);
+  }
+
+  // Reassign any tasks currently having this category to 'Personal'
+  if (Array.isArray(state.todos)) {
+    let remapped = false;
+    state.todos.forEach(t => {
+      if (t && t.category && t.category.trim().toLowerCase() === trimmed.toLowerCase()) {
+        t.category = 'Personal';
+        remapped = true;
+      }
+    });
+    if (remapped) {
+      if (typeof saveTodosLocally === 'function') {
+        saveTodosLocally();
+      }
+      if (supabaseClient && state.user && state.user.id) {
+        supabaseClient.from('todos')
+          .update({ category: 'Personal' })
+          .eq('user_id', state.user.id)
+          .ilike('category', trimmed)
+          .then(() => {})
+          .catch(e => console.warn('Supabase category reassign error:', e));
+      }
+    }
+  }
+
+  if (typeof document !== 'undefined') {
+    syncCustomCategoriesToDOM('Personal');
+    if (typeof renderTodoList === 'function') renderTodoList();
+    if (typeof renderCalendar === 'function') renderCalendar();
+  }
+
+  return updated;
+}
+
+function openDeleteCategoryModal(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return;
+  const standard = ['project', 'work', 'study', 'personal'];
+  if (standard.includes(trimmed.toLowerCase())) {
+    alert(`Built-in category "${trimmed}" cannot be deleted.`);
+    return;
+  }
+
+  pendingCategoryToDelete = trimmed;
+  if (typeof document === 'undefined') return;
+
+  const modal = document.getElementById('modal-delete-category-confirm');
+  const targetLabel = document.getElementById('delete-category-target-name');
+  const warningBox = document.getElementById('delete-category-task-warning');
+  const taskCountSpan = document.getElementById('delete-category-task-count');
+
+  if (targetLabel) targetLabel.textContent = trimmed;
+
+  const assignedTasks = (state.todos || []).filter(t => t && t.category && t.category.trim().toLowerCase() === trimmed.toLowerCase());
+  if (warningBox && taskCountSpan) {
+    if (assignedTasks.length > 0) {
+      taskCountSpan.textContent = String(assignedTasks.length);
+      warningBox.style.display = 'block';
+    } else {
+      warningBox.style.display = 'none';
+    }
+  }
+
+  if (modal) modal.classList.add('active');
+}
+
+function closeDeleteCategoryModal() {
+  pendingCategoryToDelete = null;
+  if (typeof document === 'undefined') return;
+  const modal = document.getElementById('modal-delete-category-confirm');
+  if (modal) modal.classList.remove('active');
+}
+
+function handleConfirmDeleteCategory() {
+  if (!pendingCategoryToDelete) {
+    closeDeleteCategoryModal();
+    return;
+  }
+  const toDelete = pendingCategoryToDelete;
+  closeDeleteCategoryModal();
+  try {
+    deleteCustomCategory(toDelete);
+  } catch (err) {
+    alert(err.message || 'Could not delete category.');
+  }
+}
+
+function getTaskCategoryConfig(category) {
+  if (!category || typeof category !== 'string' || !category.trim()) {
+    return TaskCategoryColors.Personal;
+  }
+  const cat = category.trim();
+  const lower = cat.toLowerCase();
+  if (lower === 'project' || lower.includes('project')) return TaskCategoryColors.Project;
+  if (lower === 'work' || lower.includes('work'))    return TaskCategoryColors.Work;
+  if (lower === 'study' || lower.includes('study'))   return TaskCategoryColors.Study;
+  if (lower === 'personal' || lower.includes('personal')) return TaskCategoryColors.Personal;
+
+  // Custom category (always Yellow #FACC15, dark text #422006)
+  return {
+    key: 'custom',
+    name: cat || 'Custom',
+    hex: '#FACC15',
+    bg: '#FEFCE8',
+    border: '#FEF08A',
+    text: '#854D0E',
+    badgeText: '#422006',
+    icon: '✨'
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.TaskCategoryColors = TaskCategoryColors;
+  window.getTaskCategoryConfig = getTaskCategoryConfig;
+  window.getStoredCustomCategories = getStoredCustomCategories;
+  window.saveCustomCategory = saveCustomCategory;
+  window.deleteCustomCategory = deleteCustomCategory;
+  window.openDeleteCategoryModal = openDeleteCategoryModal;
+  window.closeDeleteCategoryModal = closeDeleteCategoryModal;
+  window.handleConfirmDeleteCategory = handleConfirmDeleteCategory;
+  window.syncCustomCategoriesToDOM = syncCustomCategoriesToDOM;
+}
+
 function renderCalendarTimelineItemHtml(t) {
   const isChecked = Boolean(t.completed);
   const timeDisplay = t.time ? escapeHtml(t.time) : 'All Day';
@@ -2714,24 +3723,27 @@ function renderCalendarTimelineItemHtml(t) {
     const timeMatch = t.time.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
     shortTime = timeMatch ? timeMatch[1] : t.time;
   }
-  const isGreen = isChecked;
-  const cardClass = isGreen ? 'tl-card-green' : (t.priority === 'Medium' ? 'tl-card-yellow' : 'tl-card-peach');
-  const dotColor = isChecked ? 'var(--mint)' : (t.priority === 'High' ? 'var(--brand-red)' : (t.priority === 'Medium' ? 'var(--brand-yellow)' : 'var(--primary)'));
-  const iconBg = isChecked ? '#10B981' : (t.priority === 'Medium' ? '#FFAD00' : 'var(--primary)');
+  
+  // Category configuration (Independent of Calendar Date-Cell Workload)
+  const catConfig = getTaskCategoryConfig(t.category);
+  const cardClass = `tl-card-cat-${catConfig.key}`;
+  const dotColor = catConfig.hex;
+  const iconBg = catConfig.hex;
+  const iconColor = catConfig.badgeText;
   const pct = isChecked ? '100%' : '0%';
   const nodeIcon = getTimelineCategoryIcon(t);
 
   return `
-    <div class="timeline-event-row cal-timeline-item ${isChecked ? 'completed' : ''}" data-id="${t.id}" data-task-id="${t.id}">
+    <div class="timeline-event-row cal-timeline-item ${isChecked ? 'completed' : ''}" data-id="${t.id}" data-task-id="${t.id}" data-category="${catConfig.name}">
       <div class="timeline-time-col">
         <span class="timeline-time-text timeline-time-label">${shortTime}</span>
       </div>
       <div class="timeline-spine-col">
         <div class="timeline-marker-dot ${isChecked ? 'checked' : ''}" style="background: ${dotColor};"></div>
       </div>
-      <div class="timeline-card ${cardClass}">
+      <div class="timeline-card ${cardClass}" style="border-left: 4px solid ${catConfig.hex} !important;">
         <div class="tl-card-main">
-          <div class="tl-icon-circle timeline-node-circle" style="background: ${iconBg}; color: #fff; width: 28px; height: 28px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;" title="${escapeHtml(t.category || 'Task')}">
+          <div class="tl-icon-circle timeline-node-circle" style="background: ${iconBg} !important; color: ${iconColor} !important; width: 28px; height: 28px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;" title="${escapeHtml(catConfig.name)}">
             ${nodeIcon}
           </div>
           <div class="tl-text-box timeline-content">
@@ -2739,7 +3751,7 @@ function renderCalendarTimelineItemHtml(t) {
             <div class="tl-sub timeline-sub" style="${isChecked ? 'color: #047857;' : ''}">${escapeHtml(t.description || timeDisplay)}</div>
             <div class="tl-badge-row">
               <span class="priority-badge-pill p-${(t.priority || 'medium').toLowerCase()}">${escapeHtml(t.priority || 'Medium')}</span>
-              ${t.category ? `<span class="tl-category-tag">${escapeHtml(t.category)}</span>` : ''}
+              <span class="tl-category-tag cat-badge-${catConfig.key}" style="background-color: ${catConfig.hex} !important; color: ${catConfig.badgeText} !important; font-weight: 700;">${escapeHtml(catConfig.name)}</span>
             </div>
           </div>
         </div>
@@ -2758,6 +3770,69 @@ function renderCalendarTimelineItemHtml(t) {
       </div>
     </div>
   `;
+}
+
+// ==========================================================================
+// Taskly Dynamic Calendar Priority Workload Calculation Engine
+// High priority: Pink #E83E9D | Medium priority: Green #83DF64 | Low priority: Cyan #83DDE8
+// All assigned tasks have the same priority: Grey #EEEEEE | Empty date: Neutral empty-date
+// ==========================================================================
+const TasklyWorkloadEngine = {
+  colors: {
+    high:     { key: 'high',     hex: '#E83E9D', text: '#FFFFFF', label: 'High Priority',   class: 'workload-high' },
+    medium:   { key: 'medium',   hex: '#83DF64', text: '#153E0C', label: 'Medium Priority', class: 'workload-medium' },
+    moderate: { key: 'moderate', hex: '#83DF64', text: '#153E0C', label: 'Medium Priority', class: 'workload-medium' },
+    low:      { key: 'low',      hex: '#83DDE8', text: '#0A3B43', label: 'Low Priority',    class: 'workload-low' },
+    equal:    { key: 'equal',    hex: '#EEEEEE', text: '#2B180E', label: 'Equal Priority',  class: 'workload-equal' },
+    empty:    { key: 'empty',    hex: 'transparent', text: 'inherit', label: 'No Tasks',    class: 'workload-empty' }
+  },
+
+  getWorkloadCategory(dateStr, todos = state.todos) {
+    if (!dateStr || !Array.isArray(todos)) {
+      return { score: 0, count: 0, ...this.colors.empty };
+    }
+    const tasksOnDate = todos.filter(t => t && t.dueDate === dateStr);
+    const count = tasksOnDate.length;
+    if (count === 0) {
+      return { score: 0, count: 0, ...this.colors.empty };
+    }
+
+    // Read normalized priority for every task
+    const priorities = tasksOnDate.map(t => {
+      const p = String(t.priority || '').trim().toLowerCase();
+      if (p === 'high') return 'high';
+      if (p === 'medium' || p === 'med') return 'medium';
+      return 'low';
+    });
+
+    // Step 3: If all assigned tasks have exactly the same priority, display Grey (#EEEEEE)
+    // The all-equal condition applies to multiple tasks having identical priorities
+    const isAllEqual = priorities.length > 1 && priorities.every(p => p === priorities[0]);
+    if (isAllEqual) {
+      return { score: count, count, priority: priorities[0], ...this.colors.equal };
+    }
+
+    // Step 4: Otherwise, identify the highest priority present:
+    // - If High exists, display Pink (#E83E9D)
+    // - Otherwise, if Medium exists, display Green (#83DF64)
+    // - Otherwise, display Cyan (#83DDE8)
+    if (priorities.includes('high')) {
+      return { score: count, count, priority: 'high', ...this.colors.high };
+    }
+    if (priorities.includes('medium')) {
+      return { score: count, count, priority: 'medium', ...this.colors.medium };
+    }
+    return { score: count, count, priority: 'low', ...this.colors.low };
+  },
+
+  calculateScore(dateStr, todos = state.todos) {
+    const res = this.getWorkloadCategory(dateStr, todos);
+    return res.count || res.score || 0;
+  }
+};
+
+if (typeof window !== 'undefined') {
+  window.TasklyWorkloadEngine = TasklyWorkloadEngine;
 }
 
 // 2. Calendar Render
@@ -2795,9 +3870,10 @@ function renderCalendar() {
     let cellsHtml = '';
 
     if (isMonthView) {
-      // Full Month Grid View
+      // Full Month Grid View with Dynamic Heatmap
       const firstDayIndex = (new Date(curYear, curMonth, 1).getDay() + 6) % 7; // Monday = 0
       const totalDaysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+      const todayStr = toYmdString(new Date());
 
       for (let i = 0; i < firstDayIndex; i++) {
         cellsHtml += `<div class="cal-day-cell other-month"><span class="day-num"></span></div>`;
@@ -2806,23 +3882,36 @@ function renderCalendar() {
       for (let d = 1; d <= totalDaysInMonth; d++) {
         const cellDateStr = `${curYear}-${String(curMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const isSelected = cellDateStr === state.selectedDateStr;
-        const hasTask = datesWithTasks.has(cellDateStr);
+        const isToday = cellDateStr === todayStr;
+        const workload = TasklyWorkloadEngine.getWorkloadCategory(cellDateStr, state.todos);
+        const isEmptyDate = workload.key === 'empty' || (workload.count === 0);
+        const bgStyle = isEmptyDate ? '' : `background-color: ${workload.hex} !important;`;
+        const textStyle = isEmptyDate ? '' : `color: ${workload.text} !important;`;
+        const workloadTitle = isEmptyDate ? 'No tasks scheduled' : `${workload.label} (${workload.count} task${workload.count > 1 ? 's' : ''})`;
 
         cellsHtml += `
-          <div class="cal-day-cell ${isSelected ? 'selected' : ''}" data-date="${cellDateStr}" onclick="selectCalendarDate('${cellDateStr}')">
-            <span class="day-num">${d}</span>
-            ${hasTask ? '<span class="cal-task-dot"></span>' : ''}
+          <div class="cal-day-cell ${isSelected ? 'selected' : ''} ${isToday ? 'is-today' : ''} ${workload.class}" 
+               data-date="${cellDateStr}" 
+               data-workload-score="${workload.score || 0}"
+               data-workload-level="${workload.key}"
+               data-workload-count="${workload.count || 0}"
+               title="${workloadTitle}"
+               ${bgStyle ? `style="${bgStyle}"` : ''} 
+               onclick="selectCalendarDate('${cellDateStr}')">
+            <span class="day-num" ${textStyle ? `style="${textStyle}"` : ''}>${d}</span>
+            ${isToday ? '<span class="today-marker-dot"></span>' : ''}
           </div>
         `;
       }
     } else {
-      // 7-Day Horizontal Strip View (Matching Reference Design)
+      // 7-Day Horizontal Strip View (Matching Reference Design with Heatmap Number Badges)
       const parts = state.selectedDateStr.split('-').map(Number);
       const selDateObj = new Date(parts[0], parts[1] - 1, parts[2]);
       const selDayOfWeek = selDateObj.getDay(); // 0 is Sun, 1 is Mon
       const mondayOffset = (selDayOfWeek === 0 ? 6 : selDayOfWeek - 1);
       const mondayDate = new Date(selDateObj);
       mondayDate.setDate(selDateObj.getDate() - mondayOffset);
+      const todayStr = toYmdString(new Date());
 
       for (let i = 0; i < 7; i++) {
         const stripDate = new Date(mondayDate);
@@ -2831,14 +3920,23 @@ function renderCalendar() {
         const dayAbbr = stripDate.toLocaleDateString('en-US', { weekday: 'short' });
         const dayNum = stripDate.getDate();
         const isSelected = stripDateStr === state.selectedDateStr;
-        const hasTask = datesWithTasks.has(stripDateStr);
+        const isToday = stripDateStr === todayStr;
+        const workload = TasklyWorkloadEngine.getWorkloadCategory(stripDateStr, state.todos);
+        const isEmptyDate = workload.key === 'empty' || (workload.count === 0);
+        const bgStyle = isEmptyDate ? '' : `background-color: ${workload.hex} !important;`;
+        const textStyle = isEmptyDate ? '' : `color: ${workload.text} !important;`;
 
         cellsHtml += `
-          <div class="cal-strip-day ${isSelected ? 'selected' : ''}" data-date="${stripDateStr}" onclick="selectCalendarDate('${stripDateStr}')">
+          <div class="cal-strip-day ${isSelected ? 'selected' : ''} ${isToday ? 'is-today' : ''} ${workload.class}" 
+               data-date="${stripDateStr}" 
+               data-workload-score="${workload.score || 0}"
+               data-workload-level="${workload.key}"
+               data-workload-count="${workload.count || 0}"
+               onclick="selectCalendarDate('${stripDateStr}')">
             <span class="cal-strip-weekday ${isSelected ? 'text-active' : ''}">${dayAbbr}</span>
-            <div class="cal-strip-num-wrap">
-              <span class="cal-strip-num">${dayNum}</span>
-              ${hasTask ? '<span class="cal-strip-dot"></span>' : ''}
+            <div class="cal-strip-num-wrap" ${bgStyle ? `style="${bgStyle}"` : ''}>
+              <span class="cal-strip-num" ${textStyle ? `style="${textStyle}"` : ''}>${dayNum}</span>
+              ${isToday ? '<span class="today-marker-dot"></span>' : ''}
             </div>
           </div>
         `;
@@ -3359,13 +4457,25 @@ function renderAnalytics() {
 function renderProfile() {
   const nameEl = document.getElementById('profile-display-name');
   const ageEl = document.getElementById('profile-display-age');
+  const emailEl = document.getElementById('profile-display-email');
   const deskNameEl = document.getElementById('desktop-user-name');
   const deskAvatarEl = document.getElementById('desktop-user-avatar');
 
   const isPreview = Boolean(state.isPreviewSession && isLocalPreview());
   const currentName = isPreview ? 'Preview User' : (state.user.name || 'User');
+  const currentEmail = isPreview ? 'preview@local.test' : (state.user.email || '');
+
   if (nameEl) nameEl.textContent = currentName;
   if (ageEl) ageEl.textContent = isPreview ? 'LOCAL UI PREVIEW' : `Age: ${state.user.age || 18}`;
+  if (emailEl) {
+    if (currentEmail) {
+      emailEl.textContent = currentEmail;
+      emailEl.style.display = 'block';
+    } else {
+      emailEl.textContent = '';
+      emailEl.style.display = 'none';
+    }
+  }
   if (deskNameEl) deskNameEl.textContent = isPreview ? 'Preview User (Local UI)' : currentName;
   if (deskAvatarEl) deskAvatarEl.textContent = currentName.charAt(0).toUpperCase();
 
@@ -3511,6 +4621,644 @@ function setAuthMode(mode) {
     if (authSubtitle) authSubtitle.textContent = 'Sign in to access and sync your tasks.';
     if (btnAuthText) btnAuthText.textContent = 'Sign In';
   }
+}
+
+// ==========================================================================
+// FAQ Accordion & Real-time Search Helpers
+// ==========================================================================
+function toggleFaqAccordion(btn) {
+  if (!btn) return;
+  const item = btn.closest('.faq-item');
+  if (!item) return;
+
+  const isCurrentlyOpen = item.classList.contains('active');
+
+  // Collapse all other questions (Do not display all answers expanded simultaneously)
+  const container = document.getElementById('faq-list-container');
+  if (container) {
+    container.querySelectorAll('.faq-item.active').forEach(otherItem => {
+      otherItem.classList.remove('active');
+      const otherBtn = otherItem.querySelector('.faq-question-btn');
+      if (otherBtn) otherBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // If this item was not already open, expand it
+  if (!isCurrentlyOpen) {
+    item.classList.add('active');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function filterFaqItems(query) {
+  const term = (query || '').trim().toLowerCase();
+  const container = document.getElementById('faq-list-container');
+  if (!container) return;
+
+  const items = container.querySelectorAll('.faq-item');
+  const sections = container.querySelectorAll('.faq-category-section');
+  const emptyPlaceholder = document.getElementById('faq-empty-search');
+  const clearBtn = document.getElementById('btn-clear-faq-search');
+
+  if (clearBtn) {
+    clearBtn.style.display = term ? 'block' : 'none';
+  }
+
+  let visibleCount = 0;
+
+  items.forEach(item => {
+    const qText = (item.querySelector('.faq-question-text')?.textContent || '').toLowerCase();
+    const aText = (item.querySelector('.faq-answer-content')?.textContent || '').toLowerCase();
+    const matches = !term || qText.includes(term) || aText.includes(term);
+
+    item.style.display = matches ? 'block' : 'none';
+    if (matches) visibleCount++;
+  });
+
+  sections.forEach(sec => {
+    const visibleInSec = sec.querySelectorAll('.faq-item:not([style*="display: none"])');
+    sec.style.display = visibleInSec.length > 0 ? 'flex' : 'none';
+  });
+
+  if (emptyPlaceholder) {
+    emptyPlaceholder.style.display = visibleCount === 0 ? 'flex' : 'none';
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.toggleFaqAccordion = toggleFaqAccordion;
+  window.filterFaqItems = filterFaqItems;
+}
+
+// ==========================================================================
+// Taskly In-App Version & Owner-Controlled Update System
+// ==========================================================================
+
+const TasklyUpdateManager = {
+  config: {
+    primaryManifestUrl: 'https://raw.githubusercontent.com/vimaljayganthan/taskly-todo-app/main/releases/version-manifest.json',
+    localFallbackUrl: '/releases/version-manifest.json',
+    fallbackVersionName: '1.5.0',
+    fallbackVersionCode: 6,
+    expectedPackageName: 'com.taskly.app',
+    autoCheckIntervalMs: 15 * 60 * 1000 // 15 minutes between automatic checks
+  },
+
+  state: {
+    installedVersionName: '1.5.0',
+    installedVersionCode: 6,
+    isNative: false,
+    platform: 'web',
+    latestVersionName: null,
+    latestVersionCode: null,
+    updateStatus: 'idle', // 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'downloading' | 'installing' | 'error'
+    lastChecked: null,
+    manifest: null,
+    errorMessage: null,
+    downloadProgress: { downloadedBytes: 0, totalBytes: 0, percent: 0 },
+    historyExpanded: false
+  },
+
+  async init() {
+    await this.detectInstalledVersion();
+    this.updateProfileBadge();
+    this.setupNativeListeners();
+
+    // Restore cached lastChecked timestamp
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cachedTime = localStorage.getItem('taskly_last_update_check');
+        if (cachedTime) {
+          this.state.lastChecked = new Date(cachedTime);
+        }
+      } catch (_) {}
+    }
+  },
+
+  async detectInstalledVersion() {
+    const isCapacitor = Boolean(
+      (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) ||
+      (typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'android') ||
+      (typeof window !== 'undefined' && window.location?.protocol === 'capacitor:')
+    );
+
+    this.state.isNative = isCapacitor;
+    this.state.platform = isCapacitor ? 'android' : 'web';
+
+    // 1. Query custom native ApkInstaller plugin if available
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.ApkInstaller) {
+      try {
+        const info = await window.Capacitor.Plugins.ApkInstaller.getAppInfo();
+        if (info && (info.versionName || info.versionCode != null)) {
+          this.state.installedVersionName = String(info.versionName || this.config.fallbackVersionName);
+          this.state.installedVersionCode = parseInt(info.versionCode, 10) || this.config.fallbackVersionCode;
+          this.state.platform = 'android';
+          this.updateProfileBadge();
+          return;
+        }
+      } catch (err) {
+        console.warn('[TasklyUpdateManager] Native ApkInstaller.getAppInfo failed, falling back:', err);
+      }
+    }
+
+    // 2. Query standard Capacitor App plugin
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
+      try {
+        const appInfo = await window.Capacitor.Plugins.App.getInfo();
+        if (appInfo && appInfo.version) {
+          this.state.installedVersionName = String(appInfo.version);
+          this.state.installedVersionCode = parseInt(appInfo.build, 10) || this.config.fallbackVersionCode;
+          this.updateProfileBadge();
+          return;
+        }
+      } catch (err) {
+        console.warn('[TasklyUpdateManager] App.getInfo failed, falling back to defaults:', err);
+      }
+    }
+
+    // 3. Fallback for browser preview
+    this.state.installedVersionName = this.config.fallbackVersionName;
+    this.state.installedVersionCode = this.config.fallbackVersionCode;
+    this.updateProfileBadge();
+  },
+
+  updateProfileBadge() {
+    if (typeof document === 'undefined') return;
+    const badge = document.getElementById('profile-version-badge');
+    if (badge) {
+      badge.textContent = `v${this.state.installedVersionName}`;
+    }
+  },
+
+  setupNativeListeners() {
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.ApkInstaller?.addListener) {
+      try {
+        window.Capacitor.Plugins.ApkInstaller.addListener('downloadProgress', (data) => {
+          this.handleDownloadProgress(data);
+        });
+      } catch (e) {
+        console.warn('[TasklyUpdateManager] Failed to register downloadProgress listener:', e);
+      }
+    }
+  },
+
+  handleDownloadProgress(data) {
+    if (!data) return;
+    this.state.downloadProgress = {
+      downloadedBytes: data.downloadedBytes || 0,
+      totalBytes: data.totalBytes || 0,
+      percent: data.percent != null ? data.percent : 0
+    };
+    this.renderUI();
+  },
+
+  async openModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-version');
+    if (modal) modal.classList.add('active');
+
+    await this.detectInstalledVersion();
+
+    // Automatically check for updates if never checked or if check interval expired
+    const now = Date.now();
+    const shouldCheck = !this.state.lastChecked || (now - this.state.lastChecked.getTime() > this.config.autoCheckIntervalMs);
+    if (shouldCheck && this.state.updateStatus !== 'downloading' && this.state.updateStatus !== 'installing') {
+      await this.checkForUpdates(false);
+    } else {
+      this.renderUI();
+    }
+  },
+
+  closeModal() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-version');
+    if (modal) modal.classList.remove('active');
+  },
+
+  toggleHistory() {
+    this.state.historyExpanded = !this.state.historyExpanded;
+    this.renderUI();
+  },
+
+  /**
+   * Compare version codes numerically.
+   * Remote version code strictly greater than installed version code indicates update available.
+   */
+  isUpdateAvailable(installedCode, remoteCode) {
+    const installed = parseInt(installedCode, 10);
+    const remote = parseInt(remoteCode, 10);
+    if (isNaN(installed) || isNaN(remote)) return false;
+    return remote > installed;
+  },
+
+  async checkForUpdates(forceManual = false) {
+    this.state.updateStatus = 'checking';
+    this.state.errorMessage = null;
+    this.renderUI();
+
+    let manifest = null;
+    let fetchError = null;
+
+    const cacheBuster = `?_cb=${Date.now()}`;
+
+    // 1. Try remote centralized HTTPS manifest
+    try {
+      const resp = await fetch(this.config.primaryManifestUrl + cacheBuster, {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (resp.ok) {
+        manifest = await resp.json();
+      } else {
+        throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+      }
+    } catch (err) {
+      console.warn('[TasklyUpdateManager] Remote manifest fetch failed, falling back to local endpoint:', err);
+      fetchError = err;
+    }
+
+    // 2. If remote unreachable, try local fallback endpoint
+    if (!manifest) {
+      try {
+        const base = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') ||
+                     (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost:3000');
+        const fallbackUrl = this.config.localFallbackUrl.startsWith('http')
+          ? this.config.localFallbackUrl
+          : `${base.replace(/\/+$/, '')}${this.config.localFallbackUrl}`;
+
+        const localResp = await fetch(fallbackUrl + cacheBuster, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (localResp.ok) {
+          manifest = await localResp.json();
+          fetchError = null;
+        } else {
+          throw new Error(`Local fallback HTTP ${localResp.status}`);
+        }
+      } catch (localErr) {
+        console.warn('[TasklyUpdateManager] Local fallback manifest fetch failed:', localErr);
+        if (!fetchError) fetchError = localErr;
+      }
+    }
+
+    // 3. Strict failure handling: Never claim "up to date" if check failed
+    if (!manifest) {
+      this.state.updateStatus = 'error';
+      this.state.errorMessage = (fetchError && fetchError.message)
+        ? `Unable to connect to Taskly update server (${fetchError.message}). Please check your internet connection.`
+        : 'Unable to connect to Taskly update server. Please check your internet connection.';
+      this.renderUI();
+      return;
+    }
+
+    // 4. Validate manifest fields
+    if (!manifest.latestVersion || manifest.versionCode == null) {
+      this.state.updateStatus = 'error';
+      this.state.errorMessage = 'Invalid or malformed update manifest received from server.';
+      this.renderUI();
+      return;
+    }
+
+    this.state.manifest = manifest;
+    this.state.latestVersionName = String(manifest.latestVersion);
+    this.state.latestVersionCode = parseInt(manifest.versionCode, 10);
+    this.state.lastChecked = new Date();
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('taskly_last_update_check', this.state.lastChecked.toISOString());
+      } catch (_) {}
+    }
+
+    // 5. Compare versionCode numerically
+    const hasUpdate = this.isUpdateAvailable(this.state.installedVersionCode, this.state.latestVersionCode);
+    if (hasUpdate) {
+      this.state.updateStatus = 'update_available';
+    } else {
+      this.state.updateStatus = 'up_to_date';
+    }
+
+    this.renderUI();
+  },
+
+  async startUpdate() {
+    if (this.state.updateStatus !== 'update_available' || !this.state.manifest) {
+      return;
+    }
+
+    const manifest = this.state.manifest;
+
+    // A. Native Android In-App APK Download and Installation
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.ApkInstaller) {
+      const plugin = window.Capacitor.Plugins.ApkInstaller;
+
+      // 1. Check install permission
+      try {
+        const permResult = await plugin.canRequestPackageInstalls();
+        if (permResult && permResult.canInstall === false) {
+          const proceed = (typeof confirm === 'function')
+            ? confirm(
+                'Taskly needs permission to install app updates.\n\nTap OK to open Android Settings and enable "Allow from this source", then return to Taskly to complete the update.'
+              )
+            : true;
+          if (proceed) {
+            await plugin.openInstallPermissionSettings();
+          }
+          return;
+        }
+      } catch (permErr) {
+        console.warn('[TasklyUpdateManager] canRequestPackageInstalls check error:', permErr);
+      }
+
+      // 2. Start native download and verification
+      this.state.updateStatus = 'downloading';
+      this.state.errorMessage = null;
+      this.state.downloadProgress = {
+        downloadedBytes: 0,
+        totalBytes: manifest.fileSizeBytes || 0,
+        percent: 0
+      };
+      this.renderUI();
+
+      try {
+        const installResult = await plugin.downloadAndInstall({
+          url: manifest.apkDownloadUrl,
+          sha256: manifest.sha256,
+          expectedPackageName: this.config.expectedPackageName,
+          expectedVersionCode: manifest.versionCode
+        });
+
+        if (installResult && installResult.cancelled) {
+          this.state.updateStatus = 'update_available';
+          this.renderUI();
+          return;
+        }
+
+        this.state.updateStatus = 'installing';
+        this.renderUI();
+      } catch (installErr) {
+        console.error('[TasklyUpdateManager] Native update installation failed:', installErr);
+        this.state.updateStatus = 'error';
+        this.state.errorMessage = (installErr && installErr.message) ? installErr.message : String(installErr);
+        this.renderUI();
+      }
+      return;
+    }
+
+    // B. Web Browser Fallback (Opens direct APK link)
+    if (manifest.apkDownloadUrl) {
+      const shouldDownload = (typeof confirm === 'function')
+        ? confirm(
+            `Download Taskly v${manifest.latestVersion} APK (${manifest.fileSize || '18 MB'})?\n\nNote: On Android devices, Taskly downloads and updates directly in-app. In web browsers, this downloads the APK file to your device.`
+          )
+        : true;
+      if (shouldDownload && typeof window !== 'undefined') {
+        window.open(manifest.apkDownloadUrl, '_blank');
+      }
+    }
+  },
+
+  async cancelDownload() {
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.ApkInstaller) {
+      try {
+        await window.Capacitor.Plugins.ApkInstaller.cancelDownload();
+      } catch (_) {}
+    }
+    this.state.updateStatus = 'update_available';
+    this.state.downloadProgress = { downloadedBytes: 0, totalBytes: 0, percent: 0 };
+    this.renderUI();
+  },
+
+  formatBytes(bytes) {
+    if (!bytes || isNaN(bytes) || bytes <= 0) return '0 MB';
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(1)} MB`;
+  },
+
+  formatRelativeTime(date) {
+    if (!date) return 'Never';
+    const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (diff < 30) return 'Just now';
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  },
+
+  renderUI() {
+    if (typeof document === 'undefined') return;
+
+    // Platform indicator
+    const platformLabel = document.getElementById('version-platform-label');
+    if (platformLabel) {
+      platformLabel.textContent = this.state.isNative ? 'Android Native Application' : 'Web Browser Preview';
+    }
+
+    // Installed version
+    const valInstalled = document.getElementById('val-installed-version');
+    if (valInstalled) {
+      valInstalled.textContent = `v${this.state.installedVersionName} (Build ${this.state.installedVersionCode})`;
+    }
+
+    // Latest approved version
+    const valLatest = document.getElementById('val-latest-version');
+    if (valLatest) {
+      valLatest.textContent = this.state.latestVersionName
+        ? `v${this.state.latestVersionName} (Build ${this.state.latestVersionCode})`
+        : `v${this.state.installedVersionName} (Build ${this.state.installedVersionCode})`;
+    }
+
+    // Last checked timestamp
+    const labelLastChecked = document.getElementById('version-last-checked-label');
+    if (labelLastChecked) {
+      labelLastChecked.textContent = `Last checked: ${this.formatRelativeTime(this.state.lastChecked)}`;
+    }
+
+    // Status Badge & Icon
+    const badge = document.getElementById('version-status-badge');
+    const statusIcon = document.getElementById('version-status-icon');
+    const statusText = document.getElementById('version-status-text');
+
+    if (badge && statusIcon && statusText) {
+      badge.className = 'version-status-badge';
+      switch (this.state.updateStatus) {
+        case 'checking':
+          badge.classList.add('status-checking');
+          statusIcon.textContent = '⏳';
+          statusText.textContent = 'Checking for updates...';
+          break;
+        case 'update_available':
+          badge.classList.add('status-update-available');
+          statusIcon.textContent = '📥';
+          statusText.textContent = 'Update Available';
+          break;
+        case 'downloading':
+          badge.classList.add('status-downloading');
+          statusIcon.textContent = '⬇️';
+          statusText.textContent = `Downloading (${this.state.downloadProgress.percent}%)`;
+          break;
+        case 'installing':
+          badge.classList.add('status-up-to-date');
+          statusIcon.textContent = '⚙️';
+          statusText.textContent = 'Installing...';
+          break;
+        case 'error':
+          badge.classList.add('status-error');
+          statusIcon.textContent = '⚠️';
+          statusText.textContent = 'Check Failed';
+          break;
+        case 'up_to_date':
+        default:
+          badge.classList.add('status-up-to-date');
+          statusIcon.textContent = '✓';
+          statusText.textContent = "You're up to date";
+          break;
+      }
+    }
+
+    // Update Details Card
+    const cardUpdate = document.getElementById('version-update-details-card');
+    if (cardUpdate) {
+      if (this.state.updateStatus === 'update_available' && this.state.manifest) {
+        cardUpdate.style.display = 'flex';
+        const meta = document.getElementById('version-update-meta');
+        if (meta) {
+          meta.textContent = `Version ${this.state.manifest.latestVersion} • ${this.state.manifest.fileSize || '18 MB'}${this.state.manifest.releaseDate ? ' • ' + this.state.manifest.releaseDate : ''}`;
+        }
+        const summary = document.getElementById('version-update-summary');
+        if (summary) {
+          summary.textContent = this.state.manifest.releaseNotes || 'A new approved version of Taskly is ready for you.';
+        }
+        const highlightsList = document.getElementById('version-update-highlights');
+        if (highlightsList) {
+          highlightsList.innerHTML = '';
+          const features = (this.state.manifest.history && this.state.manifest.history[0]?.features) || [
+            'Performance optimizations and stability improvements',
+            'Enhanced data protection and synchronization'
+          ];
+          features.slice(0, 4).forEach(item => {
+            const li = document.createElement('li');
+            li.textContent = item;
+            highlightsList.appendChild(li);
+          });
+        }
+        const mandatoryNotice = document.getElementById('version-mandatory-notice');
+        if (mandatoryNotice) {
+          mandatoryNotice.style.display = this.state.manifest.mandatoryUpdate ? 'block' : 'none';
+        }
+      } else {
+        cardUpdate.style.display = 'none';
+      }
+    }
+
+    // Download Progress Card
+    const cardProgress = document.getElementById('version-progress-card');
+    if (cardProgress) {
+      if (this.state.updateStatus === 'downloading') {
+        cardProgress.style.display = 'flex';
+        const percent = this.state.downloadProgress.percent;
+        const fill = document.getElementById('version-progress-fill');
+        if (fill) fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        const percentText = document.getElementById('version-progress-percent');
+        if (percentText) percentText.textContent = `${percent}%`;
+        const bytesText = document.getElementById('version-progress-bytes');
+        if (bytesText) {
+          bytesText.textContent = `${this.formatBytes(this.state.downloadProgress.downloadedBytes)} / ${this.formatBytes(this.state.downloadProgress.totalBytes)}`;
+        }
+      } else {
+        cardProgress.style.display = 'none';
+      }
+    }
+
+    // Install Card
+    const cardInstall = document.getElementById('version-install-card');
+    if (cardInstall) {
+      cardInstall.style.display = this.state.updateStatus === 'installing' ? 'flex' : 'none';
+    }
+
+    // Error Banner
+    const bannerError = document.getElementById('version-error-banner');
+    if (bannerError) {
+      if (this.state.updateStatus === 'error' && this.state.errorMessage) {
+        bannerError.style.display = 'flex';
+        const msg = document.getElementById('version-error-msg');
+        if (msg) msg.textContent = this.state.errorMessage;
+      } else {
+        bannerError.style.display = 'none';
+      }
+    }
+
+    // Action Buttons
+    const btnUpdate = document.getElementById('btn-update-now');
+    if (btnUpdate) {
+      btnUpdate.style.display = this.state.updateStatus === 'update_available' ? 'inline-flex' : 'none';
+    }
+    const labelCheck = document.getElementById('label-check-updates');
+    if (labelCheck) {
+      labelCheck.textContent = this.state.updateStatus === 'checking'
+        ? 'Checking...'
+        : (this.state.updateStatus === 'error' ? 'Retry Check' : 'Check for Updates');
+    }
+
+    // Render History Timeline
+    const historyBody = document.getElementById('version-history-body');
+    const chevron = document.getElementById('history-toggle-chevron');
+    if (historyBody) {
+      historyBody.style.display = this.state.historyExpanded ? 'block' : 'none';
+    }
+    if (chevron) {
+      chevron.textContent = this.state.historyExpanded ? '▲' : '▼';
+    }
+
+    const historyList = document.getElementById('version-history-list');
+    if (historyList && this.state.manifest?.history && this.state.manifest.history.length > 0) {
+      historyList.innerHTML = '';
+      this.state.manifest.history.forEach(rel => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+
+        const head = document.createElement('div');
+        head.className = 'history-item-head';
+
+        const ver = document.createElement('span');
+        ver.className = 'history-version-tag';
+        ver.textContent = `v${rel.version} (Build ${rel.versionCode})`;
+
+        const date = document.createElement('span');
+        date.className = 'history-date-tag';
+        date.textContent = rel.releaseDate || '';
+
+        head.appendChild(ver);
+        head.appendChild(date);
+        item.appendChild(head);
+
+        if (rel.summary) {
+          const summary = document.createElement('div');
+          summary.className = 'history-summary';
+          summary.textContent = rel.summary;
+          item.appendChild(summary);
+        }
+
+        if (rel.features && rel.features.length > 0) {
+          const ul = document.createElement('ul');
+          ul.className = 'history-features-list';
+          rel.features.forEach(feat => {
+            const li = document.createElement('li');
+            li.textContent = feat;
+            ul.appendChild(li);
+          });
+          item.appendChild(ul);
+        }
+
+        historyList.appendChild(item);
+      });
+    }
+  }
+};
+
+if (typeof window !== 'undefined') {
+  window.TasklyUpdateManager = TasklyUpdateManager;
 }
 
 // ==========================================================================
@@ -3847,8 +5595,8 @@ function setupEventListeners() {
   const btnDeskTheme = document.getElementById('btn-desktop-theme');
   if (btnDeskTheme) {
     btnDeskTheme.addEventListener('click', () => {
-      const cycle = { pet: 'day', day: 'pastel', pastel: 'pet' };
-      const nextTheme = cycle[state.theme] || 'pet';
+      const cycle = { light: 'dark', dark: 'pet', pet: 'pastel', pastel: 'light', day: 'dark' };
+      const nextTheme = cycle[state.theme] || 'light';
       applyTheme(nextTheme);
     });
   }
@@ -4075,10 +5823,54 @@ function setupEventListeners() {
     btnRemoveNoteReminder.addEventListener('click', handleRemoveNoteReminder);
   }
 
+  // FAQ Modal Navigation & Real-time Search
+  const modalFaq = document.getElementById('modal-faq');
+  const btnCloseFaqModal = document.getElementById('btn-close-faq-modal');
+  const btnCloseFaqOk = document.getElementById('btn-close-faq-ok');
+  const faqSearchInput = document.getElementById('faq-search-input');
+  const btnClearFaqSearch = document.getElementById('btn-clear-faq-search');
+
   if (menuFaq) {
     menuFaq.addEventListener('click', () => {
-      const modalAbout = document.getElementById('modal-about');
-      if (modalAbout) modalAbout.classList.add('active');
+      if (modalFaq) {
+        modalFaq.classList.add('active');
+        if (faqSearchInput) {
+          faqSearchInput.value = '';
+          filterFaqItems('');
+        }
+      }
+    });
+  }
+  if (btnCloseFaqModal) {
+    btnCloseFaqModal.addEventListener('click', () => {
+      if (modalFaq) modalFaq.classList.remove('active');
+    });
+  }
+  if (btnCloseFaqOk) {
+    btnCloseFaqOk.addEventListener('click', () => {
+      if (modalFaq) modalFaq.classList.remove('active');
+    });
+  }
+  if (modalFaq) {
+    modalFaq.addEventListener('click', (e) => {
+      if (e.target === modalFaq) {
+        modalFaq.classList.remove('active');
+      }
+    });
+  }
+
+  if (faqSearchInput) {
+    faqSearchInput.addEventListener('input', (e) => {
+      filterFaqItems(e.target.value);
+    });
+  }
+  if (btnClearFaqSearch) {
+    btnClearFaqSearch.addEventListener('click', () => {
+      if (faqSearchInput) {
+        faqSearchInput.value = '';
+        faqSearchInput.focus();
+        filterFaqItems('');
+      }
     });
   }
 
@@ -4137,6 +5929,75 @@ function setupEventListeners() {
     editTimeInput.addEventListener('change', syncEditTime);
   }
 
+  // Custom Category Listeners (Add Task & Edit Task)
+  const btnSaveNewCustom = document.getElementById('btn-save-new-custom-category');
+  const btnCancelNewCustom = document.getElementById('btn-cancel-new-custom-category');
+  const inputNewCustom = document.getElementById('input-new-custom-category');
+  const addCustomRow = document.getElementById('add-custom-category-input-row');
+
+  if (btnSaveNewCustom && inputNewCustom) {
+    btnSaveNewCustom.addEventListener('click', () => {
+      try {
+        const saved = saveCustomCategory(inputNewCustom.value);
+        syncCustomCategoriesToDOM(saved);
+        inputNewCustom.value = '';
+        if (addCustomRow) addCustomRow.style.display = 'none';
+      } catch (err) {
+        alert(err.message || 'Could not save category.');
+      }
+    });
+  }
+
+  if (btnCancelNewCustom && addCustomRow) {
+    btnCancelNewCustom.addEventListener('click', () => {
+      addCustomRow.style.display = 'none';
+    });
+  }
+
+  const editCatSelect = document.getElementById('edit-task-category');
+  const editCustomRow = document.getElementById('edit-custom-category-input-row');
+  const editCustomInput = document.getElementById('input-edit-new-custom-category');
+  const btnSaveEditCustom = document.getElementById('btn-save-edit-custom-category');
+  const btnCancelEditCustom = document.getElementById('btn-cancel-edit-custom-category');
+
+  if (editCatSelect) {
+    editCatSelect.addEventListener('change', () => {
+      if (editCatSelect.value === '__new_custom__') {
+        if (editCustomRow) {
+          editCustomRow.style.display = 'flex';
+          if (editCustomInput) {
+            editCustomInput.value = '';
+            editCustomInput.focus();
+          }
+        }
+      } else if (editCustomRow) {
+        editCustomRow.style.display = 'none';
+      }
+    });
+  }
+
+  if (btnSaveEditCustom && editCustomInput && editCatSelect) {
+    btnSaveEditCustom.addEventListener('click', () => {
+      try {
+        const saved = saveCustomCategory(editCustomInput.value);
+        syncCustomCategoriesToDOM(saved);
+        if (editCustomRow) editCustomRow.style.display = 'none';
+      } catch (err) {
+        alert(err.message || 'Could not save category.');
+      }
+    });
+  }
+
+  if (btnCancelEditCustom && editCustomRow && editCatSelect) {
+    btnCancelEditCustom.addEventListener('click', () => {
+      editCustomRow.style.display = 'none';
+      editCatSelect.value = 'Personal';
+    });
+  }
+
+  // Initial Custom Categories DOM Sync
+  syncCustomCategoriesToDOM();
+
   // Progress Timeframe Segmented Control
   document.querySelectorAll('#progress-timeframe-filter .seg-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -4158,6 +6019,11 @@ function setupEventListeners() {
   function openEditModal() {
     const editName = document.getElementById('edit-name');
     const editAge = document.getElementById('edit-age');
+    const editEmail = document.getElementById('edit-email');
+    if (editEmail) {
+      const isPreview = Boolean(state.isPreviewSession && isLocalPreview());
+      editEmail.value = isPreview ? 'preview@local.test' : (state.user.email || '');
+    }
     if (editName) editName.value = state.user.name || 'User';
     if (editAge) editAge.value = state.user.age || 18;
     if (modalEdit) modalEdit.classList.add('active');
@@ -4201,31 +6067,44 @@ function setupEventListeners() {
   if (formEditTask) {
     formEditTask.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const idInput = document.getElementById('edit-task-id');
-      const titleInput = document.getElementById('edit-task-title');
-      const descInput = document.getElementById('edit-task-desc');
-      const dateInput = document.getElementById('edit-task-date');
-      const priorityInput = document.getElementById('edit-task-priority');
-      const catInput = document.getElementById('edit-task-category');
+      const saveBtn = formEditTask.querySelector('button[type="submit"]') || document.getElementById('btn-save-edit-task');
+      if (saveBtn) {
+        if (saveBtn.disabled) return;
+        saveBtn.disabled = true;
+      }
 
-      const id = idInput ? idInput.value : null;
-      const title = titleInput ? titleInput.value.trim() : '';
-      if (!id || !title) return;
+      try {
+        const idInput = document.getElementById('edit-task-id');
+        const titleInput = document.getElementById('edit-task-title');
+        const descInput = document.getElementById('edit-task-desc');
+        const dateInput = document.getElementById('edit-task-date');
+        const priorityInput = document.getElementById('edit-task-priority');
+        const catInput = document.getElementById('edit-task-category');
 
-      const timeInput = document.getElementById('edit-task-time');
-      const timeVal = (timeInput && timeInput.value) ? formatTime24To12(timeInput.value) : null;
+        const id = idInput ? idInput.value : null;
+        const title = titleInput ? titleInput.value.trim() : '';
+        if (!id || !title) return;
 
-      const updates = {
-        title,
-        description: descInput ? descInput.value.trim() : '',
-        dueDate: dateInput && dateInput.value ? dateInput.value : null,
-        time: timeVal,
-        priority: priorityInput ? priorityInput.value : 'Medium',
-        category: catInput ? catInput.value : 'Personal'
-      };
+        const timeInput = document.getElementById('edit-task-time');
+        const timeVal = (timeInput && timeInput.value) ? formatTime24To12(timeInput.value) : null;
+        const reminderInput = document.getElementById('edit-task-reminder');
+        const reminderVal = Boolean(reminderInput ? reminderInput.checked : false);
 
-      await updateTask(id, updates);
-      closeEditTaskModal();
+        const updates = {
+          title,
+          description: descInput ? descInput.value.trim() : '',
+          dueDate: dateInput && dateInput.value ? dateInput.value : null,
+          time: timeVal,
+          priority: priorityInput ? priorityInput.value : 'Medium',
+          category: catInput ? catInput.value : 'Personal',
+          reminder: reminderVal
+        };
+
+        await updateTask(id, updates);
+        closeEditTaskModal();
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     });
   }
 
@@ -4233,13 +6112,27 @@ function setupEventListeners() {
   const modalTheme = document.getElementById('modal-theme');
   const btnToggleTheme = document.getElementById('btn-toggle-theme');
   const btnCloseThemeModal = document.getElementById('btn-close-theme-modal');
+  const btnExploreModes = document.getElementById('btn-explore-modes');
+  const themeMoreSection = document.getElementById('theme-more-section');
+  const optLight = document.getElementById('theme-choice-light');
+  const optDay = document.getElementById('theme-choice-day');
+  const optDark = document.getElementById('theme-choice-dark');
   const optPet = document.getElementById('theme-choice-pet');
   const optPastel = document.getElementById('theme-choice-pastel');
-  const optDay = document.getElementById('theme-choice-day');
 
   if (btnToggleTheme) {
     btnToggleTheme.addEventListener('click', () => {
       if (modalTheme) modalTheme.classList.add('active');
+      // If user currently has an additional theme active, ensure it is visible in expanded section
+      if (state.theme === 'pet' || state.theme === 'pastel') {
+        if (themeMoreSection && btnExploreModes) {
+          btnExploreModes.setAttribute('aria-expanded', 'true');
+          btnExploreModes.classList.add('expanded');
+          themeMoreSection.style.display = 'block';
+          const iconEl = btnExploreModes.querySelector('.explore-btn-icon');
+          if (iconEl) iconEl.textContent = '▴';
+        }
+      }
     });
   }
   if (btnCloseThemeModal) {
@@ -4254,24 +6147,30 @@ function setupEventListeners() {
       }
     });
   }
-  if (optPet) {
-    optPet.addEventListener('click', () => {
-      applyTheme('pet');
-      if (modalTheme) modalTheme.classList.remove('active');
+
+  // Explore More Modes toggle button
+  if (btnExploreModes && themeMoreSection) {
+    btnExploreModes.addEventListener('click', () => {
+      const isExpanded = btnExploreModes.getAttribute('aria-expanded') === 'true';
+      const willExpand = !isExpanded;
+      btnExploreModes.setAttribute('aria-expanded', String(willExpand));
+      btnExploreModes.classList.toggle('expanded', willExpand);
+      themeMoreSection.style.display = willExpand ? 'block' : 'none';
+      const iconEl = btnExploreModes.querySelector('.explore-btn-icon');
+      if (iconEl) iconEl.textContent = willExpand ? '▴' : '▾';
     });
   }
-  if (optPastel) {
-    optPastel.addEventListener('click', () => {
-      applyTheme('pastel');
-      if (modalTheme) modalTheme.classList.remove('active');
-    });
-  }
-  if (optDay) {
-    optDay.addEventListener('click', () => {
-      applyTheme('day');
-      if (modalTheme) modalTheme.classList.remove('active');
-    });
-  }
+
+  const selectThemeOption = (themeName) => {
+    applyTheme(themeName);
+    if (modalTheme) modalTheme.classList.remove('active');
+  };
+
+  if (optLight) optLight.addEventListener('click', () => selectThemeOption('light'));
+  if (optDay && optDay !== optLight) optDay.addEventListener('click', () => selectThemeOption('day'));
+  if (optDark) optDark.addEventListener('click', () => selectThemeOption('dark'));
+  if (optPet) optPet.addEventListener('click', () => selectThemeOption('pet'));
+  if (optPastel) optPastel.addEventListener('click', () => selectThemeOption('pastel'));
 
   // Onboarding Tour in Profile
   const btnOpenTour = document.getElementById('btn-open-tour');
@@ -4282,41 +6181,343 @@ function setupEventListeners() {
     });
   }
 
-  // About Modal
+  // About Taskly Modal
+  const menuAbout = document.getElementById('menu-about');
   const btnOpenAbout = document.getElementById('btn-open-about');
   const modalAbout = document.getElementById('modal-about');
   const btnCloseAbout = document.getElementById('btn-close-about-modal');
   const btnCloseAboutOk = document.getElementById('btn-close-about-ok');
 
-  if (btnOpenAbout) btnOpenAbout.addEventListener('click', () => modalAbout.classList.add('active'));
-  if (btnCloseAbout) btnCloseAbout.addEventListener('click', () => modalAbout.classList.remove('active'));
-  if (btnCloseAboutOk) btnCloseAboutOk.addEventListener('click', () => modalAbout.classList.remove('active'));
+  function openAboutModal() {
+    if (modalAbout) modalAbout.classList.add('active');
+  }
+  function closeAboutModal() {
+    if (modalAbout) modalAbout.classList.remove('active');
+  }
 
-  // Log Out / Reset Profile
-  const btnLogout = document.getElementById('btn-logout');
-  if (btnLogout) {
-    btnLogout.addEventListener('click', async () => {
-      if (confirm('Are you sure you want to log out of Taskly?')) {
-        if (supabaseClient) {
-          try {
-            await supabaseClient.auth.signOut();
-          } catch (err) {
-            console.warn('Sign out warning:', err);
-          }
-        }
-        syncAuthSignOut();
-        state.user.name = 'User';
-        state.user.age = 18;
-        try {
-          localStorage.removeItem('taskly_user');
-          localStorage.removeItem('taskly_onboarding_step');
-          if (typeof history !== 'undefined') {
-            history.replaceState(null, '', '#profile-setup');
-          }
-        } catch (_) {}
-        showOnboardingStep('profile-setup', false);
-      }
+  if (menuAbout) menuAbout.addEventListener('click', openAboutModal);
+  if (btnOpenAbout) btnOpenAbout.addEventListener('click', openAboutModal);
+  if (btnCloseAbout) btnCloseAbout.addEventListener('click', closeAboutModal);
+  if (btnCloseAboutOk) btnCloseAboutOk.addEventListener('click', closeAboutModal);
+  if (modalAbout) {
+    modalAbout.addEventListener('click', (e) => {
+      if (e.target === modalAbout) closeAboutModal();
     });
+  }
+
+  // Version & Updates Modal
+  const menuVersion = document.getElementById('menu-version');
+  const btnOpenVersion = document.getElementById('btn-open-version');
+  const modalVersion = document.getElementById('modal-version');
+  const btnCloseVersion = document.getElementById('btn-close-version-modal');
+  const btnCloseVersionOk = document.getElementById('btn-close-version-ok');
+  const btnCheckUpdates = document.getElementById('btn-check-updates');
+  const btnUpdateNow = document.getElementById('btn-update-now');
+  const btnCancelDownload = document.getElementById('btn-cancel-download');
+  const btnToggleVersionHistory = document.getElementById('btn-toggle-version-history');
+
+  if (menuVersion) menuVersion.addEventListener('click', () => TasklyUpdateManager.openModal());
+  if (btnOpenVersion) btnOpenVersion.addEventListener('click', () => TasklyUpdateManager.openModal());
+  if (btnCloseVersion) btnCloseVersion.addEventListener('click', () => TasklyUpdateManager.closeModal());
+  if (btnCloseVersionOk) btnCloseVersionOk.addEventListener('click', () => TasklyUpdateManager.closeModal());
+  if (btnCheckUpdates) btnCheckUpdates.addEventListener('click', () => TasklyUpdateManager.checkForUpdates(true));
+  if (btnUpdateNow) btnUpdateNow.addEventListener('click', () => TasklyUpdateManager.startUpdate());
+  if (btnCancelDownload) btnCancelDownload.addEventListener('click', () => TasklyUpdateManager.cancelDownload());
+  if (btnToggleVersionHistory) btnToggleVersionHistory.addEventListener('click', () => TasklyUpdateManager.toggleHistory());
+  if (modalVersion) {
+    modalVersion.addEventListener('click', (e) => {
+      if (e.target === modalVersion) TasklyUpdateManager.closeModal();
+    });
+  }
+
+  // Change Password Modal
+  const menuChangePassword = document.getElementById('menu-change-password');
+  const modalChangePassword = document.getElementById('modal-change-password');
+  const btnCloseChangePassword = document.getElementById('btn-close-change-password-modal');
+  const btnCancelChangePassword = document.getElementById('btn-cancel-change-password');
+  const formChangePassword = document.getElementById('form-change-password');
+
+  if (menuChangePassword) menuChangePassword.addEventListener('click', openChangePasswordModal);
+  if (btnCloseChangePassword) btnCloseChangePassword.addEventListener('click', closeChangePasswordModal);
+  if (btnCancelChangePassword) btnCancelChangePassword.addEventListener('click', closeChangePasswordModal);
+  if (formChangePassword) formChangePassword.addEventListener('submit', handleChangePassword);
+  if (modalChangePassword) {
+    modalChangePassword.addEventListener('click', (e) => {
+      if (e.target === modalChangePassword) closeChangePasswordModal();
+    });
+  }
+
+  wirePasswordToggle('btn-toggle-current-password', 'input-current-password');
+  wirePasswordToggle('btn-toggle-new-password', 'input-new-password');
+  wirePasswordToggle('btn-toggle-confirm-password', 'input-confirm-password');
+
+  // Log Out / Confirmation Modal
+  const btnLogout = document.getElementById('btn-logout');
+  const modalLogout = document.getElementById('modal-logout-confirm');
+  const btnCancelLogout = document.getElementById('btn-cancel-logout');
+  const btnConfirmLogout = document.getElementById('btn-confirm-logout');
+
+  if (btnLogout) btnLogout.addEventListener('click', openLogoutModal);
+  if (btnCancelLogout) btnCancelLogout.addEventListener('click', closeLogoutModal);
+  if (btnConfirmLogout) btnConfirmLogout.addEventListener('click', handleConfirmLogout);
+  if (modalLogout) {
+    modalLogout.addEventListener('click', (e) => {
+      if (e.target === modalLogout) closeLogoutModal();
+    });
+  }
+
+  // Delete Custom Category Confirmation Modal
+  const modalDeleteCat = document.getElementById('modal-delete-category-confirm');
+  const btnCancelDeleteCat = document.getElementById('btn-cancel-delete-category');
+  const btnConfirmDeleteCat = document.getElementById('btn-confirm-delete-category');
+
+  if (btnCancelDeleteCat) btnCancelDeleteCat.addEventListener('click', closeDeleteCategoryModal);
+  if (btnConfirmDeleteCat) btnConfirmDeleteCat.addEventListener('click', handleConfirmDeleteCategory);
+  if (modalDeleteCat) {
+    modalDeleteCat.addEventListener('click', (e) => {
+      if (e.target === modalDeleteCat) closeDeleteCategoryModal();
+    });
+  }
+}
+
+// ==========================================================================
+// Change Password & Logout Confirmation Handlers
+// ==========================================================================
+
+function wirePasswordToggle(buttonId, inputId) {
+  const btn = document.getElementById(buttonId);
+  const input = document.getElementById(inputId);
+  if (!btn || !input) return;
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+
+    const eyeIcon = btn.querySelector('.icon-eye');
+    const eyeOffIcon = btn.querySelector('.icon-eye-off');
+    if (eyeIcon && eyeOffIcon) {
+      eyeIcon.style.display = isPassword ? 'none' : 'block';
+      eyeOffIcon.style.display = isPassword ? 'block' : 'none';
+    }
+    const label = isPassword ? 'Hide password' : 'Show password';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+  });
+}
+
+function openChangePasswordModal() {
+  const modal = document.getElementById('modal-change-password');
+  const errorBanner = document.getElementById('change-password-error');
+  const successBanner = document.getElementById('change-password-success');
+  const currentPwdInput = document.getElementById('input-current-password');
+  const newPwdInput = document.getElementById('input-new-password');
+  const confirmPwdInput = document.getElementById('input-confirm-password');
+
+  if (errorBanner) { errorBanner.style.display = 'none'; errorBanner.textContent = ''; }
+  if (successBanner) { successBanner.style.display = 'none'; successBanner.textContent = ''; }
+  if (currentPwdInput) currentPwdInput.value = '';
+  if (newPwdInput) newPwdInput.value = '';
+  if (confirmPwdInput) confirmPwdInput.value = '';
+
+  if (modal) modal.classList.add('active');
+}
+
+function closeChangePasswordModal() {
+  const modal = document.getElementById('modal-change-password');
+  const currentPwdInput = document.getElementById('input-current-password');
+  const newPwdInput = document.getElementById('input-new-password');
+  const confirmPwdInput = document.getElementById('input-confirm-password');
+  const errorBanner = document.getElementById('change-password-error');
+  const successBanner = document.getElementById('change-password-success');
+
+  if (currentPwdInput) currentPwdInput.value = '';
+  if (newPwdInput) newPwdInput.value = '';
+  if (confirmPwdInput) confirmPwdInput.value = '';
+  if (errorBanner) { errorBanner.style.display = 'none'; errorBanner.textContent = ''; }
+  if (successBanner) { successBanner.style.display = 'none'; successBanner.textContent = ''; }
+
+  if (modal) modal.classList.remove('active');
+}
+
+let isUpdatingPassword = false;
+
+async function handleChangePassword(e) {
+  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  if (isUpdatingPassword) return;
+
+  const currentPwdInput = document.getElementById('input-current-password');
+  const newPwdInput = document.getElementById('input-new-password');
+  const confirmPwdInput = document.getElementById('input-confirm-password');
+  const errorBanner = document.getElementById('change-password-error');
+  const successBanner = document.getElementById('change-password-success');
+  const submitBtn = document.getElementById('btn-submit-change-password');
+
+  const hideBanners = () => {
+    if (errorBanner) { errorBanner.style.display = 'none'; errorBanner.textContent = ''; }
+    if (successBanner) { successBanner.style.display = 'none'; successBanner.textContent = ''; }
+  };
+  const showError = (msg) => {
+    if (errorBanner) {
+      errorBanner.style.display = 'flex';
+      errorBanner.textContent = msg;
+    }
+  };
+  const showSuccess = (msg) => {
+    if (successBanner) {
+      successBanner.style.display = 'flex';
+      successBanner.textContent = msg;
+    }
+  };
+
+  hideBanners();
+
+  const currentPassword = currentPwdInput ? currentPwdInput.value : '';
+  const newPassword = newPwdInput ? newPwdInput.value : '';
+  const confirmPassword = confirmPwdInput ? confirmPwdInput.value : '';
+
+  // Step 1: Require all three fields
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    showError('All three password fields are required.');
+    return;
+  }
+
+  // Step 2: Enforce sensible minimum password length of at least 8 characters
+  if (newPassword.length < 8) {
+    showError('New password must be at least 8 characters.');
+    return;
+  }
+
+  // Step 2: Check that the new password and confirmation password match
+  if (newPassword !== confirmPassword) {
+    showError('New password and confirmation do not match.');
+    return;
+  }
+
+  // Step 3: Reauthenticate and Update Password
+  isUpdatingPassword = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Updating...';
+  }
+
+  try {
+    let userEmail = state.user?.email;
+    if (!userEmail && supabaseClient && typeof supabaseClient.auth?.getUser === 'function') {
+      try {
+        const { data: userData } = await supabaseClient.auth.getUser();
+        if (userData?.user?.email) {
+          userEmail = userData.user.email;
+          state.user.email = userEmail;
+        }
+      } catch (_) {}
+    }
+
+    if (!userEmail) {
+      throw new Error('No authenticated user session found. Please sign in again.');
+    }
+
+    if (!supabaseClient || !supabaseClient.auth) {
+      throw new Error('Authentication service is currently unavailable.');
+    }
+
+    // Step 1 check with server: Verify current password against actual authenticated account
+    if (typeof supabaseClient.auth.signInWithPassword === 'function') {
+      const { data: signInData, error: signInError } = await supabaseClient.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword
+      });
+
+      if (signInError || !signInData || !signInData.user) {
+        showError('Your current password is incorrect.');
+        return;
+      }
+    }
+
+    // Step 3: Call updateUser with new password
+    if (typeof supabaseClient.auth.updateUser === 'function') {
+      const { data: updateData, error: updateError } = await supabaseClient.auth.updateUser({
+        password: newPassword
+      });
+
+      if (updateError) {
+        showError(updateError.message || 'Failed to update password. Please try again.');
+        return;
+      }
+    }
+
+    // Step 4: Confirm success
+    showSuccess('Your password has been updated successfully.');
+
+    // Clear all password inputs immediately
+    if (currentPwdInput) currentPwdInput.value = '';
+    if (newPwdInput) newPwdInput.value = '';
+    if (confirmPwdInput) confirmPwdInput.value = '';
+
+    setTimeout(() => {
+      closeChangePasswordModal();
+    }, 1500);
+
+  } catch (err) {
+    showError(err.message || 'An unexpected error occurred while updating your password.');
+  } finally {
+    isUpdatingPassword = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Update Password';
+    }
+  }
+}
+
+function openLogoutModal() {
+  const modal = document.getElementById('modal-logout-confirm');
+  if (modal) modal.classList.add('active');
+}
+
+function closeLogoutModal() {
+  const modal = document.getElementById('modal-logout-confirm');
+  if (modal) modal.classList.remove('active');
+}
+
+let isLoggingOut = false;
+
+async function handleConfirmLogout() {
+  if (isLoggingOut) return;
+  isLoggingOut = true;
+
+  const btnConfirm = document.getElementById('btn-confirm-logout');
+  if (btnConfirm) {
+    btnConfirm.disabled = true;
+    btnConfirm.textContent = 'Logging out...';
+  }
+
+  try {
+    if (supabaseClient) {
+      try {
+        await supabaseClient.auth.signOut();
+      } catch (err) {
+        console.warn('Sign out warning:', err);
+      }
+    }
+    syncAuthSignOut();
+    state.user.name = 'User';
+    state.user.age = 18;
+    state.user.email = '';
+    try {
+      localStorage.removeItem('taskly_user');
+      localStorage.removeItem('taskly_onboarding_step');
+      if (typeof history !== 'undefined') {
+        history.replaceState(null, '', '#profile-setup');
+      }
+    } catch (_) {}
+    closeLogoutModal();
+    showOnboardingStep('profile-setup', false);
+  } finally {
+    isLoggingOut = false;
+    if (btnConfirm) {
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = 'Yes, Log Out';
+    }
   }
 }
 
@@ -4396,6 +6597,25 @@ if (typeof module !== 'undefined' && module.exports) {
     getRoundedLocalTime,
     initAddTaskDateTime,
     handleAddTask,
+    setupAndroidKeyboardAndViewportHandlers,
+    TasklyWorkloadEngine,
+    TaskCategoryColors,
+    getTaskCategoryConfig,
+    getStoredCustomCategories,
+    saveCustomCategory,
+    deleteCustomCategory,
+    openDeleteCategoryModal,
+    closeDeleteCategoryModal,
+    handleConfirmDeleteCategory,
+    syncCustomCategoriesToDOM,
+    openLogoutModal,
+    closeLogoutModal,
+    handleConfirmLogout,
+    openChangePasswordModal,
+    closeChangePasswordModal,
+    handleChangePassword,
+    wirePasswordToggle,
+    TasklyUpdateManager,
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };

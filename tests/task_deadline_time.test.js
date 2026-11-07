@@ -326,9 +326,9 @@ describe('Taskly Task Deadline Date & Time Input Suite', () => {
 
       // Should have 3 notifications: approaching, reached, overdue
       assert.strictEqual(scheduledRecords.length, 3);
-      assert.ok(scheduledRecords.some(n => n.title.includes('approaching')));
-      assert.ok(scheduledRecords.some(n => n.title.includes('reached')));
-      assert.ok(scheduledRecords.some(n => n.title.includes('in progress') || n.title.includes('overdue')));
+      assert.ok(scheduledRecords.some(n => n.title.includes('Reminder') || n.title.includes('approaching')));
+      assert.ok(scheduledRecords.some(n => n.title.includes('Deadline') || n.title.includes('reached')));
+      assert.ok(scheduledRecords.some(n => n.title.includes('in progress') || n.title.includes('overdue') || n.title.includes('Overdue')));
     });
 
     test('Completed tasks do not schedule notifications', async () => {

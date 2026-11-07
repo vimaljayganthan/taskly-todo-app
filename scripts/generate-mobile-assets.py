@@ -2,7 +2,7 @@
 """
 Taskly Mobile Asset Generator
 Generates native App Icons and Splash Screens for Android and iOS Capacitor projects
-using Taskly's Aerodynamic Paper Plane, Crimson Red (#ef4444) and Emerald Green (#10b981) brand identity.
+using Taskly's approved Cat & Dog mascot brand identity on #FCEFDF warm cream background.
 """
 
 import os

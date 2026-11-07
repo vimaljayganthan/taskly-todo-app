@@ -99,84 +99,122 @@ describe('Taskly Theme System Suite (Pastel Light & Day Theme)', () => {
     delete global.localStorage;
   });
 
-  test('1. Default theme is pet for new users without stored preference', () => {
+  test('1. Default theme is Light Mode for new users without stored preference', () => {
     mockStorage = {};
     clientApp.loadStoredPreferences();
-    assert.strictEqual(clientApp.state.theme, 'pet');
+    assert.strictEqual(clientApp.state.theme, 'light');
   });
 
-  test('1b. applyTheme("pet") activates Pet Theme and persists to localStorage', () => {
+  test('1b. applyTheme("light") activates Light Mode and persists to localStorage', () => {
+    clientApp.applyTheme('light');
+    assert.strictEqual(clientApp.state.theme, 'light');
+    assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'light');
+    assert.strictEqual(mockLocalStorage.getItem('taskly_theme'), 'light');
+
+    const themeLabel = getMockElement('theme-display-val');
+    assert.strictEqual(themeLabel.textContent, 'Light Mode ›');
+  });
+
+  test('2. applyTheme("dark") activates Dark Mode and persists to localStorage', () => {
+    clientApp.applyTheme('dark');
+    assert.strictEqual(clientApp.state.theme, 'dark');
+    assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'dark');
+    assert.strictEqual(mockLocalStorage.getItem('taskly_theme'), 'dark');
+
+    const themeLabel = getMockElement('theme-display-val');
+    assert.strictEqual(themeLabel.textContent, 'Dark Mode ›');
+  });
+
+  test('3. applyTheme("pet") activates Pet Mode and persists to localStorage', () => {
     clientApp.applyTheme('pet');
     assert.strictEqual(clientApp.state.theme, 'pet');
     assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'pet');
     assert.strictEqual(mockLocalStorage.getItem('taskly_theme'), 'pet');
 
     const themeLabel = getMockElement('theme-display-val');
-    assert.strictEqual(themeLabel.textContent, 'Pet Theme ›');
+    assert.strictEqual(themeLabel.textContent, 'Pet Mode ›');
   });
 
-  test('2. applyTheme("day") activates Day Theme and persists to localStorage', () => {
-    clientApp.applyTheme('day');
-    assert.strictEqual(clientApp.state.theme, 'day');
-    assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'day');
-    assert.strictEqual(mockLocalStorage.getItem('taskly_theme'), 'day');
-
-    const themeLabel = getMockElement('theme-display-val');
-    assert.strictEqual(themeLabel.textContent, 'Day Theme ›');
-  });
-
-  test('3. applyTheme("pastel") activates Pastel Light and persists to localStorage', () => {
+  test('4. applyTheme("pastel") activates Pastel Light Mode and persists to localStorage', () => {
     clientApp.applyTheme('pastel');
     assert.strictEqual(clientApp.state.theme, 'pastel');
     assert.strictEqual(global.document.documentElement.getAttribute('data-theme'), 'pastel');
     assert.strictEqual(mockLocalStorage.getItem('taskly_theme'), 'pastel');
 
     const themeLabel = getMockElement('theme-display-val');
-    assert.strictEqual(themeLabel.textContent, 'Pastel Light ›');
+    assert.strictEqual(themeLabel.textContent, 'Pastel Light Mode ›');
   });
 
-  test('4. loadStoredPreferences() restores previously saved Day Theme', () => {
+  test('5. loadStoredPreferences() restores previously saved themes (Light, Dark, Pet, Pastel, and legacy Day)', () => {
+    mockLocalStorage.setItem('taskly_theme', 'light');
+    clientApp.loadStoredPreferences();
+    assert.strictEqual(clientApp.state.theme, 'light');
+
+    mockLocalStorage.setItem('taskly_theme', 'dark');
+    clientApp.loadStoredPreferences();
+    assert.strictEqual(clientApp.state.theme, 'dark');
+
+    mockLocalStorage.setItem('taskly_theme', 'pet');
+    clientApp.loadStoredPreferences();
+    assert.strictEqual(clientApp.state.theme, 'pet');
+
+    mockLocalStorage.setItem('taskly_theme', 'pastel');
+    clientApp.loadStoredPreferences();
+    assert.strictEqual(clientApp.state.theme, 'pastel');
+
     mockLocalStorage.setItem('taskly_theme', 'day');
     clientApp.loadStoredPreferences();
     assert.strictEqual(clientApp.state.theme, 'day');
   });
 
-  test('4b. loadStoredPreferences() restores previously saved Pet Theme', () => {
-    mockLocalStorage.setItem('taskly_theme', 'pet');
+  test('6. loadStoredPreferences() falls back safely to Light Mode for unknown themes', () => {
+    mockLocalStorage.setItem('taskly_theme', 'unknown-theme-xyz');
     clientApp.loadStoredPreferences();
-    assert.strictEqual(clientApp.state.theme, 'pet');
+    assert.strictEqual(clientApp.state.theme, 'light');
   });
 
-  test('5. loadStoredPreferences() falls back safely to pet for unknown themes', () => {
-    mockLocalStorage.setItem('taskly_theme', 'unknown-dark-mode');
-    clientApp.loadStoredPreferences();
-    assert.strictEqual(clientApp.state.theme, 'pet');
-  });
-
-  test('6. Legacy "light" preference safely resolves to pastel', () => {
-    mockLocalStorage.setItem('taskly_theme', 'light');
-    clientApp.loadStoredPreferences();
-    assert.strictEqual(clientApp.state.theme, 'pastel');
-  });
-
-  test('7. Meta theme color adapts to active section in Day Theme, Pastel Theme, and Pet Theme', () => {
+  test('7. Meta theme color adapts to active section in Light Mode, Dark Mode, Pastel Light Mode, and Pet Mode', () => {
     const metaTheme = getMockElement('meta-theme-color');
     clientApp.state.activeTab = 'calendar';
-    clientApp.applyTheme('day');
+    clientApp.applyTheme('light');
     assert.strictEqual(metaTheme.getAttribute('content'), '#FFE1E7');
 
     clientApp.state.activeTab = 'progress';
-    clientApp.applyTheme('day');
+    clientApp.applyTheme('light');
     assert.strictEqual(metaTheme.getAttribute('content'), '#FFF1B8');
 
     clientApp.state.activeTab = 'home';
-    clientApp.applyTheme('day');
+    clientApp.applyTheme('light');
     assert.strictEqual(metaTheme.getAttribute('content'), '#38BDF8');
+
+    clientApp.applyTheme('dark');
+    assert.strictEqual(metaTheme.getAttribute('content'), '#121820');
 
     clientApp.applyTheme('pastel');
     assert.strictEqual(metaTheme.getAttribute('content'), '#F5F3FF');
 
     clientApp.applyTheme('pet');
     assert.strictEqual(metaTheme.getAttribute('content'), '#FDF1EA');
+  });
+
+  test('8. Theme selector options update active class correctly for all 4 themes', () => {
+    const optLight = getMockElement('theme-choice-light');
+    const optDark = getMockElement('theme-choice-dark');
+    const optPet = getMockElement('theme-choice-pet');
+    const optPastel = getMockElement('theme-choice-pastel');
+
+    clientApp.applyTheme('light');
+    assert.strictEqual(optLight.classList.contains('active'), true);
+    assert.strictEqual(optDark.classList.contains('active'), false);
+
+    clientApp.applyTheme('dark');
+    assert.strictEqual(optLight.classList.contains('active'), false);
+    assert.strictEqual(optDark.classList.contains('active'), true);
+
+    clientApp.applyTheme('pet');
+    assert.strictEqual(optPet.classList.contains('active'), true);
+
+    clientApp.applyTheme('pastel');
+    assert.strictEqual(optPastel.classList.contains('active'), true);
   });
 });

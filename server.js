@@ -66,6 +66,11 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : '0'
 }));
 
+// Centralized Version Update Manifest Endpoint (no-cache to ensure immediate updates)
+app.use('/releases', express.static(path.join(__dirname, 'releases'), {
+  maxAge: '0'
+}));
+
 // Dedicated Email Confirmation Success Page
 app.get(['/auth/confirmed', '/auth/confirmed.html'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'auth', 'confirmed.html'));

@@ -1,15 +1,26 @@
 {
-  "latestVersion": "1.4.0",
-  "versionCode": 5,
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.4.0/taskly-v1.4.0.apk",
-  "releaseNotes": "Taskly v1.4.0 brings the all-new Cat & Dog brand identity, dynamic calendar priority workload colors, custom category management with safe task reassignment, and cute cat meow deadline reminders.",
+  "latestVersion": "1.5.0",
+  "versionCode": 6,
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.5.0/taskly-v1.5.0.apk",
+  "releaseNotes": "Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.",
   "releaseDate": "2026-11-07",
   "minimumSupportedVersion": "1.0.0",
-  "fileSize": "18.1 MB",
-  "fileSizeBytes": 19018346,
-  "sha256": "4a64f7243833737eaae447258ba35be46cc70336e4e4659856de0d9b6d1dbcbb",
+  "fileSize": "17.0 MB",
+  "fileSizeBytes": 17843796,
+  "sha256": "91e24ff92428e3a296a5ed7dbea1e00ff91f9dd064dc8248e27525020f3726d5",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "1.5.0",
+      "versionCode": 6,
+      "releaseDate": "2026-11-07",
+      "summary": "Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.",
+      "features": [
+        "Approved production release"
+      ],
+      "improvements": [],
+      "fixes": []
+    },
     {
       "version": "1.4.0",
       "versionCode": 5,

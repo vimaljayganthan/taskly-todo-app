@@ -10,7 +10,7 @@
       "launchShowDuration": 1800,
       "launchAutoHide": true,
       "launchFadeOutDuration": 300,
-      "backgroundColor": "#ffffff",
+      "backgroundColor": "#FCEFDF",
       "androidSplashResourceName": "splash",
       "androidScaleType": "CENTER_CROP",
       "showSpinner": false
@@ -25,9 +25,9 @@
       "resizeOnFullScreen": true
     },
     "LocalNotifications": {
-      "smallIcon": "ic_launcher_round",
+      "smallIcon": "ic_stat_paw",
       "iconColor": "#F88438",
-      "sound": "beep.wav"
+      "sound": "taskly_meow.wav"
     }
   }
 }
