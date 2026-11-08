@@ -363,9 +363,9 @@ describe('Taskly In-App APK Update System Suite', () => {
       assert.ok(Array.isArray(MANIFEST_JSON.history), 'Must include history array');
     });
 
-    test('Current production manifest has valid versionCode (5 or 6)', () => {
+    test('Current production manifest has valid versionCode (>= 5) and valid version', () => {
       assert.ok(MANIFEST_JSON.versionCode >= 5);
-      assert.ok(MANIFEST_JSON.latestVersion.startsWith('1.'));
+      assert.ok(MANIFEST_JSON.latestVersion.startsWith('1.') || MANIFEST_JSON.latestVersion.startsWith('2.'));
     });
   });
 

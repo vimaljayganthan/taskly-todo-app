@@ -1,16 +1,54 @@
 {
-  "latestVersion": "1.9.0",
-  "versionCode": 10,
-  "title": "Smart Lists – Daily Routine Management",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.9.0/taskly-v1.9.0.apk",
-  "releaseNotes": "# Taskly v1.9.0 (Build 10) — Smart Lists\n\nIntroduced Smart Lists, a dedicated daily routine tracker with individual completion checkboxes, configurable summary notifications, carry-forward functionality, historical productivity reports, responsive paper layout, and seamless multi-theme integration.\n\n### What's New\n- **Daily Routine Management**: Simple routine creation, inline editing, and deletion with instant cloud synchronization.\n- **Individual Completion Tracking**: Interactive checkboxes with date-specific completion state and reactive day progress tracking.\n- **Configurable Daily Summary Notifications**: Automatic daily summary reminders (default 10:00 PM) scheduled via native Android Local Notifications.\n- **Paper-Style Productivity Reports**: Visual paper document showing completed routines, incomplete items, completion percentages, and closing encouragement.\n- **Carry-Forward Intelligence**: Option to carry forward incomplete routines into tomorrow's routine checklist or close them for today.\n- **Historical Reports**: Dedicated history viewer to review exact saved snapshots of past daily performance without recalculation.\n- **Responsive Mobile Layout**: 2-column statistics grid preventing horizontal overflow on all Android screen sizes.\n- **Four-Theme Support**: Full visual polish across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.\n- **UI Refinements**: Premium golden pill badge in Profile and a styled red destructive Delete confirmation button.",
+  "latestVersion": "2.0.0",
+  "versionCode": 11,
+  "title": "Taskly v2.0.0 – Build 11: Habit Streaks & Productivity Analytics",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.0.0/taskly-v2.0.0.apk",
+  "releaseNotes": "# Taskly v2.0.0 (Build 11) — Habit Streaks & Productivity Analytics\n\nIntroduced comprehensive habit streak tracking, robust 4-state routine lifecycle management (completed, pending, postponed, cancelled), intelligent carry-forward and next-day routine scheduling, streak reset safeguards, unified productivity analytics separating tasks from habits, and interactive in-app update announcements.\n\n### What's New\n- **Habit Streak Engine**: Intelligent habit tracking requiring an 80% daily qualification threshold to extend streaks, with current streak, longest streak, and consistency percentages.\n- **4-State Routine Lifecycle**: Complete state machine supporting Completed, Pending, Postponed (carried forward to tomorrow), and Cancelled routines with full audit integrity.\n- **Undo Cancellation**: Instantly restore erroneously cancelled routines back to pending, dynamically recalculating streak denominators without losing progress.\n- **Next-Day Routine Planning**: Dedicated tomorrow view allowing advance scheduling, viewing carried-forward items, and occurrence isolation without affecting recurring routines.\n- **Streak Reset Controls**: Dedicated reset modal with user confirmation to restart streak counters from zero while preserving routine definitions and historical task/routine analytics.\n- **Dedicated Productivity Analytics**: Clear separation between Task Analytics and Routine/Habit Analytics in the Progress tab, with responsive charts and rate indicators.\n- **In-App Update Announcements**: Native and web update modal highlighting new features upon upgrade, with notification duplicate prevention and permission guards.\n- **Four-Theme Visual Polish**: Pixel-perfect layout across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.",
   "releaseDate": "2026-11-08",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.7 MB",
-  "fileSizeBytes": 18539409,
-  "sha256": "e35b7bba033d7489497dca36d1f9ffb5debd80cf80a859e4f78e03cebae59cc3",
+  "fileSizeBytes": 18562521,
+  "sha256": "a1c39d5ec5b9c8c2133de89c98e7331fb682d1c64dbcbeab1654c2e567e8880a",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.0.0",
+      "versionName": "2.0.0",
+      "versionCode": 11,
+      "releaseDate": "2026-11-08",
+      "title": "Taskly v2.0.0 – Build 11: Habit Streaks & Productivity Analytics",
+      "summary": "# Taskly v2.0.0 (Build 11) — Habit Streaks & Productivity Analytics\n\nIntroduced comprehensive habit streak tracking, robust 4-state routine lifecycle management (completed, pending, postponed, cancelled), intelligent carry-forward and next-day routine scheduling, streak reset safeguards, unified productivity analytics separating tasks from habits, and interactive in-app update announcements.\n\n### What's New\n- **Habit Streak Engine**: Intelligent habit tracking requiring an 80% daily qualification threshold to extend streaks, with current streak, longest streak, and consistency percentages.\n- **4-State Routine Lifecycle**: Complete state machine supporting Completed, Pending, Postponed (carried forward to tomorrow), and Cancelled routines with full audit integrity.\n- **Undo Cancellation**: Instantly restore erroneously cancelled routines back to pending, dynamically recalculating streak denominators without losing progress.\n- **Next-Day Routine Planning**: Dedicated tomorrow view allowing advance scheduling, viewing carried-forward items, and occurrence isolation without affecting recurring routines.\n- **Streak Reset Controls**: Dedicated reset modal with user confirmation to restart streak counters from zero while preserving routine definitions and historical task/routine analytics.\n- **Dedicated Productivity Analytics**: Clear separation between Task Analytics and Routine/Habit Analytics in the Progress tab, with responsive charts and rate indicators.\n- **In-App Update Announcements**: Native and web update modal highlighting new features upon upgrade, with notification duplicate prevention and permission guards.\n- **Four-Theme Visual Polish**: Pixel-perfect layout across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.",
+      "features": [
+        "Habit streak engine with 80% qualification threshold for streak maintenance",
+        "4-state routine lifecycle: completed, pending, postponed, and cancelled",
+        "Undo cancellation action to restore cancelled routines back to pending state",
+        "Advance routine planning for tomorrow with carry-forward status indicators",
+        "Streak reset operation with user confirmation dialogue and audit preservation",
+        "Productivity Analytics separating task metrics from habit streak metrics",
+        "In-app update announcement modal and native notification delivery",
+        "Full multi-theme responsiveness across Light, Dark, Pet, and Pastel Light themes"
+      ],
+      "improvements": [
+        "Occurrence isolation for carried-forward and ad-hoc routines without affecting recurring templates",
+        "Enhanced routine card actions with intuitive status picker and undo controls",
+        "Hardened database migration prerequisites (003 and 004) with complete RLS and trigger safety",
+        "Optimized analytics tab with independent completion cards for tasks and routines"
+      ],
+      "performance": [],
+      "fixes": [
+        "Prevented streak denominator distortion when cancelling or un-cancelling routines",
+        "Fixed next-day routine duplication on repeated carry-forward taps",
+        "Eliminated duplicate native update notifications using persistent versionCode tracking"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v2.0.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18562521,
+      "sha256": "a1c39d5ec5b9c8c2133de89c98e7331fb682d1c64dbcbeab1654c2e567e8880a",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.0.0/taskly-v2.0.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
     {
       "version": "1.9.0",
       "versionName": "1.9.0",

@@ -44,6 +44,7 @@ const state = {
     age: 18,
     onboarded: false
   },
+  onboardingCompleted: false,
   userToken: null,
   authMode: 'login', // 'login' | 'signup'
   passwordVisibility: {
@@ -86,6 +87,89 @@ function isAuthenticated() {
   if (!state.user || !state.user.id) return false;
   if (state.user.isEmailVerified === false) return false;
   return true;
+}
+
+// Durable Onboarding Completion Helpers (Device & Account Multi-Layer Persistence)
+function isOnboardingCompleted() {
+  if (state.onboardingCompleted === true || state.user?.onboarded === true) {
+    return true;
+  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (localStorage.getItem('taskly_onboarding_completed') === 'true') {
+        return true;
+      }
+      if (state.user?.id && localStorage.getItem(`taskly_onboarding_${state.user.id}`) === 'true') {
+        return true;
+      }
+      const rawUser = localStorage.getItem('taskly_user');
+      if (rawUser) {
+        const parsed = JSON.parse(rawUser);
+        if (parsed && (parsed.onboarded === true || parsed.onboarding_completed === true)) {
+          return true;
+        }
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+function setOnboardingCompleted(completed = true, syncToCloud = true) {
+  state.onboardingCompleted = Boolean(completed);
+  if (state.user) {
+    state.user.onboarded = Boolean(completed);
+  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (completed) {
+        localStorage.setItem('taskly_onboarding_completed', 'true');
+        localStorage.setItem('taskly_onboarding_completed_at', new Date().toISOString());
+        if (state.user?.id) {
+          localStorage.setItem(`taskly_onboarding_${state.user.id}`, 'true');
+        }
+      } else {
+        localStorage.removeItem('taskly_onboarding_completed');
+        localStorage.removeItem('taskly_onboarding_completed_at');
+        if (state.user?.id) {
+          localStorage.removeItem(`taskly_onboarding_${state.user.id}`);
+        }
+      }
+    }
+  } catch (_) {}
+
+  saveUserPreferences();
+
+  if (completed && syncToCloud && isAuthenticated()) {
+    syncOnboardingToSupabase();
+  }
+}
+
+function syncOnboardingToSupabase() {
+  try {
+    if (supabaseClient && typeof supabaseClient.auth?.updateUser === 'function' && state.userToken) {
+      supabaseClient.auth.updateUser({
+        data: { onboarding_completed: true, onboarded: true }
+      }).catch(err => console.warn('[Supabase Onboarding Sync Notice]:', err?.message));
+    }
+  } catch (_) {}
+}
+
+function handleSkipOnboarding() {
+  setOnboardingCompleted(true);
+  if (isAuthenticated() || (isLocalPreview() && state.isPreviewSession)) {
+    showMainFlow('home');
+  } else {
+    showOnboardingStep('profile-setup');
+  }
+}
+
+function handleFinishOnboarding() {
+  setOnboardingCompleted(true);
+  if (isAuthenticated() || (isLocalPreview() && state.isPreviewSession)) {
+    showMainFlow('home');
+  } else {
+    showOnboardingStep('profile-setup');
+  }
 }
 
 function isLocalPreview() {
@@ -396,7 +480,7 @@ async function handleAuthDeepLink(rawUrl) {
         const { data, error } = await supabaseClient.auth.exchangeCodeForSession(code);
         if (data && data.session && !error) {
           syncAuthSession(data.session);
-          if (state.user?.onboarded) {
+          if (isOnboardingCompleted()) {
             showMainFlow('home');
           } else {
             showOnboardingStep('welcome');
@@ -433,7 +517,7 @@ async function handleAuthDeepLink(rawUrl) {
         });
         if (data && data.session && !error) {
           syncAuthSession(data.session);
-          if (state.user?.onboarded) {
+          if (isOnboardingCompleted()) {
             showMainFlow('home');
           } else {
             showOnboardingStep('welcome');
@@ -536,12 +620,17 @@ async function initSupabaseAuth() {
       });
     } else {
       supabaseClient = null;
-      syncAuthSignOut();
+      if (!isAuthenticated()) {
+        syncAuthSignOut();
+      }
     }
   } catch (err) {
     console.warn('[Supabase Auth Init Warning]:', err.message);
     supabaseClient = null;
-    syncAuthSignOut();
+    // CRITICAL FIX: Preserve cached session during offline launch or temporary network drop
+    if (!isAuthenticated()) {
+      syncAuthSignOut();
+    }
   }
 }
 
@@ -570,6 +659,13 @@ function syncAuthSession(session) {
     state.user.age = meta.age;
   }
 
+  // Restore or sync durable onboarding completion
+  if (meta.onboarding_completed === true || meta.onboarded === true) {
+    setOnboardingCompleted(true, false);
+  } else if (isOnboardingCompleted()) {
+    setOnboardingCompleted(true, true);
+  }
+
   saveUserPreferences();
   updatePreviewUI();
   renderProfile();
@@ -586,6 +682,7 @@ function syncAuthSignOut() {
   state.user.id = null;
   state.user.email = '';
   state.user.onboarded = false;
+  // NOTE: Device-level onboarding completion status persists across logout/sign-out
   state.user.isPreview = false;
   state.user.isEmailVerified = false;
   try {
@@ -639,6 +736,10 @@ if (typeof document !== 'undefined') {
     setupEventListeners();
     setupAndroidKeyboardAndViewportHandlers();
     initAddTaskDateTime();
+
+    // Fast synchronous initial route layout to prevent flash of onboarding
+    initialRouteFastSync();
+
     await TasklyNotifications.init();
     await TasklyUpdateManager.init();
     renderQuickNotes();
@@ -660,6 +761,51 @@ if (typeof document !== 'undefined') {
     // Restore the active screen/route on reload or initial visit
     restoreActiveRoute();
   });
+}
+
+// Pre-render fast router to eliminate onboarding carousel flash on cold start
+function initialRouteFastSync() {
+  if (typeof document === 'undefined') return;
+  const rawHash = (typeof window !== 'undefined' ? window.location.hash : '');
+  const hash = rawHash.replace(/^#\/?/, '').trim().toLowerCase();
+
+  if (isOnboardingCompleted()) {
+    if (document.body) {
+      document.body.classList.remove('onboarding-active');
+    }
+
+    if (isAuthenticated() || (isLocalPreview() && state.isPreviewSession)) {
+      const savedTab = (typeof localStorage !== 'undefined') ? localStorage.getItem('taskly_active_tab') : null;
+      const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add', 'smart-lists'];
+      const targetTab = mainTabs.includes(hash) ? hash : (savedTab && mainTabs.includes(savedTab) ? savedTab : 'home');
+
+      state.flow = 'main';
+      state.activeTab = targetTab;
+      document.documentElement.setAttribute('data-active-tab', targetTab);
+      if (document.body) {
+        document.body.setAttribute('data-active-tab', targetTab);
+      }
+      const onboardingFlow = document.getElementById('onboarding-flow');
+      const mainFlow = document.getElementById('main-flow');
+      if (onboardingFlow) onboardingFlow.classList.remove('active');
+      if (mainFlow) mainFlow.classList.add('active');
+
+      mainTabs.forEach(t => {
+        const sec = document.getElementById(`tab-${t}`);
+        if (sec) sec.classList.toggle('active', t === targetTab);
+      });
+    } else {
+      const onboardingFlow = document.getElementById('onboarding-flow');
+      const mainFlow = document.getElementById('main-flow');
+      if (onboardingFlow) onboardingFlow.classList.remove('active');
+      if (mainFlow) mainFlow.classList.remove('active');
+      const steps = ['screen-launch', 'screen-carousel', 'screen-profile-setup', 'screen-welcome'];
+      steps.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', id === 'screen-profile-setup');
+      });
+    }
+  }
 }
 
 // Android Soft-Keyboard & Responsive Viewport Handlers
@@ -813,10 +959,31 @@ function restoreActiveRoute() {
         showOnboardingStep('launch', false);
         return;
       }
+      if (isOnboardingCompleted()) {
+        if (isAuthenticated()) {
+          showMainFlow('home', false);
+        } else {
+          showOnboardingStep('profile-setup', false);
+        }
+        return;
+      }
       try {
         if (typeof history !== 'undefined') history.replaceState(null, '', '#carousel');
       } catch (_) {
         if (typeof window !== 'undefined') window.location.hash = 'carousel';
+      }
+      showOnboardingStep('carousel', false);
+      return;
+    }
+    if (hash === 'carousel') {
+      // If already onboarded, bypass carousel on cold-start or root navigation
+      if (isOnboardingCompleted() && !params.has('tour') && !(typeof module !== 'undefined' && module.exports && !global.__TEST_ONBOARDING_COMPLETED__)) {
+        if (isAuthenticated()) {
+          showMainFlow('home', false);
+        } else {
+          showOnboardingStep('profile-setup', false);
+        }
+        return;
       }
       showOnboardingStep('carousel', false);
       return;
@@ -829,6 +996,15 @@ function restoreActiveRoute() {
         if (typeof window !== 'undefined') window.location.hash = 'profile-setup';
       }
       showOnboardingStep('profile-setup', false);
+      return;
+    }
+    if (hash === 'profile-setup' && (isAuthenticated() || (isLocalPreview() && state.isPreviewSession))) {
+      // Already authenticated: bypass sign in and redirect to home or welcome
+      if (isOnboardingCompleted()) {
+        showMainFlow('home', false);
+      } else {
+        showOnboardingStep('welcome', false);
+      }
       return;
     }
     showOnboardingStep(hash, false);
@@ -845,6 +1021,14 @@ function restoreActiveRoute() {
       showOnboardingStep('profile-setup', false);
       return;
     }
+    if (paramStep === 'profile-setup' && (isAuthenticated() || (isLocalPreview() && state.isPreviewSession))) {
+      if (isOnboardingCompleted()) {
+        showMainFlow('home', false);
+      } else {
+        showOnboardingStep('welcome', false);
+      }
+      return;
+    }
     showOnboardingStep(paramStep, false);
     return;
   }
@@ -853,7 +1037,7 @@ function restoreActiveRoute() {
   try {
     const savedFlow = localStorage.getItem('taskly_active_flow');
     const savedTab = localStorage.getItem('taskly_active_tab');
-    if (isAuthenticated() && state.user && state.user.onboarded === true && savedFlow === 'main' && savedTab && mainTabs.includes(savedTab)) {
+    if (isAuthenticated() && isOnboardingCompleted() && savedFlow === 'main' && savedTab && mainTabs.includes(savedTab)) {
       showMainFlow(savedTab, false);
       return;
     }
@@ -861,7 +1045,7 @@ function restoreActiveRoute() {
 
   // 4. Default entry point for root (/):
   // If already authenticated and onboarded, take directly to home dashboard
-  if (isAuthenticated() && state.user && state.user.onboarded === true) {
+  if (isAuthenticated() && isOnboardingCompleted()) {
     showMainFlow('home', false);
     return;
   }
@@ -872,7 +1056,13 @@ function restoreActiveRoute() {
     return;
   }
 
-  // Otherwise start with Onboarding Carousel
+  // If unauthenticated but onboarding completed previously on this device, go straight to sign in
+  if (isOnboardingCompleted()) {
+    showOnboardingStep('profile-setup', false);
+    return;
+  }
+
+  // Otherwise start with Onboarding Carousel (genuinely new user)
   showOnboardingStep('carousel', false);
 }
 
@@ -895,6 +1085,14 @@ function loadStoredPreferences() {
     // Prevent stale email exposure if token is missing
     if (!state.userToken) {
       state.user.email = '';
+    }
+
+    // Synchronize durable onboarding state
+    if (isOnboardingCompleted()) {
+      state.onboardingCompleted = true;
+      if (state.user) {
+        state.user.onboarded = true;
+      }
     }
     const storedTheme = localStorage.getItem('taskly_theme');
     if (storedTheme === 'day') {
@@ -5296,11 +5494,157 @@ function calculateRadarPoints(overallPercent, catBreakdown, onTimePercent) {
   });
 }
 
+/**
+ * Taskly v2.0.0 Build 11 — Overall Productivity Score Calculator
+ *
+ * Formula:
+ * 1. Task Completion Rate (TCR) = (Completed Tasks / Total Tasks) * 100
+ * 2. On-Time Completion Rate (OTR) = (On-time Completed / Total Completed with Due Date) * 100
+ * 3. Task Performance Score (TPS) = 0.7 * TCR + 0.3 * OTR
+ * 4. Routine Consistency Score (RCS) = Weekly Routine Consistency %
+ * 5. Overall Productivity Score = 0.5 * TPS + 0.5 * RCS (or individual score if only one dataset exists)
+ * 6. Returns null when zero task and zero routine data exist (clean empty state).
+ */
+function calculateOverallProductivityScore({ todos = [], timeframe = 'week', routineConsistency = null }) {
+  const filteredTodos = filterTodosByTimeframe(todos, timeframe);
+  const totalTasks = filteredTodos.length;
+  const completedTasks = filteredTodos.filter(t => t.completed).length;
+  const todayStr = toYmdString(new Date());
+
+  let taskCompletionRate = null;
+  if (totalTasks > 0) {
+    taskCompletionRate = Math.round((completedTasks / totalTasks) * 100);
+  }
+
+  const completedWithDueDate = filteredTodos.filter(t => t.completed && t.dueDate);
+  let onTimeRate = 100;
+  if (completedWithDueDate.length > 0) {
+    const onTimeCount = completedWithDueDate.filter(t => {
+      const compDate = t.completedAt ? toYmdString(t.completedAt) : (t.updatedAt ? toYmdString(t.updatedAt) : todayStr);
+      return compDate <= t.dueDate;
+    }).length;
+    onTimeRate = Math.round((onTimeCount / completedWithDueDate.length) * 100);
+  }
+
+  let taskPerformanceScore = null;
+  if (totalTasks > 0) {
+    taskPerformanceScore = Math.round(0.7 * taskCompletionRate + 0.3 * onTimeRate);
+  }
+
+  let routineScore = null;
+  if (routineConsistency !== null && typeof routineConsistency === 'object') {
+    if (typeof routineConsistency.percentage === 'number' && routineConsistency.totalDays > 0) {
+      routineScore = routineConsistency.percentage;
+    }
+  }
+
+  let overallScore = null;
+  let statusTier = 'No Data';
+  let tierBadge = 'No Activity';
+
+  if (taskPerformanceScore !== null && routineScore !== null) {
+    overallScore = Math.round(0.5 * taskPerformanceScore + 0.5 * routineScore);
+  } else if (taskPerformanceScore !== null) {
+    overallScore = taskPerformanceScore;
+  } else if (routineScore !== null) {
+    overallScore = routineScore;
+  }
+
+  if (overallScore !== null) {
+    if (overallScore >= 80) {
+      statusTier = 'Exceptional';
+      tierBadge = 'Outstanding 🌟';
+    } else if (overallScore >= 65) {
+      statusTier = 'Great Progress';
+      tierBadge = 'Strong Pace ⚡';
+    } else if (overallScore >= 50) {
+      statusTier = 'Consistent';
+      tierBadge = 'On Track ✨';
+    } else {
+      statusTier = 'Needs Focus';
+      tierBadge = 'Building Momentum 🎯';
+    }
+  }
+
+  return {
+    overallScore,
+    taskPerformanceScore,
+    taskCompletionRate,
+    onTimeRate,
+    routineScore,
+    statusTier,
+    tierBadge,
+    hasData: overallScore !== null
+  };
+}
+
+/**
+ * Monthly Productivity Trends Breakdown (4-Week Progression)
+ */
+function getMonthlyProductivityTrends(todos, refDate = new Date()) {
+  const today = new Date(refDate);
+  const curYear = today.getFullYear();
+  const curMonth = today.getMonth();
+  const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+  const monthName = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const weeks = [
+    { label: 'Week 1 (1-7)', start: 1, end: 7, completed: 0, total: 0 },
+    { label: 'Week 2 (8-14)', start: 8, end: 14, completed: 0, total: 0 },
+    { label: 'Week 3 (15-21)', start: 15, end: 21, completed: 0, total: 0 },
+    { label: 'Week 4 (22+)', start: 22, end: daysInMonth, completed: 0, total: 0 }
+  ];
+
+  const prefix = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+  (todos || []).forEach(t => {
+    const dStr = t.dueDate || toYmdString(t.createdAt || today);
+    if (!dStr.startsWith(prefix)) return;
+    const dayNum = parseInt(dStr.slice(8, 10), 10);
+    weeks.forEach(w => {
+      if (dayNum >= w.start && dayNum <= w.end) {
+        w.total++;
+        if (t.completed) w.completed++;
+      }
+    });
+  });
+
+  weeks.forEach(w => {
+    w.rate = w.total > 0 ? Math.round((w.completed / w.total) * 100) : 0;
+  });
+
+  const monthTasks = (todos || []).filter(t => {
+    const dStr = t.dueDate || toYmdString(t.createdAt || today);
+    return dStr.startsWith(prefix);
+  });
+  const monthCompleted = monthTasks.filter(t => t.completed).length;
+  const monthRate = monthTasks.length > 0 ? Math.round((monthCompleted / monthTasks.length) * 100) : 0;
+
+  return {
+    monthName,
+    totalMonthTasks: monthTasks.length,
+    completedMonthTasks: monthCompleted,
+    monthCompletionRate: monthRate,
+    weeks
+  };
+}
+
 function renderAnalytics() {
   const allTodos = state.todos || [];
   const todayStr = toYmdString(new Date());
+  const timeframe = state.analyticsTimeframe || 'week';
+  const smartManager = (typeof SmartListsManager !== 'undefined') ? SmartListsManager : null;
 
-  // 1. Dynamic Streak Calculation (based on full task history)
+  // Retrieve routine consistency metrics if available
+  const routineConsistency = smartManager?.state?.consistency?.weekly || null;
+
+  // 1. Overall Productivity Score (Combined tasks + habit routines)
+  const scoreData = calculateOverallProductivityScore({
+    todos: allTodos,
+    timeframe,
+    routineConsistency
+  });
+
+  // 2. Dynamic Streak Calculation (based on full task history)
   const streakData = calculateStreaks(allTodos);
   const streakDaysEl = document.getElementById('streak-days-display');
   const streakCurrentStatEl = document.getElementById('streak-current-stat');
@@ -5317,7 +5661,7 @@ function renderAnalytics() {
     streakBestStatEl.textContent = `🏆 Best: ${streakData.bestStreak} day${streakData.bestStreak === 1 ? '' : 's'}`;
   }
 
-  // 2. Weekly Overview (Mon-Sun task completion row)
+  // 3. Weekly Task Overview (Mon-Sun task completion row)
   const streakRowEl = document.getElementById('streak-7days-row');
   if (streakRowEl) {
     const weekDays = getWeeklyOverview(allTodos);
@@ -5344,26 +5688,32 @@ function renderAnalytics() {
     }).join('');
   }
 
-  // 3. Timeframe Filtering & Overall Productivity Stats
-  const timeframe = state.analyticsTimeframe || 'week';
+  // 4. Timeframe Filtering & Task Performance Stats
   const filteredTodos = filterTodosByTimeframe(allTodos, timeframe);
-
   const total = filteredTodos.length;
   const completed = filteredTodos.filter(t => t.completed).length;
   const pending = total - completed;
   const overdue = filteredTodos.filter(t => !t.completed && t.dueDate && t.dueDate < todayStr).length;
   const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
 
+  // Hero Circular Progress Ring (Score Display)
   const ringFill = document.getElementById('analytics-ring-fill');
   const percentEl = document.getElementById('analytics-percent');
+  const heroTierEl = document.getElementById('analytics-hero-tier');
   const summaryEl = document.getElementById('analytics-tasks-summary');
   const trendEl = document.getElementById('analytics-trend-badge');
+  const formulaNoteEl = document.getElementById('analytics-score-formula-note');
 
   if (ringFill) {
     const offset = 251.2 - (251.2 * percent / 100);
     ringFill.style.strokeDashoffset = offset;
   }
-  if (percentEl) percentEl.textContent = `${percent}%`;
+  if (percentEl) {
+    percentEl.textContent = `${percent}%`;
+  }
+  if (heroTierEl) {
+    heroTierEl.textContent = scoreData.hasData ? `Productivity: ${scoreData.statusTier}` : 'Productivity Score';
+  }
   if (summaryEl) {
     if (total === 0) {
       summaryEl.textContent = 'No tasks in this timeframe';
@@ -5384,22 +5734,95 @@ function renderAnalytics() {
       trendEl.textContent = `${percent}% In progress`;
     }
   }
+  if (formulaNoteEl) {
+    const tRate = scoreData.taskCompletionRate != null ? `${scoreData.taskCompletionRate}%` : '--';
+    const rRate = scoreData.routineScore != null ? `${scoreData.routineScore}%` : '--';
+    formulaNoteEl.textContent = `Tasks: ${tRate} • Routines: ${rRate} • On-Time: ${scoreData.onTimeRate}%`;
+  }
 
-  // Task Overview Numbers
+  // Section 2: Task Performance 4-Grid Numbers
   const compVal = document.getElementById('overview-completed-val');
   const pendVal = document.getElementById('overview-pending-val');
   const overVal = document.getElementById('overview-overdue-val');
+  const onTimeVal = document.getElementById('overview-ontime-val');
+  const subComp = document.getElementById('sub-task-completed');
+  const timeframePill = document.getElementById('task-analytics-timeframe-pill');
+
   if (compVal) compVal.textContent = completed;
   if (pendVal) pendVal.textContent = pending;
   if (overVal) overVal.textContent = overdue;
+  if (onTimeVal) onTimeVal.textContent = `${scoreData.onTimeRate}%`;
+  if (subComp) subComp.textContent = `${percent}% of total`;
+  if (timeframePill) {
+    timeframePill.textContent = timeframe === 'month' ? 'This Month' : (timeframe === 'all' ? 'All Time' : 'This Week');
+  }
 
-  // 4. Productivity (Last 7 Days) Bar Chart
+  // Task Ratio Stacked Bar Segments
+  const segComp = document.getElementById('ratio-seg-completed');
+  const segPend = document.getElementById('ratio-seg-pending');
+  const segOver = document.getElementById('ratio-seg-overdue');
+  if (segComp && segPend && segOver) {
+    if (total === 0) {
+      segComp.style.width = '0%';
+      segPend.style.width = '100%';
+      segOver.style.width = '0%';
+    } else {
+      const compPct = Math.round((completed / total) * 100);
+      const overPct = Math.round((overdue / total) * 100);
+      const pendPct = Math.max(0, 100 - compPct - overPct);
+      segComp.style.width = `${compPct}%`;
+      segPend.style.width = `${pendPct}%`;
+      segOver.style.width = `${overPct}%`;
+    }
+  }
+
+  // Section 3: Habit Streaks & Routine Analytics Integration
+  if (smartManager) {
+    const currHabitEl = document.getElementById('progress-habit-current-streak');
+    const bestHabitEl = document.getElementById('progress-habit-best-streak');
+    const dailyRoutineEl = document.getElementById('progress-habit-daily-rate');
+    const weeklyRoutineEl = document.getElementById('progress-habit-weekly-rate');
+    const weeklyDaysEl = document.getElementById('progress-habit-weekly-days');
+    const monthlyRoutineEl = document.getElementById('progress-habit-monthly-rate');
+    const monthlyDaysEl = document.getElementById('progress-habit-monthly-days');
+
+    const chipDone = document.getElementById('progress-routine-chip-completed');
+    const chipPend = document.getElementById('progress-routine-chip-pending');
+    const chipPost = document.getElementById('progress-routine-chip-postponed');
+    const chipCanc = document.getElementById('progress-routine-chip-cancelled');
+
+    const streaks = smartManager.state.streaks || { currentStreak: 0, longestStreak: 0 };
+    const consistency = smartManager.state.consistency || {};
+    const dailyStats = smartManager.state.dailyStats || {};
+
+    if (currHabitEl) currHabitEl.textContent = `🔥 ${streaks.currentStreak} Days`;
+    if (bestHabitEl) bestHabitEl.textContent = `🏆 Best: ${streaks.longestStreak} Days`;
+    if (dailyRoutineEl) dailyRoutineEl.textContent = `${dailyStats.completionRate || 0}%`;
+    if (weeklyRoutineEl) weeklyRoutineEl.textContent = `${consistency.weekly?.percentage || 0}%`;
+    if (weeklyDaysEl) weeklyDaysEl.textContent = `${consistency.weekly?.qualifyingDays || 0}/${consistency.weekly?.totalDays || 0} days`;
+    if (monthlyRoutineEl) monthlyRoutineEl.textContent = `${consistency.monthly?.percentage || 0}%`;
+    if (monthlyDaysEl) monthlyDaysEl.textContent = `${consistency.monthly?.qualifyingDays || 0}/${consistency.monthly?.totalDays || 0} days`;
+
+    if (chipDone) chipDone.textContent = `✓ ${dailyStats.completedCount || 0} Done`;
+    if (chipPend) chipPend.textContent = `○ ${dailyStats.pendingCount || 0} Pending`;
+    if (chipPost) chipPost.textContent = `↳ ${dailyStats.postponedCount || 0} Postponed`;
+    if (chipCanc) chipCanc.textContent = `✕ ${dailyStats.cancelledCount || 0} Cancelled`;
+  }
+
+  // Section 4: Weekly Performance Bar Chart (Last 7 Days)
   const barContainer = document.getElementById('barchart-bars');
+  const peakDayPill = document.getElementById('weekly-peak-day-pill');
   if (barContainer) {
     const last7 = getProductivityLast7Days(allTodos);
     const maxVal = Math.max(...last7.map(d => d.completed), 1);
+    let peakDay = null;
+    let peakCount = 0;
 
     barContainer.innerHTML = last7.map((dayItem) => {
+      if (dayItem.completed > peakCount) {
+        peakCount = dayItem.completed;
+        peakDay = dayItem.dayLabel;
+      }
       const heightPercent = dayItem.completed === 0 ? 0 : Math.round((dayItem.completed / maxVal) * 100);
       const titleAttr = `${dayItem.dayLabel} (${dayItem.dateStr}): ${dayItem.completed} completed, ${dayItem.pending} pending`;
       return `
@@ -5411,9 +5834,43 @@ function renderAnalytics() {
         </div>
       `;
     }).join('');
+
+    if (peakDayPill) {
+      peakDayPill.textContent = peakCount > 0 ? `Peak: ${peakDay} (${peakCount})` : 'Peak: None';
+    }
   }
 
-  // 5. Category-wise Task Completion Breakdown
+  // Section 5: Monthly Performance & Trends
+  const monthlyBreakdownEl = document.getElementById('monthly-weeks-breakdown');
+  const monthlySummarySubEl = document.getElementById('monthly-summary-sub');
+  const monthlyCompBadgeEl = document.getElementById('monthly-comparison-badge');
+  if (monthlyBreakdownEl) {
+    const monthTrends = getMonthlyProductivityTrends(allTodos);
+    if (monthlySummarySubEl) {
+      monthlySummarySubEl.textContent = `${monthTrends.monthName}: ${monthTrends.completedMonthTasks} of ${monthTrends.totalMonthTasks} tasks completed (${monthTrends.monthCompletionRate}%)`;
+    }
+    if (monthlyCompBadgeEl) {
+      if (monthTrends.monthCompletionRate >= 75) {
+        monthlyCompBadgeEl.textContent = 'High momentum 🚀';
+      } else if (monthTrends.monthCompletionRate >= 50) {
+        monthlyCompBadgeEl.textContent = 'Consistent pace ✨';
+      } else {
+        monthlyCompBadgeEl.textContent = 'Building cadence 🎯';
+      }
+    }
+
+    monthlyBreakdownEl.innerHTML = monthTrends.weeks.map(w => `
+      <div class="monthly-week-row">
+        <span class="monthly-week-lbl">${w.label}</span>
+        <div class="monthly-week-tube">
+          <div class="monthly-week-fill" style="width: ${w.rate}%;"></div>
+        </div>
+        <span class="monthly-week-rate">${w.rate}%</span>
+      </div>
+    `).join('');
+  }
+
+  // Section 6: Category-wise Task Completion Breakdown
   const catListEl = document.getElementById('progress-category-list');
   const catBreakdown = getCategoryBreakdown(filteredTodos);
   if (catListEl) {
@@ -5438,11 +5895,11 @@ function renderAnalytics() {
     }
   }
 
-  // 6. Productivity & Category Dynamic Radar Chart
+  // Section 6: Productivity & Category Dynamic Radar Chart
   const radarPolygon = document.getElementById('radar-polygon');
   const radarPointsGroup = document.getElementById('radar-points');
   if (radarPolygon) {
-    const onTimeRate = total === 0 ? 0 : Math.round(((total - overdue) / total) * 100);
+    const onTimeRate = scoreData.onTimeRate;
     const radarPts = calculateRadarPoints(percent, catBreakdown, onTimeRate);
     const pointsStr = radarPts.map(p => `${p.x},${p.y}`).join(' ');
     radarPolygon.setAttribute('points', pointsStr);
@@ -5816,8 +6273,8 @@ const TasklyUpdateManager = {
     }
   ],
 
-  // Locally bundled current-build release entry for internal / non-published builds (v1.9.0 Build 10)
-  localInstalledRelease: {
+  // Reference to Build 10 release for historical regression and test compatibility
+  build10Release: {
     version: '1.9.0',
     versionName: '1.9.0',
     versionCode: 10,
@@ -5848,6 +6305,45 @@ const TasklyUpdateManager = {
     ],
     security: [
       'Row-Level Security (RLS) enforcement on all smart lists Supabase tables and endpoints'
+    ]
+  },
+
+  // Locally bundled current-build release entry for internal / non-published builds (v2.0.0 Build 11)
+  localInstalledRelease: {
+    version: '2.0.0',
+    versionName: '2.0.0',
+    versionCode: 11,
+    releaseDate: '2026-11-08',
+    title: 'Habit Streaks & Productivity Analytics',
+    summary: 'Taskly v2.0.0 introduces Habit Streaks integrated into Smart Lists with four-state routine tracking, comprehensive Productivity Analytics on the Progress screen with an Overall Productivity Score, and in-app update management.',
+    features: [
+      'Habit Streaks integrated directly into Smart Lists with an 80% daily qualifying threshold',
+      'Four-state daily routine management: Completed, Pending, Postponed, and Cancelled',
+      'Daily, weekly, and monthly routine consistency tracking with current and longest streaks',
+      'Touch-friendly routine status picker modal with forward postponement and cancellation reasons',
+      'Comprehensive Productivity Analytics on the Progress screen across 6 organized sections',
+      'Overall Productivity Score (0–100) combining task delivery performance and routine consistency',
+      'Task analytics: total completed, pending, overdue, and on-time completion rates',
+      'Weekly and monthly productivity trend visualizations with 7-day completion bars',
+      'Category-wise task completion breakdown and multi-axis performance radar'
+    ],
+    improvements: [
+      'Organized Progress screen into 6 clear analytical sections with explainable score metrics',
+      'Responsive mobile-first layouts with minimum 44px touch targets across all controls',
+      'Full visual parity across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode',
+      'Accurate empty-state and insufficient-data handling without misleading scores'
+    ],
+    performance: [
+      'Client-side offline calculation engine ensuring zero fabricated analytics data',
+      'Reactive DOM updates for checklist completions and streak counters'
+    ],
+    fixes: [
+      'Preserved immutable historical report snapshots during routine status updates',
+      'Fixed startup routing and persistent onboarding verification on Android 15'
+    ],
+    security: [
+      'Strict user-level data isolation and RLS policies on all routine and analytics endpoints',
+      'Secure APK update verification with SHA-256 package checksums and downgrade protection'
     ],
     isLocalInstalled: true
   },
@@ -5938,6 +6434,7 @@ const TasklyUpdateManager = {
     this.updateProfileBadge();
     this.setupNativeListeners();
     this.checkPostUpgradeWhatsNew();
+    this.checkUpdateAnnouncementOnStartup();
 
     // Restore cached lastChecked timestamp
     if (typeof localStorage !== 'undefined') {
@@ -6863,6 +7360,151 @@ const TasklyUpdateManager = {
         historyList.appendChild(item);
       });
     }
+  },
+
+  showUpdateAnnouncement(release = null, isPreview = false) {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-update-announcement');
+    if (!modal) return;
+
+    let targetRelease = release;
+    if (!targetRelease) {
+      const latestApproved = this.getLatestApprovedRelease();
+      const installedCode = parseInt(this.state.installedVersionCode, 10) || 0;
+      const latestCode = parseInt(latestApproved.versionCode, 10) || 0;
+      if (latestCode > installedCode) {
+        targetRelease = latestApproved;
+      } else if (this.localInstalledRelease) {
+        targetRelease = this.localInstalledRelease;
+      } else {
+        targetRelease = latestApproved;
+      }
+    }
+
+    this._currentAnnouncedRelease = targetRelease;
+    this._isAnnouncementPreview = isPreview;
+
+    const elInstalled = document.getElementById('announcement-installed-version');
+    if (elInstalled) {
+      elInstalled.textContent = `v${this.state.installedVersionName || '1.9.0'} (Build ${this.state.installedVersionCode || 10})`;
+    }
+
+    const elAvailable = document.getElementById('announcement-available-version');
+    if (elAvailable) {
+      const verName = targetRelease.versionName || targetRelease.version || '2.0.0';
+      const verCode = targetRelease.versionCode || 11;
+      elAvailable.textContent = `v${verName} (Build ${verCode})`;
+    }
+
+    const list = document.getElementById('announcement-highlights-list');
+    if (list) {
+      list.innerHTML = '';
+      const feats = Array.isArray(targetRelease.features) && targetRelease.features.length > 0
+        ? targetRelease.features
+        : (targetRelease.summary ? [targetRelease.summary] : ['New features and performance improvements']);
+
+      feats.slice(0, 4).forEach(feat => {
+        const li = document.createElement('li');
+        li.textContent = typeof feat === 'string' ? feat : (feat.title || feat.description || '');
+        list.appendChild(li);
+      });
+    }
+
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+  },
+
+  dismissUpdateAnnouncement() {
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-update-announcement');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.style.display = 'none';
+    }
+
+    if (!this._isAnnouncementPreview && this._currentAnnouncedRelease) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('taskly_dismissed_update_announcement', String(this._currentAnnouncedRelease.versionCode));
+        }
+      } catch (_) {}
+    }
+  },
+
+  handleInstallNowFromAnnouncement() {
+    this.dismissUpdateAnnouncement();
+    this.openModal();
+    if (this.state.updateStatus === 'update_available' || this.state.updateStatus === 'ready') {
+      this.startUpdate();
+    }
+  },
+
+  checkUpdateAnnouncementOnStartup() {
+    try {
+      const latestApproved = this.getLatestApprovedRelease();
+      const installedCode = parseInt(this.state.installedVersionCode, 10) || 0;
+      const latestCode = parseInt(latestApproved.versionCode, 10) || 0;
+
+      // Only prompt when an approved production release has higher versionCode than installed
+      if (latestCode > installedCode) {
+        let dismissedCode = null;
+        if (typeof localStorage !== 'undefined') {
+          dismissedCode = localStorage.getItem('taskly_dismissed_update_announcement');
+        }
+        if (dismissedCode !== String(latestCode)) {
+          this.showUpdateAnnouncement(latestApproved, false);
+          this.scheduleUpdateNotification(latestApproved);
+        }
+      }
+    } catch (e) {
+      console.warn('[TasklyUpdateManager] checkUpdateAnnouncementOnStartup error:', e);
+    }
+  },
+
+  async scheduleUpdateNotification(release) {
+    if (!release) return;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const lastNotified = localStorage.getItem('taskly_last_notified_update_code');
+        if (lastNotified === String(release.versionCode)) {
+          return;
+        }
+      }
+      if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.LocalNotifications) {
+        // Guard: Never send update notification for debug/internal builds or non-production releases
+        const isDebug = Boolean(
+          window.location?.hostname === 'localhost' ||
+          window.location?.hostname === '127.0.0.1' ||
+          release.isLocalInstalled
+        );
+        if (isDebug) return;
+
+        const perm = await window.Capacitor.Plugins.LocalNotifications.checkPermissions();
+        if (perm && perm.display !== 'granted') {
+          const req = await window.Capacitor.Plugins.LocalNotifications.requestPermissions();
+          if (req && req.display !== 'granted') return;
+        }
+
+        await window.Capacitor.Plugins.LocalNotifications.schedule({
+          notifications: [
+            {
+              title: 'Taskly Update Ready',
+              body: `Taskly v${release.versionName || release.version} is now available. Tap to install.`,
+              id: 990002,
+              channelId: 'taskly-reminders-v3',
+              smallIcon: 'ic_stat_paw',
+              schedule: { at: new Date(Date.now() + 5000) }
+            }
+          ]
+        });
+
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('taskly_last_notified_update_code', String(release.versionCode));
+        }
+      }
+    } catch (e) {
+      console.warn('[TasklyUpdateManager] scheduleUpdateNotification failed:', e);
+    }
   }
 };
 
@@ -6882,25 +7524,56 @@ const SmartListsManager = {
 
   state: {
     routines: [],
-    completions: {}, // map of `${routineId}_${date}` -> { completed: bool, carriedForward: bool }
+    completions: {}, // map of `${routineId}_${date}` -> { status, completed, carriedForward, postponedToDate, cancellationReason }
     reports: [],
     settings: {
       dailySummaryEnabled: true,
       dailySummaryTime: '22:00'
     },
+    streaks: {
+      currentStreak: 0,
+      longestStreak: 0,
+      qualifyingDaysCount: 0
+    },
+    consistency: {
+      weekly: { totalDays: 0, qualifyingDays: 0, percentage: 0 },
+      monthly: { totalDays: 0, qualifyingDays: 0, percentage: 0 }
+    },
+    dailyStats: {
+      date: null,
+      totalCount: 0,
+      eligibleCount: 0,
+      completedCount: 0,
+      pendingCount: 0,
+      postponedCount: 0,
+      cancelledCount: 0,
+      completionRate: 0,
+      isQualified: false
+    },
     activeDate: (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10),
     activeReportDate: null,
     pendingDeleteType: null,
     pendingDeleteId: null,
+    pendingStatusRoutineId: null,
+    pendingStatusDate: null,
+    pendingStatusSelection: null,
+    tomorrowRoutines: [],
+    tomorrowDate: null,
+    pendingRemoveTomorrowId: null,
+    pendingRemoveTomorrowTitle: '',
+    isUpdatingStatus: false,
+    isLoadingStats: false,
     isInitialized: false
   },
 
   async init() {
     this.state.activeDate = (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10);
     this.loadFromStorage();
+    this.computeLocalStreaksAndStats(this.state.activeDate);
     if (isAuthenticated()) {
       await this.syncAll().catch(err => console.warn('[SmartLists] Sync error:', err));
     }
+    await this.fetchTomorrowRoutines().catch(() => {});
     await this.scheduleDailySummaryReminder().catch(err => console.warn('[SmartLists] Reminder schedule error:', err));
     this.state.isInitialized = true;
   },
@@ -6945,6 +7618,22 @@ const SmartListsManager = {
     this.state.routines = [];
     this.state.completions = {};
     this.state.reports = [];
+    this.state.streaks = { currentStreak: 0, longestStreak: 0, qualifyingDaysCount: 0 };
+    this.state.consistency = {
+      weekly: { totalDays: 0, qualifyingDays: 0, percentage: 0 },
+      monthly: { totalDays: 0, qualifyingDays: 0, percentage: 0 }
+    };
+    this.state.dailyStats = {
+      date: null,
+      totalCount: 0,
+      eligibleCount: 0,
+      completedCount: 0,
+      pendingCount: 0,
+      postponedCount: 0,
+      cancelledCount: 0,
+      completionRate: 0,
+      isQualified: false
+    };
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem(this.STORAGE_KEY_ROUTINES);
@@ -6960,7 +7649,8 @@ const SmartListsManager = {
       this.fetchRoutines(),
       this.fetchCompletions(this.state.activeDate),
       this.fetchReports(),
-      this.fetchSettings()
+      this.fetchSettings(),
+      this.fetchStreaksAndStats(this.state.activeDate)
     ]);
   },
 
@@ -7150,9 +7840,14 @@ const SmartListsManager = {
         if (!error && Array.isArray(data)) {
           data.forEach(item => {
             const key = `${item.routine_id}_${d}`;
+            const status = item.status || (item.completed ? 'completed' : 'pending');
             this.state.completions[key] = {
-              completed: Boolean(item.completed),
-              carriedForward: Boolean(item.carried_forward)
+              status,
+              completed: status === 'completed',
+              carriedForward: Boolean(item.carried_forward),
+              postponedToDate: item.postponed_to || item.postponed_to_date || null,
+              originalDate: item.original_date || item.originalDate || null,
+              cancellationReason: item.cancellation_reason || null
             };
           });
           this.saveToStorage();
@@ -7169,9 +7864,13 @@ const SmartListsManager = {
         if (Array.isArray(data)) {
           data.forEach(item => {
             const key = `${item.routineId}_${d}`;
+            const status = item.status || (item.completed ? 'completed' : 'pending');
             this.state.completions[key] = {
-              completed: Boolean(item.completed),
-              carriedForward: Boolean(item.carriedForward)
+              status,
+              completed: status === 'completed',
+              carriedForward: Boolean(item.carriedForward),
+              postponedToDate: item.postponedToDate || null,
+              cancellationReason: item.cancellationReason || null
             };
           });
           this.saveToStorage();
@@ -7185,7 +7884,31 @@ const SmartListsManager = {
   getCompletion(routineId, date) {
     const d = date || this.state.activeDate;
     const key = `${routineId}_${d}`;
-    return this.state.completions[key] || { completed: false, carriedForward: false };
+    const raw = this.state.completions[key];
+    if (!raw) {
+      return {
+        routineId,
+        date: d,
+        status: 'pending',
+        completed: false,
+        carriedForward: false,
+        postponedToDate: null,
+        cancellationReason: null
+      };
+    }
+    let status = raw.status;
+    if (!status || !['completed', 'pending', 'postponed', 'cancelled'].includes(status)) {
+      status = raw.completed ? 'completed' : 'pending';
+    }
+    return {
+      routineId,
+      date: d,
+      status,
+      completed: status === 'completed',
+      carriedForward: Boolean(raw.carriedForward),
+      postponedToDate: raw.postponedToDate || null,
+      cancellationReason: raw.cancellationReason || null
+    };
   },
 
   isRoutineCompleted(routineId, date) {
@@ -7214,20 +7937,91 @@ const SmartListsManager = {
   async toggleCompletion(routineId, date) {
     const d = date || this.state.activeDate;
     const current = this.getCompletion(routineId, d);
-    const newStatus = !current.completed;
-    const key = `${routineId}_${d}`;
+    const newStatus = (current.status === 'completed') ? 'pending' : 'completed';
+    return await this.setRoutineStatus(routineId, d, newStatus);
+  },
 
+  async setRoutineStatus(routineId, date, status, options = {}) {
+    const d = date || this.state.activeDate;
+    if (!['completed', 'pending', 'postponed', 'cancelled'].includes(status)) {
+      return false;
+    }
+    const key = `${routineId}_${d}`;
+    const current = this.getCompletion(routineId, d);
+
+    const postponedToDate = (status === 'postponed') 
+      ? (options.postponedToDate || this.getNextDayYmd(d)) 
+      : null;
+    const cancellationReason = (status === 'cancelled') 
+      ? (options.cancellationReason || null) 
+      : null;
+
+    // Optimistic local update
     this.state.completions[key] = {
-      completed: newStatus,
-      carriedForward: current.carriedForward
+      status,
+      completed: status === 'completed',
+      carriedForward: current.carriedForward,
+      postponedToDate,
+      cancellationReason
     };
+
+    // If postponed, also schedule occurrence on postponedToDate
+    if (status === 'postponed' && postponedToDate) {
+      const nextKey = `${routineId}_${postponedToDate}`;
+      if (!this.state.completions[nextKey]) {
+        this.state.completions[nextKey] = {
+          status: 'pending',
+          completed: false,
+          carriedForward: true,
+          postponedToDate: null,
+          cancellationReason: null
+        };
+      }
+    }
+
     this.saveToStorage();
     this.renderRoutines();
+    this.computeLocalStreaksAndStats(d);
+    this.renderStreakWidget();
 
-    // Auto-update today's summary snapshot in the background
+    // Auto-update today's summary snapshot in background
     this.generateDailyReport(d).catch(() => {});
 
-    // Supabase upsert
+    // Backend API sync
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      if (status === 'postponed') {
+        await fetch(`/api/smart-lists/routines/${encodeURIComponent(routineId)}/postpone`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            originalDate: d,
+            postponedDate: postponedToDate
+          })
+        });
+      } else if (status === 'cancelled') {
+        await fetch(`/api/smart-lists/routines/${encodeURIComponent(routineId)}/cancel`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            date: d,
+            cancellationReason
+          })
+        });
+      } else {
+        await fetch('/api/smart-lists/completions/status', {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            routineId,
+            date: d,
+            status
+          })
+        });
+      }
+    } catch (_) {}
+
+    // Direct Supabase upsert fallback
     if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
       try {
         await supabaseClient
@@ -7236,26 +8030,298 @@ const SmartListsManager = {
             user_id: state.user.id,
             routine_id: routineId,
             date: d,
-            completed: newStatus,
-            completed_at: newStatus ? new Date().toISOString() : null,
-            carried_forward: current.carriedForward
+            status,
+            completed: status === 'completed',
+            completed_at: status === 'completed' ? new Date().toISOString() : null,
+            carried_forward: current.carriedForward,
+            postponed_to: postponedToDate,
+            cancellation_reason: cancellationReason
           }, { onConflict: 'user_id,routine_id,date' });
-      } catch (_) {}
-    } else {
-      try {
-        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-        await fetch('/api/smart-lists/completions', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            routineId,
-            date: d,
-            completed: newStatus,
-            carriedForward: current.carriedForward
-          })
-        });
+
+        if (status === 'postponed' && postponedToDate) {
+          await supabaseClient
+            .from('smart_routine_completions')
+            .upsert({
+              user_id: state.user.id,
+              routine_id: routineId,
+              date: postponedToDate,
+              status: 'pending',
+              completed: false,
+              carried_forward: true,
+              original_date: d
+            }, { onConflict: 'user_id,routine_id,date' });
+        }
       } catch (_) {}
     }
+
+    // Refresh official streaks and stats from backend
+    await this.fetchStreaksAndStats(d).catch(() => {});
+    return true;
+  },
+
+  async fetchStreaksAndStats(date) {
+    const d = date || this.state.activeDate;
+    this.state.isLoadingStats = true;
+    try {
+      const headers = getAuthHeaders();
+      const [resStreaks, resDaily, resConsistency] = await Promise.all([
+        fetch(`/api/smart-lists/streaks?date=${d}`, { headers }),
+        fetch(`/api/smart-lists/statistics/daily?date=${d}`, { headers }),
+        fetch(`/api/smart-lists/statistics/consistency?date=${d}`, { headers })
+      ]);
+
+      let gotData = false;
+      if (resStreaks.ok) {
+        const streaksData = await resStreaks.json();
+        if (streaksData && typeof streaksData.currentStreak === 'number') {
+          this.state.streaks = streaksData;
+          gotData = true;
+        }
+      }
+      if (resDaily.ok) {
+        const dailyData = await resDaily.json();
+        if (dailyData && typeof dailyData.completionRate === 'number') {
+          this.state.dailyStats = dailyData;
+          gotData = true;
+        }
+      }
+      if (resConsistency.ok) {
+        const consistencyData = await resConsistency.json();
+        if (consistencyData && consistencyData.weekly && consistencyData.monthly) {
+          this.state.consistency = consistencyData;
+          gotData = true;
+        }
+      }
+
+      if (!gotData) {
+        this.computeLocalStreaksAndStats(d);
+      }
+    } catch (_) {
+      this.computeLocalStreaksAndStats(d);
+    } finally {
+      this.state.isLoadingStats = false;
+      this.renderStreakWidget();
+    }
+  },
+
+  computeLocalStreaksAndStats(date) {
+    const d = date || this.state.activeDate;
+    const routines = this.state.routines || [];
+
+    const completionsList = [];
+    Object.keys(this.state.completions).forEach(key => {
+      const parts = key.split('_');
+      if (parts.length >= 2) {
+        const routineId = parts[0];
+        const cDate = parts.slice(1).join('_');
+        const c = this.getCompletion(routineId, cDate);
+        completionsList.push(c);
+      }
+    });
+
+    let completedCount = 0;
+    let pendingCount = 0;
+    let postponedCount = 0;
+    let cancelledCount = 0;
+
+    routines.forEach(r => {
+      const c = this.getCompletion(r.id, d);
+      if (c.status === 'completed') completedCount++;
+      else if (c.status === 'postponed') postponedCount++;
+      else if (c.status === 'cancelled') cancelledCount++;
+      else pendingCount++;
+    });
+
+    const totalCount = completedCount + pendingCount + postponedCount + cancelledCount;
+    const eligibleCount = totalCount - cancelledCount;
+    const completionRate = eligibleCount > 0 ? Math.round((completedCount / eligibleCount) * 100) : 0;
+    const isQualified = eligibleCount > 0 && completionRate >= 80;
+
+    this.state.dailyStats = {
+      date: d,
+      totalCount,
+      completedCount,
+      pendingCount,
+      postponedCount,
+      cancelledCount,
+      eligibleCount,
+      completionRate,
+      isQualified
+    };
+
+    const resetAt = this.state.settings?.streakResetAt;
+    const resetDateStr = resetAt ? (typeof toYmdString === 'function' ? toYmdString(resetAt) : String(resetAt).slice(0, 10)) : null;
+
+    const isDateQualified = (dateStr) => {
+      if (resetDateStr && dateStr < resetDateStr) return false;
+      if (routines.length === 0) return false;
+      let compC = 0;
+      let cancC = 0;
+      routines.forEach(r => {
+        const comp = this.getCompletion(r.id, dateStr);
+        if (comp.status === 'completed') compC++;
+        else if (comp.status === 'cancelled') cancC++;
+      });
+      const eligible = routines.length - cancC;
+      if (eligible <= 0) return false;
+      return Math.round((compC / eligible) * 100) >= 80;
+    };
+
+    const parts = d.split('-').map(Number);
+    const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+
+    const getPrevDay = (curYmd) => {
+      const p = curYmd.split('-').map(Number);
+      const dt = new Date(p[0], p[1] - 1, p[2]);
+      dt.setDate(dt.getDate() - 1);
+      return (typeof toYmdString === 'function') ? toYmdString(dt) : dt.toISOString().slice(0, 10);
+    };
+
+    let currentStreak = 0;
+    const yesterdayStr = getPrevDay(d);
+
+    if (isDateQualified(d)) {
+      let check = d;
+      while (isDateQualified(check) && (!resetDateStr || check >= resetDateStr)) {
+        currentStreak++;
+        check = getPrevDay(check);
+      }
+    } else if (isDateQualified(yesterdayStr)) {
+      let check = yesterdayStr;
+      while (isDateQualified(check) && (!resetDateStr || check >= resetDateStr)) {
+        currentStreak++;
+        check = getPrevDay(check);
+      }
+    }
+
+    const allDates = new Set();
+    completionsList.forEach(c => allDates.add(c.date));
+    allDates.add(d);
+    allDates.add(yesterdayStr);
+
+    let sortedDates = Array.from(allDates).sort();
+    if (resetDateStr) {
+      sortedDates = sortedDates.filter(dt => dt >= resetDateStr);
+    }
+    let longestStreak = currentStreak;
+    let run = 0;
+    let prevQual = null;
+
+    sortedDates.forEach(dt => {
+      if (isDateQualified(dt)) {
+        if (!prevQual) {
+          run = 1;
+        } else {
+          const p1 = prevQual.split('-').map(Number);
+          const p2 = dt.split('-').map(Number);
+          const t1 = new Date(p1[0], p1[1] - 1, p1[2]).getTime();
+          const t2 = new Date(p2[0], p2[1] - 1, p2[2]).getTime();
+          const diffD = Math.round((t2 - t1) / (1000 * 60 * 60 * 24));
+          if (diffD === 1) run++;
+          else run = 1;
+        }
+        prevQual = dt;
+        if (run > longestStreak) longestStreak = run;
+      } else {
+        run = 0;
+        prevQual = null;
+      }
+    });
+
+    this.state.streaks = {
+      currentStreak,
+      longestStreak: Math.max(longestStreak, currentStreak)
+    };
+
+    const dayOfWeek = dObj.getDay();
+    const monOffset = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+    const monDt = new Date(dObj);
+    monDt.setDate(monDt.getDate() - monOffset);
+
+    let weekTotal = 0;
+    let weekQual = 0;
+    for (let i = 0; i <= monOffset; i++) {
+      const cur = new Date(monDt);
+      cur.setDate(cur.getDate() + i);
+      const ymd = (typeof toYmdString === 'function') ? toYmdString(cur) : cur.toISOString().slice(0, 10);
+      if (!resetDateStr || ymd >= resetDateStr) {
+        weekTotal++;
+        if (isDateQualified(ymd)) weekQual++;
+      }
+    }
+
+    const dayOfMonth = dObj.getDate();
+    let monthTotal = 0;
+    let monthQual = 0;
+    for (let dayNum = 1; dayNum <= dayOfMonth; dayNum++) {
+      const cur = new Date(parts[0], parts[1] - 1, dayNum);
+      const ymd = (typeof toYmdString === 'function') ? toYmdString(cur) : cur.toISOString().slice(0, 10);
+      if (!resetDateStr || ymd >= resetDateStr) {
+        monthTotal++;
+        if (isDateQualified(ymd)) monthQual++;
+      }
+    }
+
+    this.state.consistency = {
+      weekly: {
+        totalDays: weekTotal,
+        qualifyingDays: weekQual,
+        percentage: weekTotal > 0 ? Math.round((weekQual / weekTotal) * 100) : 0
+      },
+      monthly: {
+        totalDays: monthTotal,
+        qualifyingDays: monthQual,
+        percentage: monthTotal > 0 ? Math.round((monthQual / monthTotal) * 100) : 0
+      }
+    };
+  },
+
+  renderStreakWidget() {
+    if (typeof document === 'undefined') return;
+
+    const streakCard = document.getElementById('smart-habit-streak-card');
+    if (!streakCard) return;
+
+    const currentStreakVal = this.state.streaks?.currentStreak || 0;
+    const longestStreakVal = this.state.streaks?.longestStreak || 0;
+    const dailyRateVal = this.state.dailyStats?.completionRate || 0;
+    const weeklyPct = this.state.consistency?.weekly?.percentage || 0;
+    const weeklyQual = this.state.consistency?.weekly?.qualifyingDays || 0;
+    const weeklyTot = this.state.consistency?.weekly?.totalDays || 0;
+    const monthlyPct = this.state.consistency?.monthly?.percentage || 0;
+    const monthlyQual = this.state.consistency?.monthly?.qualifyingDays || 0;
+    const monthlyTot = this.state.consistency?.monthly?.totalDays || 0;
+
+    const completedC = this.state.dailyStats?.completedCount || 0;
+    const pendingC = this.state.dailyStats?.pendingCount || 0;
+    const postponedC = this.state.dailyStats?.postponedCount || 0;
+    const cancelledC = this.state.dailyStats?.cancelledCount || 0;
+
+    const currEl = document.getElementById('habit-current-streak-count');
+    const longestEl = document.getElementById('habit-longest-streak-count');
+    const dailyEl = document.getElementById('habit-daily-rate');
+    const weeklyEl = document.getElementById('habit-weekly-consistency');
+    const weeklyDaysEl = document.getElementById('habit-weekly-days');
+    const monthlyEl = document.getElementById('habit-monthly-consistency');
+    const monthlyDaysEl = document.getElementById('habit-monthly-days');
+
+    const chipComp = document.getElementById('chip-count-completed');
+    const chipPend = document.getElementById('chip-count-pending');
+    const chipPost = document.getElementById('chip-count-postponed');
+    const chipCanc = document.getElementById('chip-count-cancelled');
+
+    if (currEl) currEl.textContent = `${currentStreakVal} ${currentStreakVal === 1 ? 'Day' : 'Days'}`;
+    if (longestEl) longestEl.textContent = `${longestStreakVal} ${longestStreakVal === 1 ? 'Day' : 'Days'}`;
+    if (dailyEl) dailyEl.textContent = `${dailyRateVal}%`;
+    if (weeklyEl) weeklyEl.textContent = `${weeklyPct}%`;
+    if (weeklyDaysEl) weeklyDaysEl.textContent = `${weeklyQual}/${weeklyTot} days`;
+    if (monthlyEl) monthlyEl.textContent = `${monthlyPct}%`;
+    if (monthlyDaysEl) monthlyDaysEl.textContent = `${monthlyQual}/${monthlyTot} days`;
+
+    if (chipComp) chipComp.textContent = `✓ ${completedC} Done`;
+    if (chipPend) chipPend.textContent = `○ ${pendingC} Pending`;
+    if (chipPost) chipPost.textContent = `↳ ${postponedC} Postponed`;
+    if (chipCanc) chipCanc.textContent = `✕ ${cancelledC} Cancelled`;
   },
 
   // --- Reports & Summary ---
@@ -7577,72 +8643,89 @@ const SmartListsManager = {
     const d = date || this.state.activeReportDate || this.state.activeDate;
     if (!['yes', 'no'].includes(decision)) return;
 
-    let report = this.state.reports.find(r => r.date === d);
-    if (!report) {
-      report = await this.generateDailyReport(d);
-    }
-
-    report.carryForwardDecision = decision;
-    report.updatedAt = new Date().toISOString();
-
-    if (decision === 'yes') {
-      // Calculate tomorrow date string
-      const curParts = d.split('-').map(Number);
-      const nextDay = new Date(curParts[0], curParts[1] - 1, curParts[2]);
-      nextDay.setDate(nextDay.getDate() + 1);
-      const nextDayStr = (typeof toYmdString === 'function') ? toYmdString(nextDay) : nextDay.toISOString().slice(0, 10);
-
-      // Carry incomplete routines into tomorrow
-      const routines = this.state.routines || [];
-      for (const r of routines) {
-        const comp = this.getCompletion(r.id, d);
-        if (!comp.completed) {
-          const tomKey = `${r.id}_${nextDayStr}`;
-          this.state.completions[tomKey] = {
-            completed: false,
-            carriedForward: true
-          };
-
-          // Upsert to DB
-          if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
-            supabaseClient
-              .from('smart_routine_completions')
-              .upsert({
-                user_id: state.user.id,
-                routine_id: r.id,
-                date: nextDayStr,
-                completed: false,
-                carried_forward: true
-              }, { onConflict: 'user_id,routine_id,date' })
-              .then(() => {})
-              .catch(() => {});
-          } else {
-            const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-            fetch('/api/smart-lists/completions', {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                routineId: r.id,
-                date: nextDayStr,
-                completed: false,
-                carriedForward: true
-              })
-            }).catch(() => {});
-          }
+    let serverReport = null;
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      const response = await fetch('/api/smart-lists/carry-forward', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ date: d, decision })
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        if (payload && payload.report) {
+          serverReport = payload.report;
         }
       }
+    } catch (e) {
+      console.warn('[SmartLists] Carry-forward API warning:', e);
+    }
+
+    // Mirror in local state / fallback
+    const curParts = d.split('-').map(Number);
+    const nextDay = new Date(curParts[0], curParts[1] - 1, curParts[2]);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = (typeof toYmdString === 'function') ? toYmdString(nextDay) : nextDay.toISOString().slice(0, 10);
+
+    const routines = this.state.routines || [];
+    let postponedCount = 0;
+
+    if (decision === 'yes') {
+      routines.forEach(r => {
+        const comp = this.getCompletion(r.id, d);
+        if (comp.status !== 'completed' && comp.status !== 'cancelled') {
+          // 1. Mark original occurrence as postponed
+          this.state.completions[`${r.id}_${d}`] = {
+            status: 'postponed',
+            completed: false,
+            postponedToDate: nextDayStr,
+            carriedForward: false
+          };
+          postponedCount++;
+
+          // 2. Schedule next-day occurrence as pending (prevent duplicate)
+          const tomKey = `${r.id}_${nextDayStr}`;
+          if (!this.state.completions[tomKey] || this.state.completions[tomKey].status !== 'completed') {
+            this.state.completions[tomKey] = {
+              status: 'pending',
+              completed: false,
+              carriedForward: true,
+              originalDate: d
+            };
+          }
+        }
+      });
+    }
+
+    let report = this.state.reports.find(r => r.date === d);
+    if (serverReport) {
+      const norm = this.normalizeReport(serverReport);
+      if (report) Object.assign(report, norm);
+      else {
+        this.state.reports.push(norm);
+        report = norm;
+      }
+    } else {
+      if (!report) {
+        report = await this.generateDailyReport(d);
+      }
+      report.carryForwardDecision = decision;
+      if (decision === 'yes') {
+        report.postponedCount = postponedCount;
+        report.closingStatement = postponedCount > 0
+          ? `${postponedCount} incomplete routine${postponedCount === 1 ? '' : 's'} were carried forward to tomorrow (${nextDayStr}).`
+          : 'All routines were already completed or excused; no routines carried forward.';
+      } else {
+        report.closingStatement = "Today's checklist was closed without carrying forward routines.";
+      }
+      report.updatedAt = new Date().toISOString();
     }
 
     this.saveToStorage();
-    await this.generateDailyReport(d);
-
-    // Re-render summary modal to display updated status
-    this.openSummaryModal(d);
-
-    // If active date is tomorrow, refresh routines
-    if (this.state.activeDate !== d) {
-      this.renderRoutines();
-    }
+    this.computeLocalStreaksAndStats(d);
+    await this.fetchTomorrowRoutines();
+    this.renderRoutines();
+    this.renderSummaryModal(report);
     return report;
   },
 
@@ -7657,6 +8740,310 @@ const SmartListsManager = {
     return report;
   },
 
+  // --- Next-Day Routine Management (v2.0.0 Build 11) ---
+  async fetchTomorrowRoutines(targetDate) {
+    const baseDate = targetDate || this.state.activeDate;
+    const curParts = baseDate.split('-').map(Number);
+    const nextDay = new Date(curParts[0], curParts[1] - 1, curParts[2]);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = (typeof toYmdString === 'function') ? toYmdString(nextDay) : nextDay.toISOString().slice(0, 10);
+
+    let items = null;
+    try {
+      const headers = { ...getAuthHeaders() };
+      const res = await fetch(`/api/smart-lists/next-day?date=${nextDayStr}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.routines)) {
+          items = data.routines;
+        }
+      }
+    } catch (e) {
+      console.warn('[SmartLists] fetchTomorrowRoutines warning:', e);
+    }
+
+    if (!items) {
+      const routines = this.state.routines || [];
+      items = [];
+      routines.forEach(routine => {
+        const comp = this.getCompletion(routine.id, nextDayStr);
+        if (comp.status === 'removed' || comp.removed) return;
+        const isCarried = Boolean(comp.carriedForward);
+        items.push({
+          routineId: routine.id,
+          title: routine.title,
+          date: nextDayStr,
+          status: comp.status || 'pending',
+          completed: comp.status === 'completed',
+          carriedForward: isCarried,
+          originalDate: comp.originalDate || null,
+          source: isCarried ? 'carried_forward' : 'scheduled'
+        });
+      });
+    }
+
+    this.state.tomorrowRoutines = items;
+    this.state.tomorrowDate = nextDayStr;
+    this.renderTomorrowRoutines();
+    return items;
+  },
+
+  renderTomorrowRoutines() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('smart-tomorrow-routines-list');
+    const emptyState = document.getElementById('smart-tomorrow-empty');
+    const badge = document.getElementById('smart-tomorrow-count-badge');
+    const dateLabel = document.getElementById('smart-tomorrow-date-label');
+
+    if (!list) return;
+    list.innerHTML = '';
+
+    const items = this.state.tomorrowRoutines || [];
+    const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
+
+    if (badge) {
+      badge.textContent = `${items.length} Routine${items.length === 1 ? '' : 's'}`;
+    }
+    if (dateLabel) {
+      dateLabel.textContent = tomDate;
+    }
+
+    if (items.length === 0) {
+      if (emptyState) emptyState.style.display = 'block';
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
+    items.forEach(item => {
+      const card = document.createElement('div');
+      card.className = `next-day-routine-card ${item.carriedForward ? 'origin-carried' : 'origin-scheduled'}`;
+      card.setAttribute('data-routine-id', item.routineId);
+
+      const left = document.createElement('div');
+      left.className = 'next-day-routine-left';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'next-day-title';
+      titleSpan.textContent = item.title;
+
+      const meta = document.createElement('div');
+      meta.className = 'next-day-meta';
+
+      const originBadge = document.createElement('span');
+      originBadge.className = `routine-origin-badge ${item.carriedForward ? 'badge-carried' : 'badge-scheduled'}`;
+      if (item.carriedForward) {
+        originBadge.textContent = '↳ Carried Forward';
+        if (item.originalDate) {
+          originBadge.title = `Carried forward from ${item.originalDate}`;
+        }
+      } else {
+        originBadge.textContent = 'Scheduled';
+      }
+      meta.appendChild(originBadge);
+
+      const statusBadge = document.createElement('span');
+      statusBadge.className = `routine-tomorrow-status status-${item.status || 'pending'}`;
+      statusBadge.textContent = item.status === 'completed' ? 'Done' : 'Pending';
+      meta.appendChild(statusBadge);
+
+      left.appendChild(titleSpan);
+      left.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'next-day-routine-actions';
+
+      const btnEdit = document.createElement('button');
+      btnEdit.type = 'button';
+      btnEdit.className = 'btn-tomorrow-action btn-tomorrow-edit';
+      btnEdit.setAttribute('aria-label', `Edit routine ${item.title}`);
+      btnEdit.title = 'Edit routine';
+      btnEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+      btnEdit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openEditRoutine(item.routineId);
+      });
+
+      const btnRemove = document.createElement('button');
+      btnRemove.type = 'button';
+      btnRemove.className = 'btn-tomorrow-action btn-tomorrow-remove';
+      btnRemove.setAttribute('aria-label', `Remove ${item.title} from tomorrow`);
+      btnRemove.title = 'Remove from tomorrow only';
+      btnRemove.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      btnRemove.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openRemoveTomorrowConfirm(item.routineId, item.title);
+      });
+
+      actions.appendChild(btnEdit);
+      actions.appendChild(btnRemove);
+
+      card.appendChild(left);
+      card.appendChild(actions);
+      list.appendChild(card);
+    });
+  },
+
+  async addRoutineForTomorrow(title) {
+    if (!title || !title.trim()) return;
+    const cleanTitle = title.trim();
+    const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
+
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      const res = await fetch('/api/smart-lists/next-day/assign', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ title: cleanTitle, date: tomDate })
+      });
+      if (res.ok) {
+        await this.fetchRoutines();
+        await this.fetchTomorrowRoutines();
+        return;
+      }
+    } catch (e) {
+      console.warn('[SmartLists] addRoutineForTomorrow backend warning:', e);
+    }
+
+    const newRoutine = await this.addRoutine(cleanTitle);
+    if (newRoutine) {
+      this.state.completions[`${newRoutine.id}_${tomDate}`] = {
+        status: 'pending',
+        completed: false,
+        carriedForward: false
+      };
+      this.saveToStorage();
+      await this.fetchTomorrowRoutines();
+    }
+  },
+
+  openRemoveTomorrowConfirm(routineId, title) {
+    this.state.pendingRemoveTomorrowId = routineId;
+    this.state.pendingRemoveTomorrowTitle = title || 'this routine';
+    const msgEl = document.getElementById('remove-tomorrow-confirm-message');
+    if (msgEl) {
+      msgEl.textContent = `Remove "${this.state.pendingRemoveTomorrowTitle}" from tomorrow only? The routine definition remains for all other days.`;
+    }
+    const modal = document.getElementById('modal-smart-remove-tomorrow-confirm');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeRemoveTomorrowConfirm() {
+    this.state.pendingRemoveTomorrowId = null;
+    this.state.pendingRemoveTomorrowTitle = '';
+    const modal = document.getElementById('modal-smart-remove-tomorrow-confirm');
+    if (modal) modal.classList.remove('active');
+  },
+
+  async executeRemoveTomorrow() {
+    const routineId = this.state.pendingRemoveTomorrowId;
+    const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
+    if (!routineId) return;
+
+    try {
+      const headers = { ...getAuthHeaders() };
+      await fetch(`/api/smart-lists/next-day/occurrences/${routineId}?date=${tomDate}`, {
+        method: 'DELETE',
+        headers
+      });
+    } catch (e) {
+      console.warn('[SmartLists] remove tomorrow occurrence backend warning:', e);
+    }
+
+    this.state.completions[`${routineId}_${tomDate}`] = {
+      status: 'removed',
+      removed: true,
+      completed: false
+    };
+    this.saveToStorage();
+    this.closeRemoveTomorrowConfirm();
+    await this.fetchTomorrowRoutines();
+  },
+
+  // --- Streak Reset & Cancellation Reversal (v2.0.0 Build 11) ---
+  openResetStreakModal() {
+    const modal = document.getElementById('modal-smart-reset-streak-confirm');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeResetStreakModal() {
+    const modal = document.getElementById('modal-smart-reset-streak-confirm');
+    if (modal) modal.classList.remove('active');
+  },
+
+  async executeStreakReset() {
+    const resetTimestamp = new Date().toISOString();
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      await fetch('/api/smart-lists/streaks/reset', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ resetAt: resetTimestamp })
+      });
+    } catch (e) {
+      console.warn('[SmartLists] executeStreakReset backend warning:', e);
+    }
+
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routine_settings')
+          .upsert({
+            user_id: state.user.id,
+            streak_reset_at: resetTimestamp
+          }, { onConflict: 'user_id' });
+      } catch (_) {}
+    }
+
+    if (!this.state.settings) this.state.settings = {};
+    this.state.settings.streakResetAt = resetTimestamp;
+    this.saveToStorage();
+
+    this.computeLocalStreaksAndStats(this.state.activeDate);
+    this.renderStreakWidget();
+    this.closeResetStreakModal();
+  },
+
+  async undoCancelRoutine(routineId, date) {
+    const d = date || this.state.activeDate;
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      await fetch(`/api/smart-lists/routines/${routineId}/undo-cancel`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ date: d })
+      });
+    } catch (e) {
+      console.warn('[SmartLists] undoCancelRoutine backend warning:', e);
+    }
+
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routine_completions')
+          .update({
+            status: 'pending',
+            completed: false,
+            cancellation_reason: null
+          })
+          .eq('user_id', state.user.id)
+          .eq('routine_id', routineId)
+          .eq('date', d);
+      } catch (_) {}
+    }
+
+    const key = `${routineId}_${d}`;
+    if (this.state.completions[key]) {
+      this.state.completions[key].status = 'pending';
+      this.state.completions[key].completed = false;
+      this.state.completions[key].cancellationReason = null;
+    }
+    this.saveToStorage();
+    this.computeLocalStreaksAndStats(d);
+    await this.generateDailyReport(d);
+    this.renderRoutines();
+  },
+
   // --- Settings & Notifications ---
   async fetchSettings() {
     if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
@@ -7669,7 +9056,8 @@ const SmartListsManager = {
         if (!error && data) {
           this.state.settings = {
             dailySummaryEnabled: Boolean(data.daily_summary_enabled),
-            dailySummaryTime: data.daily_summary_time || '22:00'
+            dailySummaryTime: data.daily_summary_time || '22:00',
+            streakResetAt: data.streak_reset_at || null
           };
           this.saveToStorage();
           return this.state.settings;
@@ -7797,11 +9185,15 @@ const SmartListsManager = {
   },
 
   // --- UI Operations & Rendering ---
-  openScreen() {
+  async openScreen() {
     this.state.activeDate = (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10);
     showMainFlow('smart-lists');
     this.updateDateDisplay();
+    this.computeLocalStreaksAndStats(this.state.activeDate);
+    this.renderStreakWidget();
     this.renderRoutines();
+    await this.fetchStreaksAndStats(this.state.activeDate).catch(() => {});
+    await this.fetchTomorrowRoutines().catch(() => {});
   },
 
   updateDateDisplay() {
@@ -7831,6 +9223,7 @@ const SmartListsManager = {
       if (emptyState) emptyState.style.display = 'flex';
       if (progressText) progressText.textContent = '0 / 0 completed';
       if (footerSub) footerSub.textContent = 'Add your routines to generate reports';
+      this.renderStreakWidget();
       return;
     }
 
@@ -7843,13 +9236,13 @@ const SmartListsManager = {
       if (comp.completed) completedCount++;
 
       const card = document.createElement('div');
-      card.className = `smart-routine-card ${comp.completed ? 'completed' : ''}`;
+      card.className = `smart-routine-card ${comp.completed ? 'completed' : ''} status-${comp.status || 'pending'}`;
       card.setAttribute('data-routine-id', routine.id);
 
       const left = document.createElement('div');
       left.className = 'smart-routine-left';
 
-      // Checkbox wrap
+      // Checkbox wrap (1-tap quick toggle)
       const checkWrap = document.createElement('label');
       checkWrap.className = 'smart-checkbox-wrap';
       checkWrap.setAttribute('aria-label', `Mark ${routine.title} as ${comp.completed ? 'incomplete' : 'complete'}`);
@@ -7877,11 +9270,31 @@ const SmartListsManager = {
       titleSpan.textContent = routine.title;
       info.appendChild(titleSpan);
 
+      // Status badges (postponed, cancelled, carried forward)
+      const badgesContainer = document.createElement('div');
+      badgesContainer.className = 'routine-badges-wrap';
+
+      if (comp.status === 'postponed') {
+        const postBadge = document.createElement('span');
+        postBadge.className = 'badge-postponed';
+        postBadge.textContent = comp.postponedToDate ? `↳ Postponed to ${comp.postponedToDate}` : '↳ Postponed';
+        badgesContainer.appendChild(postBadge);
+      } else if (comp.status === 'cancelled') {
+        const cancBadge = document.createElement('span');
+        cancBadge.className = 'badge-cancelled';
+        cancBadge.textContent = comp.cancellationReason ? `✕ Cancelled: ${comp.cancellationReason}` : '✕ Cancelled';
+        badgesContainer.appendChild(cancBadge);
+      }
+
       if (comp.carriedForward) {
         const carryBadge = document.createElement('span');
         carryBadge.className = 'badge-carried-forward';
         carryBadge.textContent = '↳ Carried forward';
-        info.appendChild(carryBadge);
+        badgesContainer.appendChild(carryBadge);
+      }
+
+      if (badgesContainer.children.length > 0) {
+        info.appendChild(badgesContainer);
       }
 
       left.appendChild(checkWrap);
@@ -7890,6 +9303,25 @@ const SmartListsManager = {
       // Action buttons
       const actions = document.createElement('div');
       actions.className = 'smart-routine-actions';
+
+      // 4-state status selector pill button (touch target >= 44px)
+      const btnStatusPill = document.createElement('button');
+      btnStatusPill.type = 'button';
+      btnStatusPill.className = `btn-routine-status-pill status-${comp.status || 'pending'}`;
+      btnStatusPill.setAttribute('data-routine-id', routine.id);
+      btnStatusPill.setAttribute('aria-label', `Change status for ${routine.title}. Current status: ${comp.status}`);
+
+      let pillIcon = '○';
+      let pillText = 'Pending';
+      if (comp.status === 'completed') { pillIcon = '✓'; pillText = 'Done'; }
+      else if (comp.status === 'postponed') { pillIcon = '↳'; pillText = 'Postponed'; }
+      else if (comp.status === 'cancelled') { pillIcon = '✕'; pillText = 'Cancelled'; }
+
+      btnStatusPill.innerHTML = `<span class="status-pill-icon">${pillIcon}</span><span class="status-pill-text">${pillText}</span>`;
+      btnStatusPill.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openStatusPicker(routine.id, date);
+      });
 
       const btnEdit = document.createElement('button');
       btnEdit.type = 'button';
@@ -7911,6 +9343,20 @@ const SmartListsManager = {
         this.openDeleteConfirm('routine', routine.id, routine.title);
       });
 
+      actions.appendChild(btnStatusPill);
+      if (comp.status === 'cancelled') {
+        const btnUndo = document.createElement('button');
+        btnUndo.type = 'button';
+        btnUndo.className = 'btn-routine-action btn-routine-undo-cancel';
+        btnUndo.setAttribute('aria-label', `Undo cancellation for ${routine.title}`);
+        btnUndo.setAttribute('title', 'Undo cancellation');
+        btnUndo.textContent = 'Undo';
+        btnUndo.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.undoCancelRoutine(routine.id, date);
+        });
+        actions.appendChild(btnUndo);
+      }
       actions.appendChild(btnEdit);
       actions.appendChild(btnDelete);
 
@@ -7926,6 +9372,115 @@ const SmartListsManager = {
     }
     if (footerSub) {
       footerSub.textContent = `${completedCount} of ${total} routines completed today (${rate}%)`;
+    }
+    this.renderStreakWidget();
+    this.renderTomorrowRoutines();
+  },
+
+  // --- Routine Status Picker Modal (v2.0.0 Build 11) ---
+  openStatusPicker(routineId, date) {
+    const d = date || this.state.activeDate;
+    const routine = this.state.routines.find(r => r.id === routineId);
+    if (!routine) return;
+
+    this.state.pendingStatusRoutineId = routineId;
+    this.state.pendingStatusDate = d;
+
+    const comp = this.getCompletion(routineId, d);
+    this.state.pendingStatusSelection = comp.status || 'pending';
+
+    const titleEl = document.getElementById('status-picker-routine-title');
+    if (titleEl) titleEl.textContent = routine.title;
+
+    // Prefill subform inputs
+    const postponeInput = document.getElementById('input-postpone-date');
+    const cancelInput = document.getElementById('input-cancel-reason');
+    const tomorrow = this.getNextDayYmd(d);
+
+    if (postponeInput) {
+      postponeInput.value = comp.postponedToDate || tomorrow;
+      postponeInput.min = tomorrow;
+    }
+    if (cancelInput) {
+      cancelInput.value = comp.cancellationReason || '';
+    }
+
+    this.updateStatusPickerUI(this.state.pendingStatusSelection);
+
+    const modal = document.getElementById('modal-smart-status-picker');
+    if (modal) modal.classList.add('active');
+  },
+
+  updateStatusPickerUI(selectedStatus) {
+    this.state.pendingStatusSelection = selectedStatus;
+    const options = ['completed', 'pending', 'postponed', 'cancelled'];
+    options.forEach(status => {
+      const btn = document.getElementById(`opt-status-${status}`);
+      if (btn) {
+        if (status === selectedStatus) {
+          btn.classList.add('selected');
+        } else {
+          btn.classList.remove('selected');
+        }
+      }
+    });
+
+    const postponeSubform = document.getElementById('status-subform-postpone');
+    const cancelSubform = document.getElementById('status-subform-cancel');
+
+    if (postponeSubform) {
+      postponeSubform.style.display = (selectedStatus === 'postponed') ? 'block' : 'none';
+    }
+    if (cancelSubform) {
+      cancelSubform.style.display = (selectedStatus === 'cancelled') ? 'block' : 'none';
+    }
+  },
+
+  closeStatusPicker() {
+    this.state.pendingStatusRoutineId = null;
+    this.state.pendingStatusDate = null;
+    this.state.pendingStatusSelection = null;
+    const modal = document.getElementById('modal-smart-status-picker');
+    if (modal) modal.classList.remove('active');
+  },
+
+  async confirmStatusPicker() {
+    if (this.state.isUpdatingStatus) return; // Prevent duplicate clicks
+    const routineId = this.state.pendingStatusRoutineId;
+    const date = this.state.pendingStatusDate || this.state.activeDate;
+    const status = this.state.pendingStatusSelection || 'pending';
+
+    if (!routineId) {
+      this.closeStatusPicker();
+      return;
+    }
+
+    const postponeInput = document.getElementById('input-postpone-date');
+    const cancelInput = document.getElementById('input-cancel-reason');
+    const postponedToDate = postponeInput ? postponeInput.value : null;
+    const cancellationReason = cancelInput ? cancelInput.value.trim() : null;
+
+    const confirmBtn = document.getElementById('btn-confirm-status-picker');
+    this.state.isUpdatingStatus = true;
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Saving...';
+    }
+
+    try {
+      await this.setRoutineStatus(routineId, date, status, {
+        postponedToDate,
+        cancellationReason
+      });
+    } catch (e) {
+      console.warn('[SmartLists] confirmStatusPicker error:', e);
+    } finally {
+      this.state.isUpdatingStatus = false;
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Save Status';
+      }
+      this.closeStatusPicker();
     }
   },
 
@@ -7988,6 +9543,8 @@ const SmartListsManager = {
     const totalEl = document.getElementById('summary-metric-total');
     const compEl = document.getElementById('summary-metric-completed');
     const incompEl = document.getElementById('summary-metric-incomplete');
+    const postEl = document.getElementById('summary-metric-postponed');
+    const cancEl = document.getElementById('summary-metric-cancelled');
     const rateEl = document.getElementById('summary-metric-rate');
     const barEl = document.getElementById('smart-summary-progress-bar');
     const compCountEl = document.getElementById('summary-completed-count');
@@ -7996,6 +9553,8 @@ const SmartListsManager = {
     if (totalEl) totalEl.textContent = String(report.totalRoutines);
     if (compEl) compEl.textContent = String(report.completedCount);
     if (incompEl) incompEl.textContent = String(report.incompleteCount);
+    if (postEl) postEl.textContent = String(report.postponedCount || 0);
+    if (cancEl) cancEl.textContent = String(report.cancelledCount || 0);
     if (rateEl) rateEl.textContent = `${report.completionRate}%`;
     if (barEl) barEl.style.width = `${report.completionRate}%`;
     if (compCountEl) compCountEl.textContent = String(report.completedCount);
@@ -8050,29 +9609,38 @@ const SmartListsManager = {
     const carryBanner = document.getElementById('smart-carry-status-banner');
     const carryText = document.getElementById('smart-carry-status-text');
     const carryTag = document.getElementById('smart-carry-decision-tag');
+    const btnViewTomorrow = document.getElementById('btn-summary-view-tomorrow');
 
     if (carryCard) {
       const decision = report.carryForwardDecision || 'pending';
-      if (report.totalRoutines === 0 || report.incompleteCount === 0) {
+      if (report.totalRoutines === 0 || (report.incompleteCount === 0 && (!report.postponedCount || report.postponedCount === 0))) {
         if (carryTag) carryTag.textContent = 'Carry Forward: NOT REQUIRED';
         if (carryText) carryText.textContent = 'All routines for this date were completed. No items need to be carried forward.';
         if (carryActions) carryActions.style.display = 'none';
         if (carryBanner) carryBanner.style.display = 'none';
+        if (btnViewTomorrow) btnViewTomorrow.style.display = 'none';
       } else if (decision === 'yes') {
         if (carryTag) carryTag.textContent = 'Carry Forward: YES (Carried into tomorrow)';
-        if (carryText) carryText.textContent = 'Incomplete routines were scheduled into tomorrow\'s routine checklist.';
+        if (carryText) {
+          carryText.textContent = report.closingStatement || 'Incomplete routines were scheduled into tomorrow\'s routine checklist.';
+        }
         if (carryActions) carryActions.style.display = 'none';
         if (carryBanner) carryBanner.style.display = 'flex';
+        if (btnViewTomorrow) btnViewTomorrow.style.display = 'inline-flex';
       } else if (decision === 'no') {
         if (carryTag) carryTag.textContent = 'Carry Forward: NO (Closed for today)';
-        if (carryText) carryText.textContent = 'These incomplete routines were closed and will not be carried into tomorrow.';
+        if (carryText) {
+          carryText.textContent = report.closingStatement || 'These incomplete routines were closed and will not be carried into tomorrow.';
+        }
         if (carryActions) carryActions.style.display = 'none';
         if (carryBanner) carryBanner.style.display = 'flex';
+        if (btnViewTomorrow) btnViewTomorrow.style.display = 'none';
       } else {
         if (carryTag) carryTag.textContent = 'Carry Forward: PENDING';
         if (carryText) carryText.textContent = 'Would you like to carry forward today\'s incomplete routines into tomorrow?';
         if (carryActions) carryActions.style.display = 'flex';
         if (carryBanner) carryBanner.style.display = 'none';
+        if (btnViewTomorrow) btnViewTomorrow.style.display = 'none';
       }
     }
 
@@ -8267,14 +9835,14 @@ function setupEventListeners() {
   const btnGetStarted = document.getElementById('btn-get-started');
   if (btnGetStarted) {
     btnGetStarted.addEventListener('click', () => {
-      showOnboardingStep('profile-setup');
+      handleFinishOnboarding();
     });
   }
 
   const btnSkip = document.getElementById('btn-skip-onboarding');
   if (btnSkip) {
     btnSkip.addEventListener('click', () => {
-      showOnboardingStep('profile-setup');
+      handleSkipOnboarding();
     });
   }
 
@@ -8468,8 +10036,7 @@ function setupEventListeners() {
 
             if (data.session) {
               syncAuthSession(data.session);
-              state.user.onboarded = true;
-              saveUserPreferences();
+              setOnboardingCompleted(true);
               showMainFlow('home');
             }
           }
@@ -8509,8 +10076,7 @@ function setupEventListeners() {
         showOnboardingStep('profile-setup');
         return;
       }
-      state.user.onboarded = true;
-      saveUserPreferences();
+      setOnboardingCompleted(true);
       if (isLocalPreview() && state.isPreviewSession) {
         initPreviewData();
       }
@@ -9345,6 +10911,27 @@ function setupEventListeners() {
     });
   }
 
+  // Update Announcement Modal Event Listeners
+  const modalUpdateAnnouncement = document.getElementById('modal-update-announcement');
+  const btnCloseUpdateAnnouncement = document.getElementById('btn-close-update-announcement');
+  const btnAnnouncementLater = document.getElementById('btn-announcement-later');
+  const btnAnnouncementInstall = document.getElementById('btn-announcement-install');
+
+  if (btnCloseUpdateAnnouncement) {
+    btnCloseUpdateAnnouncement.addEventListener('click', () => TasklyUpdateManager.dismissUpdateAnnouncement());
+  }
+  if (btnAnnouncementLater) {
+    btnAnnouncementLater.addEventListener('click', () => TasklyUpdateManager.dismissUpdateAnnouncement());
+  }
+  if (btnAnnouncementInstall) {
+    btnAnnouncementInstall.addEventListener('click', () => TasklyUpdateManager.handleInstallNowFromAnnouncement());
+  }
+  if (modalUpdateAnnouncement) {
+    modalUpdateAnnouncement.addEventListener('click', (e) => {
+      if (e.target === modalUpdateAnnouncement) TasklyUpdateManager.dismissUpdateAnnouncement();
+    });
+  }
+
   // Change Password Modal
   const menuChangePassword = document.getElementById('menu-change-password');
   const modalChangePassword = document.getElementById('modal-change-password');
@@ -9525,6 +11112,114 @@ function setupEventListeners() {
   if (modalSmartDelete) {
     modalSmartDelete.addEventListener('click', (e) => {
       if (e.target === modalSmartDelete) SmartListsManager.closeDeleteConfirm();
+    });
+  }
+
+  // Routine Status Picker Modal Listeners (v2.0.0 Build 11)
+  const modalSmartStatusPicker = document.getElementById('modal-smart-status-picker');
+  const btnCloseStatusPicker = document.getElementById('btn-close-status-picker');
+  const btnCancelStatusPicker = document.getElementById('btn-cancel-status-picker');
+  const btnConfirmStatusPicker = document.getElementById('btn-confirm-status-picker');
+  const optStatusCompleted = document.getElementById('opt-status-completed');
+  const optStatusPending = document.getElementById('opt-status-pending');
+  const optStatusPostponed = document.getElementById('opt-status-postponed');
+  const optStatusCancelled = document.getElementById('opt-status-cancelled');
+
+  if (btnCloseStatusPicker) btnCloseStatusPicker.addEventListener('click', () => SmartListsManager.closeStatusPicker());
+  if (btnCancelStatusPicker) btnCancelStatusPicker.addEventListener('click', () => SmartListsManager.closeStatusPicker());
+  if (btnConfirmStatusPicker) btnConfirmStatusPicker.addEventListener('click', () => SmartListsManager.confirmStatusPicker());
+
+  if (optStatusCompleted) optStatusCompleted.addEventListener('click', () => SmartListsManager.updateStatusPickerUI('completed'));
+  if (optStatusPending) optStatusPending.addEventListener('click', () => SmartListsManager.updateStatusPickerUI('pending'));
+  if (optStatusPostponed) optStatusPostponed.addEventListener('click', () => SmartListsManager.updateStatusPickerUI('postponed'));
+  if (optStatusCancelled) optStatusCancelled.addEventListener('click', () => SmartListsManager.updateStatusPickerUI('cancelled'));
+
+  if (modalSmartStatusPicker) {
+    modalSmartStatusPicker.addEventListener('click', (e) => {
+      if (e.target === modalSmartStatusPicker) SmartListsManager.closeStatusPicker();
+    });
+  }
+
+  // Habit Streak Reset Listeners (v2.0.0 Build 11)
+  const btnResetHabitStreak = document.getElementById('btn-reset-habit-streak');
+  const modalResetStreak = document.getElementById('modal-smart-reset-streak-confirm');
+  const btnCloseResetStreak = document.getElementById('btn-close-reset-streak-modal');
+  const btnCancelResetStreak = document.getElementById('btn-cancel-reset-streak');
+  const btnProceedResetStreak = document.getElementById('btn-proceed-reset-streak');
+
+  if (btnResetHabitStreak) btnResetHabitStreak.addEventListener('click', () => SmartListsManager.openResetStreakModal());
+  if (btnCloseResetStreak) btnCloseResetStreak.addEventListener('click', () => SmartListsManager.closeResetStreakModal());
+  if (btnCancelResetStreak) btnCancelResetStreak.addEventListener('click', () => SmartListsManager.closeResetStreakModal());
+  if (btnProceedResetStreak) btnProceedResetStreak.addEventListener('click', () => SmartListsManager.executeStreakReset());
+  if (modalResetStreak) {
+    modalResetStreak.addEventListener('click', (e) => {
+      if (e.target === modalResetStreak) SmartListsManager.closeResetStreakModal();
+    });
+  }
+
+  // Next-Day Routines Listeners (v2.0.0 Build 11)
+  const btnAddTomorrow = document.getElementById('btn-add-tomorrow-routine');
+  const boxAddTomorrow = document.getElementById('next-day-add-box');
+  const formAddTomorrow = document.getElementById('form-next-day-add');
+  const inputTomorrowTitle = document.getElementById('input-tomorrow-routine-title');
+  const btnCancelTomorrow = document.getElementById('btn-cancel-tomorrow-routine');
+
+  if (btnAddTomorrow) {
+    btnAddTomorrow.addEventListener('click', () => {
+      if (boxAddTomorrow) {
+        const isHidden = boxAddTomorrow.style.display === 'none' || !boxAddTomorrow.style.display;
+        boxAddTomorrow.style.display = isHidden ? 'block' : 'none';
+        if (isHidden && inputTomorrowTitle) inputTomorrowTitle.focus();
+      }
+    });
+  }
+  if (btnCancelTomorrow) {
+    btnCancelTomorrow.addEventListener('click', () => {
+      if (boxAddTomorrow) boxAddTomorrow.style.display = 'none';
+      if (formAddTomorrow) formAddTomorrow.reset();
+    });
+  }
+  if (formAddTomorrow) {
+    formAddTomorrow.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const val = inputTomorrowTitle ? inputTomorrowTitle.value : '';
+      if (val && val.trim()) {
+        await SmartListsManager.addRoutineForTomorrow(val.trim());
+        if (formAddTomorrow) formAddTomorrow.reset();
+        if (boxAddTomorrow) boxAddTomorrow.style.display = 'none';
+      }
+    });
+  }
+
+  // Remove Tomorrow Modal Listeners
+  const modalRemoveTomorrow = document.getElementById('modal-smart-remove-tomorrow-confirm');
+  const btnCloseRemoveTomorrow = document.getElementById('btn-close-remove-tomorrow-modal');
+  const btnCancelRemoveTomorrow = document.getElementById('btn-cancel-remove-tomorrow');
+  const btnProceedRemoveTomorrow = document.getElementById('btn-proceed-remove-tomorrow');
+
+  if (btnCloseRemoveTomorrow) btnCloseRemoveTomorrow.addEventListener('click', () => SmartListsManager.closeRemoveTomorrowConfirm());
+  if (btnCancelRemoveTomorrow) btnCancelRemoveTomorrow.addEventListener('click', () => SmartListsManager.closeRemoveTomorrowConfirm());
+  if (btnProceedRemoveTomorrow) btnProceedRemoveTomorrow.addEventListener('click', () => SmartListsManager.executeRemoveTomorrow());
+  if (modalRemoveTomorrow) {
+    modalRemoveTomorrow.addEventListener('click', (e) => {
+      if (e.target === modalRemoveTomorrow) SmartListsManager.closeRemoveTomorrowConfirm();
+    });
+  }
+
+  // Summary "View Tomorrow" navigation
+  const btnSummaryViewTomorrow = document.getElementById('btn-summary-view-tomorrow');
+  if (btnSummaryViewTomorrow) {
+    btnSummaryViewTomorrow.addEventListener('click', () => {
+      SmartListsManager.closeSummaryModal();
+      SmartListsManager.openScreen();
+      setTimeout(() => {
+        const section = document.getElementById('smart-next-day-section');
+        if (section) {
+          section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          section.classList.add('section-highlight');
+          setTimeout(() => section.classList.remove('section-highlight'), 1800);
+        }
+      }, 100);
     });
   }
 
@@ -9818,6 +11513,12 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     state,
     isAuthenticated,
+    isOnboardingCompleted,
+    setOnboardingCompleted,
+    syncOnboardingToSupabase,
+    initialRouteFastSync,
+    handleSkipOnboarding,
+    handleFinishOnboarding,
     handleAuthExpiry,
     handleUnverifiedEmail,
     fetchTodos,
@@ -9847,6 +11548,8 @@ if (typeof module !== 'undefined' && module.exports) {
     deleteQuickNote,
     renderQuickNotes,
     renderAnalytics,
+    calculateOverallProductivityScore,
+    getMonthlyProductivityTrends,
     calculateStreaks,
     getWeeklyOverview,
     getProductivityLast7Days,

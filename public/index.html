@@ -553,15 +553,15 @@
           </form>
         </section>
 
-        <!-- Screen 8: Progress Analytics Page -->
+        <!-- Screen 8: Progress Analytics Page (Taskly v2.0.0 Build 11) -->
         <section id="tab-progress" class="tab-view">
           <!-- Themed Top Banner Card (Warm Yellow / Amber Theme) -->
           <div class="page-themed-banner banner-theme-yellow">
             <div class="banner-pill-badge pill-yellow">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-              <span>Progress</span>
+              <span>Productivity Analytics</span>
             </div>
-            <p class="banner-subtext">Track your productivity, completed tasks, and weekly performances.</p>
+            <p class="banner-subtext">Comprehensive insights across task completion, habit consistency, and delivery velocity.</p>
           </div>
 
           <!-- Segmented Control Filters -->
@@ -573,128 +573,234 @@
 
           <!-- Progress Desktop Grid Container -->
           <div class="progress-desktop-wrap">
-            <!-- Weekly Streak Card with Mascot Badge -->
-            <div class="progress-streak-card">
-              <div class="progress-streak-top-row">
-                <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--text-primary);">
-                  <span>🔥</span>
-                  <span>Weekly streak</span>
+            <!-- ======================================================== -->
+            <!-- SECTION 1: PRODUCTIVITY OVERVIEW (0-100 HERO SCORE)      -->
+            <!-- ======================================================== -->
+            <div class="analytics-section-card" id="section-productivity-overview">
+              <div class="analytics-card card-yellow-accent" id="productivity-score-card">
+                <div class="progress-ring-container large-ring">
+                  <svg class="progress-ring" width="120" height="120" viewBox="0 0 100 100">
+                    <circle class="ring-bg" cx="50" cy="50" r="40" stroke-width="9"/>
+                    <circle class="ring-fill ring-fill-red" id="analytics-ring-fill" cx="50" cy="50" r="40" stroke-width="9" stroke-dasharray="251.2" stroke-dashoffset="95"/>
+                  </svg>
+                  <div class="ring-center-text" id="analytics-percent">--</div>
                 </div>
-                <div class="progress-pet-badge-wrap">
-                  <div class="pet-circle-container pet-circle-progress-badge">
-                    <img src="/assets/pets/onboard_cat_3.png" alt="Pet Mascot Badge" class="pet-contained-img">
+
+                <div class="analytics-ring-info">
+                  <div class="analytics-hero-tier" id="analytics-hero-tier">Productivity Score</div>
+                  <div class="analytics-big-stat" id="analytics-tasks-summary">Calculating productivity...</div>
+                  <div class="analytics-trend-badge" id="analytics-trend-badge">+0% vs previous period</div>
+                  <div class="analytics-score-formula-note" id="analytics-score-formula-note">Tasks: -- • Routines: -- • On-Time: --</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- SECTION 2: TASK ANALYTICS                                -->
+            <!-- ======================================================== -->
+            <div class="analytics-section-card" id="section-task-analytics">
+              <div class="analytics-section-header">
+                <span class="analytics-section-icon">📋</span>
+                <h3 class="analytics-section-title">Task Analytics</h3>
+                <span class="analytics-section-pill" id="task-analytics-timeframe-pill">This Week</span>
+              </div>
+
+              <!-- 4-Metric Grid -->
+              <div class="task-metrics-4grid">
+                <div class="task-metric-box metric-completed">
+                  <span class="task-metric-num" id="overview-completed-val">0</span>
+                  <span class="task-metric-lbl">Completed</span>
+                  <span class="task-metric-sub" id="sub-task-completed">0% of total</span>
+                </div>
+                <div class="task-metric-box metric-pending">
+                  <span class="task-metric-num" id="overview-pending-val">0</span>
+                  <span class="task-metric-lbl">Pending</span>
+                  <span class="task-metric-sub" id="sub-task-pending">Active</span>
+                </div>
+                <div class="task-metric-box metric-overdue">
+                  <span class="task-metric-num" id="overview-overdue-val">0</span>
+                  <span class="task-metric-lbl">Overdue</span>
+                  <span class="task-metric-sub" id="sub-task-overdue">Action needed</span>
+                </div>
+                <div class="task-metric-box metric-ontime">
+                  <span class="task-metric-num" id="overview-ontime-val">100%</span>
+                  <span class="task-metric-lbl">On-Time Rate</span>
+                  <span class="task-metric-sub" id="sub-task-ontime">Delivery</span>
+                </div>
+              </div>
+
+              <!-- Task Completion vs Pending Stacked Ratio Bar -->
+              <div class="task-ratio-container">
+                <div class="task-ratio-bar-wrap">
+                  <div class="task-ratio-segment seg-completed" id="ratio-seg-completed" style="width: 0%;"></div>
+                  <div class="task-ratio-segment seg-pending" id="ratio-seg-pending" style="width: 100%;"></div>
+                  <div class="task-ratio-segment seg-overdue" id="ratio-seg-overdue" style="width: 0%;"></div>
+                </div>
+                <div class="task-ratio-legend">
+                  <span class="legend-item"><span class="legend-dot dot-comp"></span> Completed</span>
+                  <span class="legend-item"><span class="legend-dot dot-pend"></span> Pending</span>
+                  <span class="legend-item"><span class="legend-dot dot-over"></span> Overdue</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- SECTION 3: HABIT STREAKS & ROUTINE ANALYTICS             -->
+            <!-- ======================================================== -->
+            <div class="analytics-section-card" id="section-habit-analytics">
+              <div class="analytics-section-header">
+                <span class="analytics-section-icon">🔥</span>
+                <h3 class="analytics-section-title">Habit Streaks & Routine Consistency</h3>
+                <span class="analytics-section-pill pill-accent">Smart Lists</span>
+              </div>
+
+              <!-- Habit Streaks Hero Box -->
+              <div class="progress-streak-card">
+                <div class="progress-streak-top-row">
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--text-primary);">
+                    <span>🔥</span>
+                    <span>Current Streak</span>
+                  </div>
+                  <div class="progress-pet-badge-wrap">
+                    <div class="pet-circle-container pet-circle-progress-badge">
+                      <img src="/assets/pets/onboard_cat_3.png" alt="Pet Mascot Badge" class="pet-contained-img">
+                    </div>
                   </div>
                 </div>
+
+                <div class="streak-big-days" id="streak-days-display">0 days</div>
+
+                <!-- 7-Day Routine Consistency Row -->
+                <div class="streak-7days-row" id="streak-7days-row">
+                  <div class="streak-day-item"><span class="streak-day-label">Mon</span><div class="streak-day-circle"></div></div>
+                  <div class="streak-day-item"><span class="streak-day-label">Tue</span><div class="streak-day-circle"></div></div>
+                  <div class="streak-day-item"><span class="streak-day-label">Wed</span><div class="streak-day-circle"></div></div>
+                  <div class="streak-day-item"><span class="streak-day-label">Thu</span><div class="streak-day-circle"></div></div>
+                  <div class="streak-day-item"><span class="streak-day-label">Fri</span><div class="streak-day-circle"></div></div>
+                  <div class="streak-day-item"><span class="streak-day-label">Sat</span><div class="streak-day-circle"></div></div>
+                  <div class="streak-day-item"><span class="streak-day-label">Sun</span><div class="streak-day-circle"></div></div>
+                </div>
+
+                <div class="streak-sub-stat-row">
+                  <span id="streak-current-stat">🔥 0 day streak</span>
+                  <span id="streak-best-stat">🏆 Best: 0 days</span>
+                </div>
               </div>
 
-              <div class="streak-big-days" id="streak-days-display">5 days</div>
-
-              <div class="streak-7days-row" id="streak-7days-row">
-                <div class="streak-day-item"><span class="streak-day-label">Mon</span><div class="streak-day-circle"></div></div>
-                <div class="streak-day-item"><span class="streak-day-label">Tue</span><div class="streak-day-circle"></div></div>
-                <div class="streak-day-item"><span class="streak-day-label">Wed</span><div class="streak-day-circle"></div></div>
-                <div class="streak-day-item"><span class="streak-day-label">Thu</span><div class="streak-day-circle"></div></div>
-                <div class="streak-day-item"><span class="streak-day-label">Fri</span><div class="streak-day-circle"></div></div>
-                <div class="streak-day-item"><span class="streak-day-label">Sat</span><div class="streak-day-circle"></div></div>
-                <div class="streak-day-item"><span class="streak-day-label">Sun</span><div class="streak-day-circle"></div></div>
+              <!-- Habit Consistency Grid -->
+              <div class="habit-consistency-3grid">
+                <div class="habit-cons-box">
+                  <span class="habit-cons-val" id="progress-habit-daily-rate">0%</span>
+                  <span class="habit-cons-lbl">Today's Routine</span>
+                  <span class="habit-cons-hint">Target: 80%</span>
+                </div>
+                <div class="habit-cons-box">
+                  <span class="habit-cons-val" id="progress-habit-weekly-rate">0%</span>
+                  <span class="habit-cons-lbl">Weekly Consistency</span>
+                  <span class="habit-cons-hint" id="progress-habit-weekly-days">0/0 days</span>
+                </div>
+                <div class="habit-cons-box">
+                  <span class="habit-cons-val" id="progress-habit-monthly-rate">0%</span>
+                  <span class="habit-cons-lbl">Monthly Consistency</span>
+                  <span class="habit-cons-hint" id="progress-habit-monthly-days">0/0 days</span>
+                </div>
               </div>
 
-              <div class="streak-sub-stat-row">
-                <span id="streak-current-stat">🔥 0 day streak</span>
-                <span id="streak-best-stat">🏆 Best: 0 days</span>
+              <!-- 4-State Routine Status Breakdown Chips -->
+              <div class="smart-breakdown-row" style="margin-top: 12px;">
+                <span class="breakdown-chip chip-completed" id="progress-routine-chip-completed">✓ 0 Done</span>
+                <span class="breakdown-chip chip-pending" id="progress-routine-chip-pending">○ 0 Pending</span>
+                <span class="breakdown-chip chip-postponed" id="progress-routine-chip-postponed">↳ 0 Postponed</span>
+                <span class="breakdown-chip chip-cancelled" id="progress-routine-chip-cancelled">✕ 0 Cancelled</span>
               </div>
             </div>
 
-            <!-- Main Circular Progress Ring Card -->
-            <div class="analytics-card card-yellow-accent">
-              <div class="progress-ring-container large-ring">
-                <svg class="progress-ring" width="120" height="120" viewBox="0 0 100 100">
-                  <circle class="ring-bg" cx="50" cy="50" r="40" stroke-width="9"/>
-                  <circle class="ring-fill ring-fill-red" id="analytics-ring-fill" cx="50" cy="50" r="40" stroke-width="9" stroke-dasharray="251.2" stroke-dashoffset="95"/>
+            <!-- ======================================================== -->
+            <!-- SECTION 4: WEEKLY PERFORMANCE                            -->
+            <!-- ======================================================== -->
+            <div class="analytics-section-card" id="section-weekly-performance">
+              <div class="analytics-section-header">
+                <span class="analytics-section-icon">📊</span>
+                <h3 class="analytics-section-title">Weekly Performance</h3>
+                <span class="analytics-section-pill" id="weekly-peak-day-pill">Peak: None</span>
+              </div>
+              <p class="analytics-section-sub">Completed tasks per day (Monday to Sunday).</p>
+
+              <!-- Productivity (Last 7 Days) Bar Chart -->
+              <div class="barchart-card" style="box-shadow: none; padding: 0; background: transparent;">
+                <div class="barchart-container" id="barchart-bars">
+                  <!-- Dynamically populated 7 bars -->
+                </div>
+              </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- SECTION 5: MONTHLY PERFORMANCE & TRENDS                  -->
+            <!-- ======================================================== -->
+            <div class="analytics-section-card" id="section-monthly-performance">
+              <div class="analytics-section-header">
+                <span class="analytics-section-icon">📈</span>
+                <h3 class="analytics-section-title">Monthly Trends</h3>
+                <span class="analytics-section-pill" id="monthly-comparison-badge">Consistent pace</span>
+              </div>
+              <p class="analytics-section-sub" id="monthly-summary-sub">Monthly breakdown across 4 weekly milestones.</p>
+
+              <!-- 4-Week Progress Bars -->
+              <div class="monthly-weeks-list" id="monthly-weeks-breakdown">
+                <!-- Dynamically populated 4 week progress bars -->
+              </div>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- SECTION 6: CATEGORY INSIGHTS & RADAR                     -->
+            <!-- ======================================================== -->
+            <div class="analytics-section-card" id="section-category-insights">
+              <div class="analytics-section-header">
+                <span class="analytics-section-icon">🏷️</span>
+                <h3 class="analytics-section-title">Category Breakdown</h3>
+                <span class="analytics-section-pill">Distribution</span>
+              </div>
+
+              <div id="progress-category-list">
+                <!-- Dynamically populated category progress cards -->
+              </div>
+
+              <!-- Productivity & Category Dynamic Radar Chart -->
+              <div style="display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px;">
+                <div style="font-size: 13px; font-weight: 800; color: var(--text-primary);">Productivity Radar</div>
+                <span style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Multi-Axis Balance</span>
+              </div>
+
+              <div class="radar-card-wrap">
+                <svg viewBox="0 0 340 240" width="100%" height="auto" style="max-width: 320px; overflow: visible;">
+                  <!-- Concentric Hexagons (r = 64, 44, 24) -->
+                  <polygon points="170,56 225,88 225,152 170,184 115,152 115,88" fill="none" stroke="var(--border)" stroke-width="1.2"/>
+                  <polygon points="170,76 208,98 208,142 170,164 132,142 132,98" fill="none" stroke="var(--border)" stroke-width="1"/>
+                  <polygon points="170,96 191,108 191,132 170,144 149,132 149,108" fill="none" stroke="var(--border)" stroke-width="1"/>
+                  <!-- Radial Axis Lines -->
+                  <line x1="170" y1="56" x2="170" y2="184" stroke="var(--border)" stroke-width="1"/>
+                  <line x1="115" y1="88" x2="225" y2="152" stroke="var(--border)" stroke-width="1"/>
+                  <line x1="115" y1="152" x2="225" y2="88" stroke="var(--border)" stroke-width="1"/>
+                  <!-- Dynamic Filled Radar Polygon -->
+                  <polygon id="radar-polygon" points="170,68 218,90 200,146 170,160 128,144 138,94" fill="rgba(248, 132, 56, 0.22)" stroke="#F88438" stroke-width="2.5"/>
+                  <!-- Dynamic Data Points -->
+                  <g id="radar-points">
+                    <circle cx="170" cy="68" r="4" fill="#F88438"/>
+                    <circle cx="218" cy="90" r="4" fill="#F88438"/>
+                    <circle cx="200" cy="146" r="4" fill="#F88438"/>
+                    <circle cx="170" cy="160" r="4" fill="#F88438"/>
+                    <circle cx="128" cy="144" r="4" fill="#F88438"/>
+                    <circle cx="138" cy="94" r="4" fill="#F88438"/>
+                  </g>
+                  <!-- Category & Performance Axis Labels -->
+                  <text x="170" y="38" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">Productivity</text>
+                  <text x="238" y="92" text-anchor="start" font-size="10" font-weight="800" fill="var(--text-primary)">Project</text>
+                  <text x="238" y="156" text-anchor="start" font-size="10" font-weight="800" fill="var(--text-primary)">Work</text>
+                  <text x="170" y="206" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">Study</text>
+                  <text x="102" y="156" text-anchor="end" font-size="10" font-weight="800" fill="var(--text-primary)">Personal</text>
+                  <text x="102" y="92" text-anchor="end" font-size="10" font-weight="800" fill="var(--text-primary)">Consistency</text>
                 </svg>
-                <div class="ring-center-text" id="analytics-percent">62%</div>
               </div>
-
-              <div class="analytics-ring-info">
-                <div class="analytics-big-stat" id="analytics-tasks-summary">5 of 8 tasks completed</div>
-                <div class="analytics-trend-badge" id="analytics-trend-badge">+20% from last week</div>
-              </div>
-            </div>
-
-            <!-- Task Overview Breakdown -->
-            <div class="overview-card">
-              <h3 class="overview-title">Task Overview</h3>
-              <div class="overview-list">
-                <div class="overview-item">
-                  <span class="status-dot dot-completed"></span>
-                  <span class="overview-label">Completed</span>
-                  <span class="overview-val" id="overview-completed-val">5</span>
-                </div>
-                <div class="overview-item">
-                  <span class="status-dot dot-pending"></span>
-                  <span class="overview-label">Pending</span>
-                  <span class="overview-val" id="overview-pending-val">2</span>
-                </div>
-                <div class="overview-item">
-                  <span class="status-dot dot-overdue"></span>
-                  <span class="overview-label">Overdue</span>
-                  <span class="overview-val" id="overview-overdue-val">1</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Productivity (Last 7 Days) Bar Chart -->
-            <div class="barchart-card">
-              <h3 class="barchart-title">Productivity (Last 7 Days)</h3>
-              <div class="barchart-container" id="barchart-bars">
-                <!-- Dynamically populated 7 bars -->
-              </div>
-            </div>
-
-            <!-- Category-Wise Task Completion Breakdown -->
-            <div style="display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px;">
-              <div style="font-size: 14px; font-weight: 800; color: var(--text-primary);">Category breakdown</div>
-              <span style="color: var(--text-muted); cursor: pointer;" title="Tasks grouped by category">•••</span>
-            </div>
-            <div id="progress-category-list">
-              <!-- Dynamically populated category progress cards -->
-            </div>
-
-            <!-- Productivity & Category Dynamic Radar Chart -->
-            <div style="display: flex; align-items: center; justify-content: space-between; margin: 18px 0 10px;">
-              <div style="font-size: 14px; font-weight: 800; color: var(--text-primary);">Productivity radar</div>
-              <span style="color: var(--text-muted); cursor: pointer;" title="Dynamic multi-axis performance radar">•••</span>
-            </div>
-
-            <div class="radar-card-wrap">
-              <svg viewBox="0 0 340 240" width="100%" height="auto" style="max-width: 320px; overflow: visible;">
-                <!-- Concentric Hexagons (r = 64, 44, 24) -->
-                <polygon points="170,56 225,88 225,152 170,184 115,152 115,88" fill="none" stroke="var(--border)" stroke-width="1.2"/>
-                <polygon points="170,76 208,98 208,142 170,164 132,142 132,98" fill="none" stroke="var(--border)" stroke-width="1"/>
-                <polygon points="170,96 191,108 191,132 170,144 149,132 149,108" fill="none" stroke="var(--border)" stroke-width="1"/>
-                <!-- Radial Axis Lines -->
-                <line x1="170" y1="56" x2="170" y2="184" stroke="var(--border)" stroke-width="1"/>
-                <line x1="115" y1="88" x2="225" y2="152" stroke="var(--border)" stroke-width="1"/>
-                <line x1="115" y1="152" x2="225" y2="88" stroke="var(--border)" stroke-width="1"/>
-                <!-- Dynamic Filled Radar Polygon -->
-                <polygon id="radar-polygon" points="170,68 218,90 200,146 170,160 128,144 138,94" fill="rgba(248, 132, 56, 0.22)" stroke="#F88438" stroke-width="2.5"/>
-                <!-- Dynamic Data Points -->
-                <g id="radar-points">
-                  <circle cx="170" cy="68" r="4" fill="#F88438"/>
-                  <circle cx="218" cy="90" r="4" fill="#F88438"/>
-                  <circle cx="200" cy="146" r="4" fill="#F88438"/>
-                  <circle cx="170" cy="160" r="4" fill="#F88438"/>
-                  <circle cx="128" cy="144" r="4" fill="#F88438"/>
-                  <circle cx="138" cy="94" r="4" fill="#F88438"/>
-                </g>
-                <!-- Category & Performance Axis Labels -->
-                <text x="170" y="38" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">Productivity</text>
-                <text x="238" y="92" text-anchor="start" font-size="10" font-weight="800" fill="var(--text-primary)">Project</text>
-                <text x="238" y="156" text-anchor="start" font-size="10" font-weight="800" fill="var(--text-primary)">Work</text>
-                <text x="170" y="206" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">Study</text>
-                <text x="102" y="156" text-anchor="end" font-size="10" font-weight="800" fill="var(--text-primary)">Personal</text>
-                <text x="102" y="92" text-anchor="end" font-size="10" font-weight="800" fill="var(--text-primary)">Consistency</text>
-              </svg>
             </div>
           </div>
         </section>
@@ -933,6 +1039,54 @@
               </div>
             </div>
 
+            <!-- Habit Streaks & Routine Consistency Card (v2.0.0 Build 11) -->
+            <div class="smart-habit-streak-card" id="smart-habit-streak-card">
+              <div class="streak-hero-row">
+                <div class="streak-flame-stat">
+                  <span class="streak-flame-icon">🔥</span>
+                  <div class="streak-flame-texts">
+                    <div class="streak-flame-count" id="habit-current-streak-count">0 Days</div>
+                    <div class="streak-flame-label">Current Streak</div>
+                  </div>
+                </div>
+                <div class="streak-best-badge" id="habit-best-streak-badge">
+                  <span>🏆 Best:</span>
+                  <strong id="habit-longest-streak-count">0 Days</strong>
+                </div>
+                <button type="button" class="btn-reset-streak" id="btn-reset-habit-streak" title="Reset Habit Streak" aria-label="Reset Habit Streak">
+                  <span class="reset-streak-icon">↺</span>
+                  <span class="reset-streak-label">Reset</span>
+                </button>
+              </div>
+
+              <!-- Habit Consistency & Daily Rate Grid -->
+              <div class="smart-habit-metrics-grid">
+                <div class="habit-metric-box">
+                  <span class="habit-metric-val" id="habit-daily-rate">0%</span>
+                  <span class="habit-metric-label">Today's Rate</span>
+                  <span class="habit-target-hint">Target: 80%</span>
+                </div>
+                <div class="habit-metric-box">
+                  <span class="habit-metric-val" id="habit-weekly-consistency">0%</span>
+                  <span class="habit-metric-label">This Week</span>
+                  <span class="habit-target-hint" id="habit-weekly-days">0/0 days</span>
+                </div>
+                <div class="habit-metric-box">
+                  <span class="habit-metric-val" id="habit-monthly-consistency">0%</span>
+                  <span class="habit-metric-label">This Month</span>
+                  <span class="habit-target-hint" id="habit-monthly-days">0/0 days</span>
+                </div>
+              </div>
+
+              <!-- Today's Routine Status Breakdown Pills -->
+              <div class="smart-breakdown-row" id="smart-today-breakdown-row">
+                <span class="breakdown-chip chip-completed" id="chip-count-completed">✓ 0 Done</span>
+                <span class="breakdown-chip chip-pending" id="chip-count-pending">○ 0 Pending</span>
+                <span class="breakdown-chip chip-postponed" id="chip-count-postponed">↳ 0 Postponed</span>
+                <span class="breakdown-chip chip-cancelled" id="chip-count-cancelled">✕ 0 Cancelled</span>
+              </div>
+            </div>
+
             <!-- Body Container -->
             <div class="smart-lists-body">
               <!-- Add Routine Box -->
@@ -982,6 +1136,47 @@
                 <h4 class="smart-empty-title">No routines yet. Start building your daily habits.</h4>
                 <p class="smart-empty-desc">Routines are simple daily checklists that reset each day without task complexity.</p>
                 <button type="button" class="btn-smart-empty-add" id="btn-empty-add-routine">+ Add Your First Routine</button>
+              </div>
+
+              <!-- Next-Day Routine Management Section (v2.0.0 Build 11) -->
+              <div class="smart-next-day-section" id="smart-next-day-section">
+                <div class="next-day-section-header">
+                  <div class="next-day-title-wrap">
+                    <div class="next-day-icon">🌅</div>
+                    <div class="next-day-title-texts">
+                      <h3 class="next-day-heading">Tomorrow's Routines</h3>
+                      <span class="next-day-subtitle" id="smart-tomorrow-date-label">Next Calendar Day</span>
+                    </div>
+                  </div>
+                  <div class="next-day-header-actions">
+                    <span class="next-day-count-badge" id="smart-tomorrow-count-badge">0 Routines</span>
+                    <button type="button" class="btn-next-day-add" id="btn-add-tomorrow-routine" title="Add routine for tomorrow">+ Tomorrow</button>
+                  </div>
+                </div>
+
+                <!-- Add Tomorrow Routine Form (collapsible) -->
+                <div class="next-day-add-box" id="next-day-add-box" style="display: none;">
+                  <form id="form-next-day-add" class="smart-add-form">
+                    <div class="smart-add-input-wrap">
+                      <input type="text" id="input-tomorrow-routine-title" class="smart-routine-input" placeholder="Routine for tomorrow..." maxlength="150" autocomplete="off" required>
+                    </div>
+                    <div class="smart-add-actions">
+                      <button type="button" class="btn-smart-cancel" id="btn-cancel-tomorrow-routine">Cancel</button>
+                      <button type="submit" class="btn-smart-save" id="btn-save-tomorrow-routine">Add</button>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Next-Day Routines List -->
+                <div class="next-day-routines-list" id="smart-tomorrow-routines-list">
+                  <!-- Rendered dynamically -->
+                </div>
+
+                <!-- Next-Day Empty State -->
+                <div class="next-day-empty-state" id="smart-tomorrow-empty" style="display: none;">
+                  <span class="next-day-empty-icon">🌱</span>
+                  <p class="next-day-empty-text">No routines scheduled for tomorrow yet.</p>
+                </div>
               </div>
 
               <!-- Footer Summary Button -->
@@ -1756,6 +1951,56 @@
         </div>
       </div>
 
+      <!-- Modal: In-App Update Announcement (v2.0.0 Build 11) -->
+      <div id="modal-update-announcement" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="update-announcement-title">
+        <div class="modal-card modal-card-update-announcement">
+          <div class="modal-head">
+            <div class="update-announcement-head-wrap">
+              <span class="update-announcement-icon-badge">🚀</span>
+              <div class="update-announcement-title-group">
+                <span class="update-announcement-label">NEW VERSION AVAILABLE</span>
+                <h3 class="modal-title" id="update-announcement-title">Taskly Update Ready</h3>
+              </div>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-update-announcement" aria-label="Dismiss Announcement">×</button>
+          </div>
+
+          <div class="modal-body update-announcement-body">
+            <!-- Installed vs Available Version Diff Card -->
+            <div class="update-version-diff-card">
+              <div class="diff-version-col diff-installed">
+                <span class="diff-col-label">Installed</span>
+                <span class="diff-col-val" id="announcement-installed-version">v1.9.0 (Build 10)</span>
+              </div>
+              <div class="diff-arrow-wrap">
+                <span class="diff-arrow">➜</span>
+              </div>
+              <div class="diff-version-col diff-available">
+                <span class="diff-col-label">Available</span>
+                <span class="diff-col-val" id="announcement-available-version">v2.0.0 (Build 11)</span>
+              </div>
+            </div>
+
+            <!-- Release Highlights Container -->
+            <div class="update-highlights-section">
+              <h4 class="update-highlights-heading">What's New in this Release:</h4>
+              <ul class="update-highlights-list" id="announcement-highlights-list">
+                <!-- Dynamically populated release highlights -->
+              </ul>
+            </div>
+
+            <p class="update-announcement-note">
+              🔒 Safe & verified installation. Your tasks, notes, habits, and preferences are fully preserved.
+            </p>
+          </div>
+
+          <div class="modal-actions update-announcement-actions">
+            <button type="button" class="btn-modal-cancel" id="btn-announcement-later">Later</button>
+            <button type="button" class="btn-primary-compact" id="btn-announcement-install">Install Now</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Modal: Frequently Asked Questions (FAQ) -->
       <div id="modal-faq" class="modal-backdrop">
         <div class="modal-card modal-card-faq">
@@ -2426,8 +2671,90 @@
       </div>
 
       <!-- ==================================================================== -->
-      <!-- SMART LISTS MODALS (v1.9.0 Build 10)                                -->
+      <!-- SMART LISTS MODALS (v1.9.0 Build 10 & v2.0.0 Build 11)              -->
       <!-- ==================================================================== -->
+
+      <!-- Modal: Routine Status Picker (v2.0.0 Build 11) -->
+      <div id="modal-smart-status-picker" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-status-picker-title">
+        <div class="modal-card modal-status-picker-card">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box smart-head-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                  <path d="M9 11l3 3L22 4"/>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                </svg>
+              </div>
+              <h3 class="modal-title" id="modal-status-picker-title">Update Routine Status</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-status-picker" aria-label="Close">×</button>
+          </div>
+          <div class="modal-body-scroll status-picker-body">
+            <div class="status-routine-banner">
+              <span class="status-routine-badge">ROUTINE</span>
+              <h4 class="status-routine-title" id="status-picker-routine-title">Daily Routine</h4>
+            </div>
+
+            <!-- Status Choice Options (touch target >= 44px) -->
+            <div class="status-options-grid">
+              <button type="button" class="btn-status-option" data-status="completed" id="opt-status-completed">
+                <div class="status-opt-icon icon-completed">✓</div>
+                <div class="status-opt-text">
+                  <span class="status-opt-title">Completed</span>
+                  <span class="status-opt-desc">Done today (+1 towards streak)</span>
+                </div>
+              </button>
+
+              <button type="button" class="btn-status-option" data-status="pending" id="opt-status-pending">
+                <div class="status-opt-icon icon-pending">○</div>
+                <div class="status-opt-text">
+                  <span class="status-opt-title">Pending</span>
+                  <span class="status-opt-desc">Still to be done today</span>
+                </div>
+              </button>
+
+              <button type="button" class="btn-status-option" data-status="postponed" id="opt-status-postponed">
+                <div class="status-opt-icon icon-postponed">↳</div>
+                <div class="status-opt-text">
+                  <span class="status-opt-title">Postpone</span>
+                  <span class="status-opt-desc">Reschedule to tomorrow or future date</span>
+                </div>
+              </button>
+
+              <button type="button" class="btn-status-option" data-status="cancelled" id="opt-status-cancelled">
+                <div class="status-opt-icon icon-cancelled">✕</div>
+                <div class="status-opt-text">
+                  <span class="status-opt-title">Cancel / Excuse Today</span>
+                  <span class="status-opt-desc">Skip today (excluded from streak denominator)</span>
+                </div>
+              </button>
+            </div>
+
+            <!-- Postpone Form (shown when Postpone option selected) -->
+            <div class="status-subform" id="status-subform-postpone" style="display: none;">
+              <label for="input-postpone-date" class="form-label-bold">Reschedule to Date:</label>
+              <div class="form-input-wrap">
+                <input type="date" id="input-postpone-date" class="smart-routine-input">
+              </div>
+              <p class="status-subform-hint">The routine is recorded as postponed today and scheduled on the target date.</p>
+            </div>
+
+            <!-- Cancel Form (shown when Cancel option selected) -->
+            <div class="status-subform" id="status-subform-cancel" style="display: none;">
+              <label for="input-cancel-reason" class="form-label-bold">Reason for Cancellation (Optional):</label>
+              <div class="form-input-wrap">
+                <input type="text" id="input-cancel-reason" class="smart-routine-input" placeholder="e.g. Travel, sick day, recovery" maxlength="100">
+              </div>
+              <p class="status-subform-hint">Cancelled routines are excluded from the 80% streak calculation.</p>
+            </div>
+          </div>
+
+          <div class="modal-actions status-picker-actions">
+            <button type="button" class="btn-modal-cancel" id="btn-cancel-status-picker">Cancel</button>
+            <button type="button" class="btn-primary-compact" id="btn-confirm-status-picker">Save Status</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Modal: Daily Routine Summary & Productivity Report (Printed Paper Document Style) -->
       <div id="modal-smart-summary" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-smart-summary-title">
@@ -2488,6 +2815,14 @@
                     <span class="paper-stat-num stat-num-incomplete" id="summary-metric-incomplete">0</span>
                   </div>
                   <div class="paper-stat-box">
+                    <span class="paper-stat-label">Postponed</span>
+                    <span class="paper-stat-num stat-num-postponed" id="summary-metric-postponed">0</span>
+                  </div>
+                  <div class="paper-stat-box">
+                    <span class="paper-stat-label">Cancelled</span>
+                    <span class="paper-stat-num stat-num-cancelled" id="summary-metric-cancelled">0</span>
+                  </div>
+                  <div class="paper-stat-box">
                     <span class="paper-stat-label">Completion Rate</span>
                     <span class="paper-stat-num stat-num-rate" id="summary-metric-rate">0%</span>
                   </div>
@@ -2536,6 +2871,7 @@
                     <button type="button" class="btn-paper-carry btn-carry-no" id="btn-carry-forward-no">No, finish today's list</button>
                   </div>
                   <div class="paper-carry-change-wrap" id="smart-carry-status-banner" style="display: none;">
+                    <button type="button" class="btn-carry-view-tomorrow" id="btn-summary-view-tomorrow">View Tomorrow's Routines ➜</button>
                     <button type="button" class="btn-carry-change" id="btn-change-carry-forward">Change Decision</button>
                   </div>
                 </div>
@@ -2670,6 +3006,50 @@
               </svg>
               <span>Delete</span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Reset Habit Streak Confirmation (v2.0.0 Build 11) -->
+      <div id="modal-smart-reset-streak-confirm" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-reset-streak-title">
+        <div class="modal-card modal-card-confirm">
+          <div class="modal-head">
+            <h3 class="modal-title" id="modal-reset-streak-title">Reset Habit Streak?</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-reset-streak-modal" aria-label="Close">×</button>
+          </div>
+          <div class="modal-confirm-body">
+            <div class="reset-streak-warning-card">
+              <span class="reset-streak-warning-icon">⚠️</span>
+              <p class="reset-streak-warning-bold">This will reset your current streak, longest streak, and consistency metrics to 0.</p>
+            </div>
+            <ul class="reset-streak-guarantees">
+              <li>Routine definitions will <strong>NOT</strong> be deleted.</li>
+              <li>Future scheduled routines will <strong>NOT</strong> be deleted.</li>
+              <li>Historical daily reports will remain archived in summary history.</li>
+              <li>Subsequent routine activity starts a fresh streak baseline from today.</li>
+            </ul>
+            <p class="reset-confirm-prompt">Are you sure you want to reset your streak?</p>
+          </div>
+          <div class="modal-actions modal-actions-confirm">
+            <button type="button" class="btn-modal-cancel" id="btn-cancel-reset-streak">Cancel</button>
+            <button type="button" class="btn-danger-compact" id="btn-proceed-reset-streak">Reset Streak to 0</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Remove Tomorrow Occurrence Confirmation (v2.0.0 Build 11) -->
+      <div id="modal-smart-remove-tomorrow-confirm" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-remove-tomorrow-title">
+        <div class="modal-card modal-card-confirm">
+          <div class="modal-head">
+            <h3 class="modal-title" id="modal-remove-tomorrow-title">Remove from Tomorrow</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-remove-tomorrow-modal" aria-label="Close">×</button>
+          </div>
+          <div class="modal-confirm-body">
+            <p id="remove-tomorrow-confirm-message">Remove this routine occurrence from tomorrow only? The routine definition remains for all other days.</p>
+          </div>
+          <div class="modal-actions modal-actions-confirm">
+            <button type="button" class="btn-modal-cancel" id="btn-cancel-remove-tomorrow">Cancel</button>
+            <button type="button" class="btn-danger-compact" id="btn-proceed-remove-tomorrow">Remove from Tomorrow</button>
           </div>
         </div>
       </div>

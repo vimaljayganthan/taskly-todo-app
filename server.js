@@ -17,6 +17,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { initializeStorage, getStorage, getScopedStorage } = require('./storage/taskStore');
 const SmartListStore = require('./storage/smartListStore');
+const HabitStreakService = require('./services/habitStreakService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -583,7 +584,7 @@ app.delete('/api/smart-lists/routines/:id', async (req, res, next) => {
   }
 });
 
-// Daily Completions
+// Daily Completions & 4-State Routine Operations
 app.get('/api/smart-lists/completions', async (req, res, next) => {
   try {
     const date = req.query.date || new Date().toISOString().slice(0, 10);
@@ -596,7 +597,7 @@ app.get('/api/smart-lists/completions', async (req, res, next) => {
 
 app.post('/api/smart-lists/completions', async (req, res, next) => {
   try {
-    const { routineId, date, completed, carriedForward } = req.body;
+    const { routineId, date, completed, carriedForward, status, postponedTo, cancellationReason } = req.body;
     if (!routineId || !date) {
       return res.status(400).json({ error: 'routineId and date are required' });
     }
@@ -604,10 +605,262 @@ app.post('/api/smart-lists/completions', async (req, res, next) => {
       routineId,
       date,
       completed,
-      carriedForward
+      carriedForward,
+      status,
+      postponedTo,
+      cancellationReason
     });
     res.json(record);
   } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Update authoritative routine status (completed, pending, postponed, cancelled)
+app.patch('/api/smart-lists/completions/status', async (req, res, next) => {
+  try {
+    const { routineId, date, status, postponedTo, cancellationReason } = req.body;
+    if (!routineId || !date || !status) {
+      return res.status(400).json({ error: 'routineId, date, and status are required' });
+    }
+    const result = await SmartListStore.setRoutineStatus(req.user.id, {
+      routineId,
+      date,
+      status,
+      postponedTo,
+      cancellationReason
+    });
+    res.json(result);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Postpone a routine to a future date
+app.post('/api/smart-lists/routines/:id/postpone', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { date, postponedTo } = req.body;
+    if (!date || !postponedTo) {
+      return res.status(400).json({ error: 'date and postponedTo are required' });
+    }
+    const result = await SmartListStore.postponeRoutine(req.user.id, id, date, postponedTo);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Cancel a routine with optional cancellation reason
+app.post('/api/smart-lists/routines/:id/cancel', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { date, cancellationReason } = req.body;
+    if (!date) {
+      return res.status(400).json({ error: 'date is required' });
+    }
+    const record = await SmartListStore.cancelRoutine(req.user.id, id, date, cancellationReason);
+    res.json({ success: true, record });
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Undo cancellation of a routine
+app.post('/api/smart-lists/routines/:id/undo-cancel', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { date } = req.body;
+    if (!date) {
+      return res.status(400).json({ error: 'date is required' });
+    }
+    const record = await SmartListStore.undoCancelRoutine(req.user.id, id, date);
+    res.json({ success: true, record });
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Carry-Forward Decision Execution (Yes: carry incomplete routines forward to tomorrow; No: finish today)
+app.post('/api/smart-lists/carry-forward', async (req, res, next) => {
+  try {
+    const { date, decision } = req.body;
+    if (!date || !decision) {
+      return res.status(400).json({ error: 'date and decision ("yes" | "no") are required' });
+    }
+    const result = await SmartListStore.carryForward(req.user.id, { date, decision });
+    res.json(result);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// Next-Day Routines Management Endpoints
+app.get('/api/smart-lists/next-day', async (req, res, next) => {
+  try {
+    const date = req.query.date;
+    const result = await SmartListStore.getNextDayRoutines(req.user.id, { date });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/smart-lists/next-day/assign', async (req, res, next) => {
+  try {
+    const { routineId, date, title } = req.body;
+    const result = await SmartListStore.assignRoutineToDate(req.user.id, { routineId, date, title });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+app.delete('/api/smart-lists/next-day/occurrences/:routineId', async (req, res, next) => {
+  try {
+    const { routineId } = req.params;
+    const date = req.query.date || req.body?.date;
+    if (!date) {
+      return res.status(400).json({ error: 'date is required' });
+    }
+    const result = await SmartListStore.removeOccurrenceFromDate(req.user.id, { routineId, date });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Reset Habit Streak Endpoint
+app.post('/api/smart-lists/streaks/reset', async (req, res, next) => {
+  try {
+    const { resetAt } = req.body;
+    const result = await SmartListStore.resetStreak(req.user.id, { resetAt });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Habit Streaks & Consistency Analytics Endpoints
+app.get('/api/smart-lists/statistics/daily', async (req, res, next) => {
+  try {
+    const date = req.query.date || HabitStreakService.toYmdString(new Date());
+    const settings = await SmartListStore.getSettings(req.user.id);
+    const routines = await SmartListStore.getRoutines(req.user.id);
+    const completions = await SmartListStore.getCompletions(req.user.id, date);
+    const stats = HabitStreakService.calculateDayStatistics({
+      routines,
+      completions,
+      date,
+      resetAt: settings?.streakResetAt || null
+    });
+    res.json(stats);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+app.get('/api/smart-lists/statistics/consistency', async (req, res, next) => {
+  try {
+    const date = req.query.date || HabitStreakService.toYmdString(new Date());
+    const settings = await SmartListStore.getSettings(req.user.id);
+    const routines = await SmartListStore.getRoutines(req.user.id);
+    const completions = await SmartListStore.getAllCompletions(req.user.id);
+    const consistency = HabitStreakService.calculateConsistency({
+      routines,
+      completions,
+      date,
+      resetAt: settings?.streakResetAt || null
+    });
+    res.json(consistency);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+app.get('/api/smart-lists/streaks', async (req, res, next) => {
+  try {
+    const refDate = req.query.refDate || HabitStreakService.toYmdString(new Date());
+    const settings = await SmartListStore.getSettings(req.user.id);
+    const routines = await SmartListStore.getRoutines(req.user.id);
+    const completions = await SmartListStore.getAllCompletions(req.user.id);
+    const streaks = HabitStreakService.calculateStreaks({
+      routines,
+      completions,
+      refDate,
+      resetAt: settings?.streakResetAt || null
+    });
+    res.json(streaks);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+app.get('/api/smart-lists/performance', async (req, res, next) => {
+  try {
+    const { startDate, endDate, limit } = req.query;
+    const routines = await SmartListStore.getRoutines(req.user.id);
+    const completions = await SmartListStore.getAllCompletions(req.user.id);
+    const performance = HabitStreakService.getHistoricalPerformance({
+      routines,
+      completions,
+      startDate,
+      endDate,
+      limit: limit ? parseInt(limit, 10) : 30
+    });
+    res.json(performance);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     next(err);
   }
 });
@@ -677,6 +930,125 @@ app.post('/api/smart-lists/settings', async (req, res, next) => {
   try {
     const settings = await SmartListStore.saveSettings(req.user.id, req.body);
     res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// Productivity Analytics API Endpoints (v2.0.0 Build 11)
+// ==========================================================================
+app.use('/api/analytics', authenticateUser);
+
+app.get('/api/analytics/productivity', async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const refDate = req.query.refDate || HabitStreakService.toYmdString(new Date());
+
+    // 1. Fetch user's tasks
+    const storage = getScopedStorage(req);
+    const todos = await storage.getAllTasks(userId);
+
+    // 2. Fetch routines, completions, and settings
+    const settings = await SmartListStore.getSettings(userId);
+    const resetAt = settings?.streakResetAt || null;
+    const routines = await SmartListStore.getRoutines(userId);
+    const allCompletions = await SmartListStore.getAllCompletions(userId);
+    const todayCompletions = await SmartListStore.getCompletions(userId, refDate);
+
+    // 3. Compute habit streaks and consistency
+    const streaks = HabitStreakService.calculateStreaks({ routines, completions: allCompletions, refDate, resetAt });
+    const consistency = HabitStreakService.calculateConsistency({ routines, completions: allCompletions, date: refDate, resetAt });
+    const todayStats = HabitStreakService.calculateDayStatistics({ routines, completions: todayCompletions, date: refDate, resetAt });
+
+    // 4. Compute task metrics
+    const now = new Date(refDate + 'T23:59:59');
+    let completedCount = 0;
+    let pendingCount = 0;
+    let overdueCount = 0;
+    let onTimeCount = 0;
+    let tasksWithDueDateCount = 0;
+    const categoryCounts = {};
+
+    todos.forEach(task => {
+      const cat = (task.category || 'General').trim();
+      if (!categoryCounts[cat]) categoryCounts[cat] = { total: 0, completed: 0, pending: 0 };
+      categoryCounts[cat].total++;
+
+      if (task.completed) {
+        completedCount++;
+        categoryCounts[cat].completed++;
+        if (task.dueDate) {
+          tasksWithDueDateCount++;
+          const due = new Date(task.dueDate);
+          const completedAt = task.completedAt ? new Date(task.completedAt) : new Date(task.updatedAt || task.createdAt || now);
+          if (completedAt <= due) {
+            onTimeCount++;
+          }
+        }
+      } else {
+        pendingCount++;
+        categoryCounts[cat].pending++;
+        if (task.dueDate && new Date(task.dueDate) < now) {
+          overdueCount++;
+        }
+      }
+    });
+
+    const totalTasks = completedCount + pendingCount;
+    const taskCompletionRate = totalTasks > 0 ? (completedCount / totalTasks) : null;
+    const onTimeCompletionRate = tasksWithDueDateCount > 0 ? (onTimeCount / tasksWithDueDateCount) : null;
+
+    // Overall Productivity Score Calculation
+    let overallScore = null;
+    let taskScoreComponent = null;
+    if (taskCompletionRate !== null) {
+      if (onTimeCompletionRate !== null) {
+        taskScoreComponent = (0.7 * taskCompletionRate) + (0.3 * onTimeCompletionRate);
+      } else {
+        taskScoreComponent = taskCompletionRate;
+      }
+    }
+
+    const routineScoreComponent = (consistency && consistency.weekly && consistency.weekly.totalDays > 0)
+      ? (consistency.weekly.percentage / 100)
+      : null;
+
+    if (taskScoreComponent !== null && routineScoreComponent !== null) {
+      overallScore = Math.round(((taskScoreComponent * 0.6) + (routineScoreComponent * 0.4)) * 100);
+    } else if (taskScoreComponent !== null) {
+      overallScore = Math.round(taskScoreComponent * 100);
+    } else if (routineScoreComponent !== null) {
+      overallScore = Math.round(routineScoreComponent * 100);
+    }
+
+    res.json({
+      refDate,
+      overallScore,
+      taskMetrics: {
+        total: totalTasks,
+        completed: completedCount,
+        pending: pendingCount,
+        overdue: overdueCount,
+        taskCompletionRate: taskCompletionRate !== null ? Math.round(taskCompletionRate * 100) : null,
+        onTimeCompletionRate: onTimeCompletionRate !== null ? Math.round(onTimeCompletionRate * 100) : null,
+        categoryCounts
+      },
+      routineMetrics: {
+        currentStreak: streaks.currentStreak,
+        longestStreak: streaks.longestStreak,
+        todayCompletionRate: todayStats.completionRate,
+        weeklyConsistency: consistency.weekly.percentage,
+        monthlyConsistency: consistency.monthly.percentage,
+        breakdown: {
+          completed: todayStats.completedCount,
+          pending: todayStats.pendingCount,
+          postponed: todayStats.postponedCount,
+          cancelled: todayStats.cancelledCount,
+          eligible: todayStats.eligibleCount
+        }
+      }
+    });
   } catch (err) {
     next(err);
   }

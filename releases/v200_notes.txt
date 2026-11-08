@@ -1,0 +1,13 @@
+# Taskly v2.0.0 (Build 11) — Habit Streaks & Productivity Analytics
+
+Introduced comprehensive habit streak tracking, robust 4-state routine lifecycle management (completed, pending, postponed, cancelled), intelligent carry-forward and next-day routine scheduling, streak reset safeguards, unified productivity analytics separating tasks from habits, and interactive in-app update announcements.
+
+### What's New
+- **Habit Streak Engine**: Intelligent habit tracking requiring an 80% daily qualification threshold to extend streaks, with current streak, longest streak, and consistency percentages.
+- **4-State Routine Lifecycle**: Complete state machine supporting Completed, Pending, Postponed (carried forward to tomorrow), and Cancelled routines with full audit integrity.
+- **Undo Cancellation**: Instantly restore erroneously cancelled routines back to pending, dynamically recalculating streak denominators without losing progress.
+- **Next-Day Routine Planning**: Dedicated tomorrow view allowing advance scheduling, viewing carried-forward items, and occurrence isolation without affecting recurring routines.
+- **Streak Reset Controls**: Dedicated reset modal with user confirmation to restart streak counters from zero while preserving routine definitions and historical task/routine analytics.
+- **Dedicated Productivity Analytics**: Clear separation between Task Analytics and Routine/Habit Analytics in the Progress tab, with responsive charts and rate indicators.
+- **In-App Update Announcements**: Native and web update modal highlighting new features upon upgrade, with notification duplicate prevention and permission guards.
+- **Four-Theme Visual Polish**: Pixel-perfect layout across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.

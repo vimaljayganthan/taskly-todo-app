@@ -11398,3 +11398,1608 @@ html {
   color: #0F172A !important;
 }
 
+/* ==========================================================================
+   TASKLY v2.0.0 BUILD 11 — HABIT STREAKS & 4-STATE ROUTINES UI (PHASE 3)
+   ========================================================================== */
+
+/* Habit Streaks & Consistency Card */
+.smart-habit-streak-card {
+  background: var(--card-bg, #FFFFFF);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: var(--radius-lg, 16px);
+  padding: 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all var(--transition-fast, 0.2s ease);
+}
+
+.streak-hero-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.streak-flame-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.streak-flame-icon {
+  font-size: 1.875rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(245, 158, 11, 0.35));
+}
+
+.streak-flame-texts {
+  display: flex;
+  flex-direction: column;
+}
+
+.streak-flame-count {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text-main, #0F172A);
+  line-height: 1.15;
+}
+
+.streak-flame-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748B);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.streak-best-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  color: #92400E;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Habit Metrics Grid: 3-column stats */
+.smart-habit-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-light, rgba(0, 0, 0, 0.05));
+}
+
+.habit-metric-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.habit-metric-val {
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: var(--text-main, #0F172A);
+  line-height: 1.2;
+}
+
+.habit-metric-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748B);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.habit-target-hint {
+  font-size: 0.625rem;
+  color: #D97706;
+  font-weight: 600;
+}
+
+/* Status Breakdown Row */
+.smart-breakdown-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.breakdown-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 12px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.chip-completed {
+  background: #DCFCE7;
+  color: #166534;
+  border: 1px solid #BBF7D0;
+}
+
+.chip-pending {
+  background: #E0F2FE;
+  color: #0369A1;
+  border: 1px solid #BAE6FD;
+}
+
+.chip-postponed {
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.chip-cancelled {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #E2E8F0;
+}
+
+/* Routine Card Status Badges */
+.badge-postponed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #D97706;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-top: 2px;
+  width: fit-content;
+}
+
+.badge-cancelled {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #64748B;
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-top: 2px;
+  width: fit-content;
+}
+
+/* Touch-Friendly Routine Status Pill Button (>= 44px min-dimension) */
+.btn-routine-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast, 0.2s ease);
+  background: #F1F5F9;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.btn-routine-status-pill:hover,
+.btn-routine-status-pill:focus-visible {
+  transform: translateY(-1px);
+  filter: brightness(0.97);
+}
+
+.btn-routine-status-pill:active {
+  transform: scale(0.96);
+}
+
+.status-pill-completed {
+  background: #DCFCE7 !important;
+  color: #15803D !important;
+  border-color: #86EFAC !important;
+}
+
+.status-pill-pending {
+  background: #F8FAFC !important;
+  color: #475569 !important;
+  border-color: #CBD5E1 !important;
+}
+
+.status-pill-postponed {
+  background: #FEF3C7 !important;
+  color: #B45309 !important;
+  border-color: #FCD34D !important;
+}
+
+.status-pill-cancelled {
+  background: #F1F5F9 !important;
+  color: #64748B !important;
+  border-color: #E2E8F0 !important;
+  text-decoration: line-through;
+}
+
+/* Routine Card Cancelled / Postponed Visual States */
+.smart-routine-card.cancelled {
+  opacity: 0.75;
+  background: var(--bg-muted, #F8FAFC);
+  border-style: dashed;
+}
+
+.smart-routine-card.postponed {
+  border-color: #FCD34D;
+  background: rgba(254, 243, 199, 0.15);
+}
+
+/* ==========================================================================
+   ROUTINE STATUS PICKER MODAL (TOUCH TARGET >= 44PX)
+   ========================================================================== */
+
+.modal-status-picker-card {
+  max-width: 440px !important;
+  width: 92% !important;
+  border-radius: 20px !important;
+}
+
+.status-picker-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.status-routine-banner {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-routine-badge {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  color: #38BDF8;
+  letter-spacing: 0.05em;
+}
+
+.status-routine-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main, #0F172A);
+  margin: 0;
+  word-break: break-word;
+}
+
+.status-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-status-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  min-width: 44px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border, #E2E8F0);
+  background: var(--card-bg, #FFFFFF);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.btn-status-option:hover,
+.btn-status-option:focus-visible {
+  border-color: #38BDF8;
+  background: rgba(56, 189, 248, 0.04);
+}
+
+.btn-status-option:active {
+  transform: scale(0.98);
+}
+
+.btn-status-option.active {
+  border-color: #38BDF8;
+  background: rgba(56, 189, 248, 0.08);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+}
+
+.status-opt-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.status-opt-icon.icon-completed {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+.status-opt-icon.icon-pending {
+  background: #E0F2FE;
+  color: #0369A1;
+}
+
+.status-opt-icon.icon-postponed {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.status-opt-icon.icon-cancelled {
+  background: #F1F5F9;
+  color: #475569;
+}
+
+.status-opt-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.status-opt-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-main, #0F172A);
+}
+
+.status-opt-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748B);
+  margin-top: 1px;
+}
+
+.status-subform {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.2s ease;
+}
+
+.form-label-bold {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-main, #0F172A);
+}
+
+.status-subform-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted, #64748B);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.status-picker-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border, #E2E8F0);
+}
+
+/* ==========================================================================
+   FOUR THEMES SUPPORT FOR HABIT STREAKS & STATUS PICKER
+   ========================================================================== */
+
+/* Dark Mode */
+[data-theme="dark"] .smart-habit-streak-card {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+}
+
+[data-theme="dark"] .streak-flame-count {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .streak-flame-label {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .streak-best-badge {
+  background: #2D2717 !important;
+  border-color: #524016 !important;
+  color: #FCD34D !important;
+}
+
+[data-theme="dark"] .smart-habit-metrics-grid {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .habit-metric-val {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .habit-metric-label {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .chip-completed {
+  background: #064E3B !important;
+  color: #A7F3D0 !important;
+  border-color: #047857 !important;
+}
+
+[data-theme="dark"] .chip-pending {
+  background: #0C4A6E !important;
+  color: #BAE6FD !important;
+  border-color: #0284C7 !important;
+}
+
+[data-theme="dark"] .chip-postponed {
+  background: #451A03 !important;
+  color: #FDE68A !important;
+  border-color: #B45309 !important;
+}
+
+[data-theme="dark"] .chip-cancelled {
+  background: #1E293B !important;
+  color: #94A3B8 !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .btn-routine-status-pill {
+  background: #0F172A !important;
+  color: #CBD5E1 !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .status-pill-completed {
+  background: #064E3B !important;
+  color: #6EE7B7 !important;
+  border-color: #059669 !important;
+}
+
+[data-theme="dark"] .status-pill-postponed {
+  background: #451A03 !important;
+  color: #FCD34D !important;
+  border-color: #B45309 !important;
+}
+
+[data-theme="dark"] .status-pill-cancelled {
+  background: #1E293B !important;
+  color: #94A3B8 !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .modal-status-picker-card {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .status-routine-banner {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .status-routine-title {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .btn-status-option {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .btn-status-option:hover {
+  background: #1E293B !important;
+  border-color: #38BDF8 !important;
+}
+
+[data-theme="dark"] .btn-status-option.active {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: #38BDF8 !important;
+}
+
+[data-theme="dark"] .status-opt-title {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .status-opt-desc {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .status-subform {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .form-label-bold {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .status-picker-actions {
+  border-color: #334155 !important;
+}
+
+/* Pet Mode Theme */
+[data-theme="pet"] .smart-habit-streak-card {
+  background: #FFFDF9 !important;
+  border-color: #FED7AA !important;
+  box-shadow: 0 4px 14px rgba(248, 132, 56, 0.08) !important;
+}
+
+[data-theme="pet"] .streak-flame-count {
+  color: #9A3412 !important;
+}
+
+[data-theme="pet"] .streak-best-badge {
+  background: #FFEDD5 !important;
+  border-color: #FDBA74 !important;
+  color: #C2410C !important;
+}
+
+[data-theme="pet"] .smart-habit-metrics-grid {
+  background: #FFF7ED !important;
+  border-color: #FFEDD5 !important;
+}
+
+[data-theme="pet"] .habit-metric-val {
+  color: #9A3412 !important;
+}
+
+[data-theme="pet"] .btn-routine-status-pill {
+  border-color: #FED7AA !important;
+}
+
+[data-theme="pet"] .modal-status-picker-card {
+  background: #FFFDF9 !important;
+  border-color: #FED7AA !important;
+}
+
+[data-theme="pet"] .status-routine-banner {
+  background: #FFF7ED !important;
+  border-color: #FFEDD5 !important;
+}
+
+[data-theme="pet"] .btn-status-option.active {
+  border-color: #F88438 !important;
+  background: rgba(248, 132, 56, 0.08) !important;
+}
+
+/* Pastel Light Mode Theme */
+[data-theme="pastel"] .smart-habit-streak-card {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 4px 14px rgba(168, 85, 247, 0.05) !important;
+}
+
+[data-theme="pastel"] .streak-best-badge {
+  background: #FAF5FF !important;
+  border-color: #E9D5FF !important;
+  color: #7E22CE !important;
+}
+
+[data-theme="pastel"] .smart-habit-metrics-grid {
+  background: #FAF5FF !important;
+  border-color: #F3E8FF !important;
+}
+
+[data-theme="pastel"] .habit-metric-val {
+  color: #581C87 !important;
+}
+
+[data-theme="pastel"] .modal-status-picker-card {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+[data-theme="pastel"] .btn-status-option.active {
+  border-color: #A855F7 !important;
+  background: rgba(168, 85, 247, 0.08) !important;
+}
+
+/* ========================================================================== */
+/* TASKLY v2.0.0 BUILD 11 — PHASE 4: PRODUCTIVITY ANALYTICS STYLING           */
+/* ========================================================================== */
+
+.analytics-section-card {
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: 18px;
+  padding: 16px 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+.analytics-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.analytics-section-icon {
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.analytics-section-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary, #0F172A);
+  margin: 0;
+  flex: 1;
+}
+
+.analytics-section-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: var(--bg-secondary, #F1F5F9);
+  color: var(--text-secondary, #475569);
+  border: 1px solid var(--border, #E2E8F0);
+}
+
+.analytics-section-pill.pill-accent {
+  background: rgba(245, 158, 11, 0.12);
+  color: #D97706;
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.analytics-section-sub {
+  font-size: 11px;
+  color: var(--text-muted, #64748B);
+  margin: -4px 0 12px 0;
+}
+
+/* Hero Score Card Customizations */
+.analytics-hero-tier {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #64748B);
+  margin-bottom: 2px;
+}
+
+.analytics-score-formula-note {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #64748B);
+  margin-top: 6px;
+}
+
+/* 4-Metric Grid for Task Performance */
+.task-metrics-4grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+@media (min-width: 600px) {
+  .task-metrics-4grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.task-metric-box {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg-secondary, #F8FAFC);
+  border: 1px solid var(--border, #E2E8F0);
+  box-sizing: border-box;
+}
+
+.task-metric-num {
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.metric-completed .task-metric-num { color: #10B981; }
+.metric-pending .task-metric-num { color: #38BDF8; }
+.metric-overdue .task-metric-num { color: #EF4444; }
+.metric-ontime .task-metric-num { color: #F59E0B; }
+
+.task-metric-lbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary, #0F172A);
+  margin-top: 2px;
+}
+
+.task-metric-sub {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted, #64748B);
+  margin-top: 1px;
+}
+
+/* Task Ratio Progress Bar */
+.task-ratio-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-ratio-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-secondary, #E2E8F0);
+  border-radius: 9999px;
+  overflow: hidden;
+  display: flex;
+}
+
+.task-ratio-segment {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.task-ratio-segment.seg-completed { background: #10B981; }
+.task-ratio-segment.seg-pending { background: #38BDF8; }
+.task-ratio-segment.seg-overdue { background: #EF4444; }
+
+.task-ratio-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-muted, #64748B);
+  font-weight: 600;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.legend-dot.dot-comp { background: #10B981; }
+.legend-dot.dot-pend { background: #38BDF8; }
+.legend-dot.dot-over { background: #EF4444; }
+
+/* Habit Consistency Grid */
+.habit-consistency-3grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.habit-cons-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 4px;
+  background: var(--bg-secondary, #F8FAFC);
+  border-radius: 12px;
+  border: 1px solid var(--border, #E2E8F0);
+}
+
+.habit-cons-val {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--primary, #38BDF8);
+}
+
+.habit-cons-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-primary, #0F172A);
+  margin-top: 2px;
+}
+
+.habit-cons-hint {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-muted, #64748B);
+  margin-top: 1px;
+}
+
+/* Monthly Weeks Breakdown */
+.monthly-weeks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.monthly-week-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.monthly-week-lbl {
+  width: 80px;
+  font-weight: 700;
+  color: var(--text-primary, #0F172A);
+  white-space: nowrap;
+}
+
+.monthly-week-tube {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-secondary, #E2E8F0);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.monthly-week-fill {
+  height: 100%;
+  background: #38BDF8;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.monthly-week-rate {
+  width: 40px;
+  text-align: right;
+  font-weight: 800;
+  color: var(--text-muted, #64748B);
+}
+
+/* ========================================================================== */
+/* IN-APP UPDATE ANNOUNCEMENT MODAL STYLING (Part C)                          */
+/* ========================================================================== */
+
+.modal-card-update-announcement {
+  max-width: 420px;
+  width: 92%;
+  border-radius: 24px;
+  background: var(--bg-card, #FFFFFF);
+  border: 1px solid var(--border, #E2E8F0);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.update-announcement-head-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-announcement-icon-badge {
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.update-announcement-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--primary, #38BDF8);
+  display: block;
+}
+
+.update-announcement-body {
+  padding: 16px 20px;
+}
+
+.update-version-diff-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 12px;
+  background: var(--bg-secondary, #F8FAFC);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+
+.diff-version-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.diff-col-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted, #64748B);
+  text-transform: uppercase;
+}
+
+.diff-col-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary, #0F172A);
+  margin-top: 2px;
+}
+
+.diff-available .diff-col-val {
+  color: #10B981;
+}
+
+.diff-arrow-wrap {
+  font-size: 16px;
+  color: var(--text-muted, #94A3B8);
+}
+
+.update-highlights-section {
+  margin-bottom: 14px;
+}
+
+.update-highlights-heading {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-primary, #0F172A);
+  margin: 0 0 8px 0;
+}
+
+.update-highlights-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, #334155);
+}
+
+.update-highlights-list li {
+  margin-bottom: 6px;
+}
+
+.update-announcement-note {
+  font-size: 10px;
+  color: var(--text-muted, #64748B);
+  margin: 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.update-announcement-actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 20px 18px 20px;
+  border-top: 1px solid var(--border, #F1F5F9);
+}
+
+.update-announcement-actions button {
+  min-height: 44px;
+  flex: 1;
+}
+
+/* ========================================================================== */
+/* 4-THEME OVERRIDES FOR PHASE 4 ANALYTICS & ANNOUNCEMENTS                   */
+/* ========================================================================== */
+
+/* Dark Mode Theme */
+[data-theme="dark"] .analytics-section-card {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2) !important;
+}
+
+[data-theme="dark"] .analytics-section-title {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .analytics-section-pill {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .task-metric-box {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .task-metric-lbl {
+  color: #E2E8F0 !important;
+}
+
+[data-theme="dark"] .task-ratio-bar-wrap {
+  background: #334155 !important;
+}
+
+[data-theme="dark"] .habit-cons-box {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .habit-cons-lbl {
+  color: #E2E8F0 !important;
+}
+
+[data-theme="dark"] .monthly-week-lbl {
+  color: #E2E8F0 !important;
+}
+
+[data-theme="dark"] .monthly-week-tube {
+  background: #334155 !important;
+}
+
+[data-theme="dark"] .modal-card-update-announcement {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .update-version-diff-card {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .diff-col-val {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .update-highlights-heading {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .update-highlights-list {
+  color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .update-announcement-actions {
+  border-top-color: #334155 !important;
+}
+
+/* Pet Mode Theme */
+[data-theme="pet"] .analytics-section-card {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+[data-theme="pet"] .analytics-hero-tier {
+  color: #D97706 !important;
+}
+
+/* Pastel Light Mode Theme */
+[data-theme="pastel"] .analytics-section-card {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+[data-theme="pastel"] .habit-cons-val {
+  color: #A855F7 !important;
+}
+
+[data-theme="pastel"] .monthly-week-fill {
+  background: #A855F7 !important;
+}
+
+/* ==========================================================================
+   TASKLY v2.0.0 BUILD 11 — NEXT-DAY ROUTINES, STREAK RESET & CARRY-FORWARD UI
+   ========================================================================== */
+
+/* 1. Reset Streak Button */
+.btn-reset-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
+  transition: all 0.2s ease;
+}
+
+.btn-reset-streak:hover {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: #EF4444;
+}
+
+.reset-streak-icon {
+  font-size: 1rem;
+  display: inline-block;
+}
+
+/* 2. Next-Day Routines Section */
+.smart-next-day-section {
+  margin-top: 24px;
+  background: var(--card-bg, #FFFFFF);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: var(--radius-lg, 16px);
+  padding: 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+}
+
+.next-day-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 12px;
+}
+
+.next-day-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.next-day-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.next-day-heading {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary, #0F172A);
+}
+
+.next-day-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748B);
+}
+
+.next-day-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-day-count-badge {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563EB;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.btn-next-day-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary, #3B82F6);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.2s ease;
+}
+
+.btn-next-day-add:hover {
+  background: #2563EB;
+}
+
+/* Next-Day Add Form */
+.next-day-add-box {
+  margin-bottom: 14px;
+}
+
+/* Next-Day Routine Cards List */
+.next-day-routines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.next-day-routine-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary, #F8FAFC);
+  border: 1px solid var(--border, #E2E8F0);
+  border-radius: 12px;
+  padding: 12px 14px;
+  gap: 12px;
+  min-height: 52px;
+  transition: all 0.2s ease;
+}
+
+.next-day-routine-card:hover {
+  border-color: #CBD5E1;
+}
+
+.next-day-card-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.next-day-status-pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.next-day-status-pill.pending {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+}
+
+.next-day-status-pill.completed {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.next-day-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.next-day-routine-name {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary, #0F172A);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-day-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.routine-origin-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.routine-origin-badge.carried-forward {
+  background: rgba(245, 158, 11, 0.12);
+  color: #D97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.routine-origin-badge.scheduled {
+  background: rgba(59, 130, 246, 0.08);
+  color: #3B82F6;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.next-day-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-next-day-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border, #E2E8F0);
+  background: var(--card-bg, #FFFFFF);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.2s ease;
+  color: var(--text-secondary, #334155);
+}
+
+.btn-remove-tomorrow {
+  color: #D97706;
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.btn-remove-tomorrow:hover {
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.btn-delete-recurring {
+  color: #EF4444;
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.btn-delete-recurring:hover {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.next-day-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
+  background: var(--bg-secondary, #F8FAFC);
+  border: 1px dashed var(--border, #CBD5E1);
+  border-radius: 12px;
+  gap: 8px;
+}
+
+.next-day-empty-icon {
+  font-size: 2rem;
+}
+
+.next-day-empty-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, #64748B);
+}
+
+/* 3. Undo Cancellation Button */
+.btn-routine-undo-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563EB;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
+  transition: all 0.2s ease;
+}
+
+.btn-routine-undo-cancel:hover {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+/* 4. Daily Summary Modal Additions */
+.btn-carry-view-tomorrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #0284C7;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.2s ease;
+}
+
+.btn-carry-view-tomorrow:hover {
+  background: #0369A1;
+}
+
+.stat-num-postponed {
+  color: #D97706 !important;
+}
+
+.stat-num-cancelled {
+  color: #64748B !important;
+}
+
+/* 5. Reset Streak & Next-Day Confirmation Modals */
+#modal-smart-reset-streak-confirm,
+#modal-smart-remove-tomorrow-confirm {
+  z-index: 10000;
+}
+
+.reset-streak-warning-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.reset-streak-warning-icon {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.reset-streak-warning-bold {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #DC2626;
+  line-height: 1.35;
+}
+
+.reset-streak-guarantees {
+  margin: 0 0 14px 0;
+  padding-left: 20px;
+  font-size: 0.82rem;
+  color: var(--text-secondary, #475569);
+  line-height: 1.6;
+}
+
+.reset-confirm-prompt {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary, #0F172A);
+}
+
+/* ==========================================================================
+   4-THEME OVERRIDES FOR NEXT-DAY, STREAK RESET & CARRY FORWARD
+   ========================================================================== */
+
+/* Dark Mode Theme */
+[data-theme="dark"] .smart-next-day-section {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+}
+
+[data-theme="dark"] .next-day-heading {
+  color: #F8FAFC !important;
+}
+
+[data-theme="dark"] .next-day-subtitle {
+  color: #94A3B8 !important;
+}
+
+[data-theme="dark"] .next-day-routine-card {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .next-day-routine-name {
+  color: #F1F5F9 !important;
+}
+
+[data-theme="dark"] .next-day-status-pill.pending {
+  background: #1E293B !important;
+  color: #CBD5E1 !important;
+  border-color: #475569 !important;
+}
+
+[data-theme="dark"] .btn-next-day-action {
+  background: #1E293B !important;
+  border-color: #334155 !important;
+  color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .next-day-empty-state {
+  background: #0F172A !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="dark"] .btn-reset-streak {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #F87171 !important;
+}
+
+[data-theme="dark"] .reset-streak-warning-card {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+}
+
+[data-theme="dark"] .reset-streak-warning-bold {
+  color: #FCA5A5 !important;
+}
+
+[data-theme="dark"] .reset-streak-guarantees {
+  color: #CBD5E1 !important;
+}
+
+[data-theme="dark"] .reset-confirm-prompt {
+  color: #F8FAFC !important;
+}
+
+/* Pet Mode Theme */
+[data-theme="pet"] .smart-next-day-section {
+  background: #FFFDF9 !important;
+  border-color: #FED7AA !important;
+  box-shadow: 0 4px 14px rgba(248, 132, 56, 0.08) !important;
+}
+
+[data-theme="pet"] .next-day-count-badge {
+  background: rgba(248, 132, 56, 0.12) !important;
+  color: #EA580C !important;
+  border-color: rgba(248, 132, 56, 0.25) !important;
+}
+
+[data-theme="pet"] .btn-next-day-add {
+  background: #F88438 !important;
+}
+
+[data-theme="pet"] .next-day-routine-card {
+  background: #FFFBF5 !important;
+  border-color: #FED7AA !important;
+}
+
+[data-theme="pet"] .btn-reset-streak {
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+/* Pastel Light Mode Theme */
+[data-theme="pastel"] .smart-next-day-section {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  box-shadow: 0 4px 14px rgba(168, 85, 247, 0.05) !important;
+}
+
+[data-theme="pastel"] .next-day-count-badge {
+  background: rgba(168, 85, 247, 0.1) !important;
+  color: #9333EA !important;
+  border-color: rgba(168, 85, 247, 0.25) !important;
+}
+
+[data-theme="pastel"] .btn-next-day-add {
+  background: #A855F7 !important;
+}
+
+[data-theme="pastel"] .routine-origin-badge.scheduled {
+  background: rgba(168, 85, 247, 0.08) !important;
+  color: #9333EA !important;
+  border-color: rgba(168, 85, 247, 0.2) !important;
+}
+
+
+
+
