@@ -1,0 +1,14 @@
+# Taskly v1.9.0 (Build 10) — Smart Lists
+
+Introduced Smart Lists, a dedicated daily routine tracker with individual completion checkboxes, configurable summary notifications, carry-forward functionality, historical productivity reports, responsive paper layout, and seamless multi-theme integration.
+
+### What's New
+- **Daily Routine Management**: Simple routine creation, inline editing, and deletion with instant cloud synchronization.
+- **Individual Completion Tracking**: Interactive checkboxes with date-specific completion state and reactive day progress tracking.
+- **Configurable Daily Summary Notifications**: Automatic daily summary reminders (default 10:00 PM) scheduled via native Android Local Notifications.
+- **Paper-Style Productivity Reports**: Visual paper document showing completed routines, incomplete items, completion percentages, and closing encouragement.
+- **Carry-Forward Intelligence**: Option to carry forward incomplete routines into tomorrow's routine checklist or close them for today.
+- **Historical Reports**: Dedicated history viewer to review exact saved snapshots of past daily performance without recalculation.
+- **Responsive Mobile Layout**: 2-column statistics grid preventing horizontal overflow on all Android screen sizes.
+- **Four-Theme Support**: Full visual polish across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.
+- **UI Refinements**: Premium golden pill badge in Profile and a styled red destructive Delete confirmation button.

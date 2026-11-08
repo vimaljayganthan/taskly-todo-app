@@ -16,6 +16,7 @@ if (fs.existsSync(envPath)) {
 const express = require('express');
 const crypto = require('crypto');
 const { initializeStorage, getStorage, getScopedStorage } = require('./storage/taskStore');
+const SmartListStore = require('./storage/smartListStore');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -515,6 +516,167 @@ app.delete('/api/todos', async (req, res, next) => {
     const storage = getScopedStorage(req);
     const deletedCount = await storage.clearCompleted(req.user.id);
     res.json({ success: true, count: deletedCount });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// Smart Lists API Endpoints (v1.9.0 Build 10)
+// ==========================================================================
+app.use('/api/smart-lists', authenticateUser);
+
+// Routines CRUD
+app.get('/api/smart-lists/routines', async (req, res, next) => {
+  try {
+    const routines = await SmartListStore.getRoutines(req.user.id);
+    res.json(routines);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/smart-lists/routines', async (req, res, next) => {
+  try {
+    const { title, orderIndex } = req.body;
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Routine title is required' });
+    }
+    const trimmed = title.trim();
+    if (trimmed.length > 150) {
+      return res.status(400).json({ error: 'Routine title must not exceed 150 characters' });
+    }
+    const existing = await SmartListStore.getRoutines(req.user.id);
+    if (existing.some(r => r.title.toLowerCase() === trimmed.toLowerCase())) {
+      return res.status(409).json({ error: 'A routine with this name already exists' });
+    }
+    const routine = await SmartListStore.addRoutine(req.user.id, { title: trimmed, orderIndex });
+    res.status(201).json(routine);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.patch('/api/smart-lists/routines/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { title, orderIndex } = req.body;
+    if (title !== undefined && (!title || typeof title !== 'string' || !title.trim())) {
+      return res.status(400).json({ error: 'Routine title cannot be empty' });
+    }
+    const updated = await SmartListStore.updateRoutine(req.user.id, id, { title, orderIndex });
+    if (!updated) return res.status(404).json({ error: 'Routine not found' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete('/api/smart-lists/routines/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const success = await SmartListStore.deleteRoutine(req.user.id, id);
+    if (!success) return res.status(404).json({ error: 'Routine not found' });
+    res.json({ success: true, id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Daily Completions
+app.get('/api/smart-lists/completions', async (req, res, next) => {
+  try {
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const completions = await SmartListStore.getCompletions(req.user.id, date);
+    res.json(completions);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/smart-lists/completions', async (req, res, next) => {
+  try {
+    const { routineId, date, completed, carriedForward } = req.body;
+    if (!routineId || !date) {
+      return res.status(400).json({ error: 'routineId and date are required' });
+    }
+    const record = await SmartListStore.setCompletion(req.user.id, {
+      routineId,
+      date,
+      completed,
+      carriedForward
+    });
+    res.json(record);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Daily Summary Reports
+app.get('/api/smart-lists/reports', async (req, res, next) => {
+  try {
+    const reports = await SmartListStore.getReports(req.user.id);
+    res.json(reports);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/smart-lists/reports/:date', async (req, res, next) => {
+  try {
+    const report = await SmartListStore.getReport(req.user.id, req.params.date);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    res.json(report);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/smart-lists/reports', async (req, res, next) => {
+  try {
+    const { date, totalRoutines, completedCount, incompleteCount, completionRate, status, completedRoutines, incompleteRoutines, carryForwardDecision } = req.body;
+    if (!date) return res.status(400).json({ error: 'date is required' });
+    const report = await SmartListStore.saveReport(req.user.id, {
+      date,
+      totalRoutines,
+      completedCount,
+      incompleteCount,
+      completionRate,
+      status,
+      completedRoutines,
+      incompleteRoutines,
+      carryForwardDecision
+    });
+    res.json(report);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.delete('/api/smart-lists/reports/:id', async (req, res, next) => {
+  try {
+    const success = await SmartListStore.deleteReport(req.user.id, req.params.id);
+    if (!success) return res.status(404).json({ error: 'Report not found' });
+    res.json({ success: true, id: req.params.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Settings (Daily summary time & toggle)
+app.get('/api/smart-lists/settings', async (req, res, next) => {
+  try {
+    const settings = await SmartListStore.getSettings(req.user.id);
+    res.json(settings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/smart-lists/settings', async (req, res, next) => {
+  try {
+    const settings = await SmartListStore.saveSettings(req.user.id, req.body);
+    res.json(settings);
   } catch (err) {
     next(err);
   }

@@ -843,7 +843,26 @@
                     <span class="menu-item-label">Version</span>
                   </div>
                   <div class="menu-item-right-wrap">
-                    <span class="menu-item-val" id="profile-version-badge">v1.5.0</span>
+                    <span class="menu-item-val" id="profile-version-badge">v1.8.0</span>
+                    <span class="menu-chevron">›</span>
+                  </div>
+                </button>
+
+                <!-- 7. Smart Lists (NEW - Phase 2) -->
+                <button type="button" class="profile-menu-item profile-menu-smart-lists" id="menu-smart-lists" aria-label="Smart Lists">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box menu-icon-smart-lists">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 11l3 3L22 4"/>
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                        <path d="M9 7h4"/>
+                        <path d="M9 17h8"/>
+                      </svg>
+                    </div>
+                    <span class="menu-item-label">Smart Lists</span>
+                  </div>
+                  <div class="menu-item-right-wrap">
+                    <span class="menu-item-val" id="profile-smart-lists-badge">Routines</span>
                     <span class="menu-chevron">›</span>
                   </div>
                 </button>
@@ -853,6 +872,7 @@
                 <button type="button" id="btn-open-about" style="display: none;"></button>
                 <button type="button" id="btn-open-version" style="display: none;"></button>
                 <button type="button" id="btn-open-notification-settings" style="display: none;"></button>
+                <button type="button" id="btn-open-smart-lists" style="display: none;"></button>
               </div>
 
               <!-- Bottom Log Out Button -->
@@ -868,6 +888,116 @@
                 <div class="pet-circle-container pet-circle-profile-cat">
                   <img src="/assets/pets/profile_cat_sit.png" alt="Sitting Cat Mascot" class="pet-contained-img">
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Screen 10: Smart Lists Screen (v1.9.0 Build 10) -->
+        <section id="tab-smart-lists" class="tab-view theme-smart-lists-screen">
+          <div class="smart-lists-wrapper">
+            <!-- Navigation Header -->
+            <div class="smart-lists-header-bar">
+              <button type="button" class="btn-back btn-back-smart" id="btn-back-from-smart-lists" aria-label="Back to Profile" title="Back to Profile">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              </button>
+              <div class="smart-lists-top-actions">
+                <button type="button" class="btn-smart-action btn-smart-summary-trigger" id="btn-open-smart-summary" aria-label="Daily Summary & Reports" title="Daily Summary">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  <span>Summary</span>
+                </button>
+                <button type="button" class="btn-smart-action btn-smart-settings-trigger btn-smart-icon-only" id="btn-open-smart-settings" aria-label="Reminder Settings" title="Reminder Settings">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Banner Title Card -->
+            <div class="smart-lists-title-card">
+              <div class="smart-lists-title-row">
+                <div class="smart-badge-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4"/>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                    <path d="M9 7h4"/>
+                    <path d="M9 17h8"/>
+                  </svg>
+                </div>
+                <div class="smart-title-text-group">
+                  <h2 class="smart-lists-heading">Smart Lists</h2>
+                  <p class="smart-lists-subheading" id="smart-lists-date-display">Today's Daily Routines</p>
+                </div>
+              </div>
+              <div class="smart-lists-progress-pill" id="smart-lists-progress-pill">
+                <span id="smart-progress-text">0 / 0 completed</span>
+              </div>
+            </div>
+
+            <!-- Body Container -->
+            <div class="smart-lists-body">
+              <!-- Add Routine Box -->
+              <div class="smart-add-routine-box">
+                <button type="button" class="btn-smart-add-trigger" id="btn-toggle-add-routine">
+                  <span class="smart-add-plus">+</span>
+                  <span>Add Routine</span>
+                </button>
+                <form id="form-smart-add-routine" class="smart-add-form" style="display: none;">
+                  <div class="smart-add-input-wrap">
+                    <input type="text" id="input-smart-routine-title" class="smart-routine-input" placeholder="e.g., Drink 3 litres of water" maxlength="150" autocomplete="off" required>
+                  </div>
+                  <div class="smart-add-actions">
+                    <button type="button" class="btn-smart-cancel" id="btn-cancel-add-routine">Cancel</button>
+                    <button type="submit" class="btn-smart-save" id="btn-save-smart-routine">Save</button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Edit Routine Box -->
+              <div class="smart-edit-routine-box" id="smart-edit-routine-box" style="display: none;">
+                <form id="form-smart-edit-routine" class="smart-edit-form">
+                  <input type="hidden" id="edit-smart-routine-id" value="">
+                  <div class="smart-add-input-wrap">
+                    <input type="text" id="input-smart-edit-title" class="smart-routine-input" placeholder="Edit routine name" maxlength="150" autocomplete="off" required>
+                  </div>
+                  <div class="smart-add-actions">
+                    <button type="button" class="btn-smart-cancel" id="btn-cancel-edit-routine">Cancel</button>
+                    <button type="submit" class="btn-smart-save" id="btn-save-edit-routine">Update</button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Routine Checklist Items -->
+              <div class="smart-routines-list" id="smart-routines-list">
+                <!-- Rendered dynamically -->
+              </div>
+
+              <!-- Empty State -->
+              <div class="smart-empty-state" id="smart-empty-state" style="display: none;">
+                <div class="smart-empty-icon">
+                  <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M9 11l3 3L22 4"/>
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                  </svg>
+                </div>
+                <h4 class="smart-empty-title">No routines yet. Start building your daily habits.</h4>
+                <p class="smart-empty-desc">Routines are simple daily checklists that reset each day without task complexity.</p>
+                <button type="button" class="btn-smart-empty-add" id="btn-empty-add-routine">+ Add Your First Routine</button>
+              </div>
+
+              <!-- Footer Summary Button -->
+              <div class="smart-footer-summary-wrap" id="smart-footer-summary-wrap">
+                <button type="button" class="btn-smart-footer-summary" id="btn-smart-footer-summary">
+                  <div class="footer-summary-left">
+                    <div class="footer-summary-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    </div>
+                    <div class="footer-summary-texts">
+                      <span class="footer-summary-title">Daily Routine Summary</span>
+                      <span class="footer-summary-sub" id="footer-summary-sub">Generate and view today's productivity report</span>
+                    </div>
+                  </div>
+                  <span class="footer-summary-chevron">›</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2292,6 +2422,255 @@
               <button type="submit" class="btn-primary-compact">Save Changes</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- ==================================================================== -->
+      <!-- SMART LISTS MODALS (v1.9.0 Build 10)                                -->
+      <!-- ==================================================================== -->
+
+      <!-- Modal: Daily Routine Summary & Productivity Report (Printed Paper Document Style) -->
+      <div id="modal-smart-summary" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-smart-summary-title">
+        <div class="modal-card modal-card-smart-summary">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box smart-head-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+              </div>
+              <h3 class="modal-title" id="modal-smart-summary-title">Daily Routine Summary</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-smart-summary" aria-label="Close">×</button>
+          </div>
+
+          <div class="smart-summary-scroll-body">
+            <!-- Professional Printed Paper Document Sheet -->
+            <div class="smart-paper-document">
+              <!-- Document Header / Letterhead -->
+              <div class="paper-header">
+                <div class="paper-brand">
+                  <span class="paper-brand-logo">TASKLY</span>
+                  <span class="paper-brand-badge">DAILY ROUTINE REPORT</span>
+                </div>
+                <h2 class="paper-title">DAILY ROUTINE REPORT</h2>
+                <div class="paper-meta-row">
+                  <span class="paper-date-label">Report Date:</span>
+                  <span class="paper-date-val" id="smart-summary-date">08 November 2026</span>
+                </div>
+                <p class="paper-overview-text">
+                  This document records your daily routines, check-off status, completion rate, and carry-forward decision for this date.
+                </p>
+              </div>
+
+              <div class="paper-divider"></div>
+
+              <!-- Summary Statistics Panel -->
+              <div class="paper-stats-section">
+                <div class="paper-stats-header">
+                  <span class="paper-section-tag">SUMMARY STATISTICS</span>
+                  <span class="report-status-badge" id="smart-summary-status-badge">Partially Completed</span>
+                </div>
+                <div class="paper-stats-grid">
+                  <div class="paper-stat-box">
+                    <span class="paper-stat-label">Total Routines</span>
+                    <span class="paper-stat-num" id="summary-metric-total">0</span>
+                  </div>
+                  <div class="paper-stat-box">
+                    <span class="paper-stat-label">Completed</span>
+                    <span class="paper-stat-num stat-num-completed" id="summary-metric-completed">0</span>
+                  </div>
+                  <div class="paper-stat-box">
+                    <span class="paper-stat-label">Incomplete</span>
+                    <span class="paper-stat-num stat-num-incomplete" id="summary-metric-incomplete">0</span>
+                  </div>
+                  <div class="paper-stat-box">
+                    <span class="paper-stat-label">Completion Rate</span>
+                    <span class="paper-stat-num stat-num-rate" id="summary-metric-rate">0%</span>
+                  </div>
+                </div>
+                <div class="paper-progress-wrap">
+                  <div class="paper-progress-bar" id="smart-summary-progress-bar" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <div class="paper-divider"></div>
+
+              <!-- Section 1 – Completed Routines -->
+              <div class="paper-section">
+                <h4 class="paper-section-title">
+                  <span>SECTION 1 – COMPLETED ROUTINES</span>
+                  <span class="paper-section-count">(<span id="summary-completed-count">0</span>)</span>
+                </h4>
+                <ul class="paper-routine-list" id="smart-summary-completed-list">
+                  <li class="empty-list-notice">No routines were completed on this date.</li>
+                </ul>
+              </div>
+
+              <div class="paper-divider"></div>
+
+              <!-- Section 2 – Incomplete Routines -->
+              <div class="paper-section">
+                <h4 class="paper-section-title">
+                  <span>SECTION 2 – INCOMPLETE ROUTINES</span>
+                  <span class="paper-section-count">(<span id="summary-incomplete-count">0</span>)</span>
+                </h4>
+                <ul class="paper-routine-list" id="smart-summary-incomplete-list">
+                  <li class="empty-list-notice">All routines were completed successfully.</li>
+                </ul>
+              </div>
+
+              <div class="paper-divider"></div>
+
+              <!-- Section 3 – Carry-Forward Decision -->
+              <div class="paper-section">
+                <h4 class="paper-section-title">SECTION 3 – CARRY-FORWARD DECISION</h4>
+                <div class="paper-carry-box" id="smart-carry-forward-card">
+                  <div class="paper-carry-decision-tag" id="smart-carry-decision-tag">Carry Forward: PENDING</div>
+                  <p class="paper-carry-desc" id="smart-carry-status-text">No carry-forward decision has been made yet.</p>
+                  <div class="paper-carry-actions" id="smart-carry-actions-group">
+                    <button type="button" class="btn-paper-carry btn-carry-yes" id="btn-carry-forward-yes">Yes, carry forward</button>
+                    <button type="button" class="btn-paper-carry btn-carry-no" id="btn-carry-forward-no">No, finish today's list</button>
+                  </div>
+                  <div class="paper-carry-change-wrap" id="smart-carry-status-banner" style="display: none;">
+                    <button type="button" class="btn-carry-change" id="btn-change-carry-forward">Change Decision</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="paper-divider"></div>
+
+              <!-- Section 4 – Overall Result -->
+              <div class="paper-section">
+                <h4 class="paper-section-title">SECTION 4 – OVERALL RESULT</h4>
+                <p class="paper-result-statement" id="smart-summary-closing-statement">
+                  Partially completed. Keep momentum going tomorrow!
+                </p>
+              </div>
+
+              <div class="paper-footer-divider"></div>
+
+              <!-- Document Footer -->
+              <div class="paper-footer">
+                <span class="paper-footer-text">Generated by Taskly – Your Daily Routine Companion.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-actions smart-summary-footer-actions">
+            <button type="button" class="btn-modal-secondary" id="btn-smart-open-history">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>View History</span>
+            </button>
+            <button type="button" class="btn-primary-compact" id="btn-close-smart-summary-ok">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Summary History -->
+      <div id="modal-smart-history" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-smart-history-title">
+        <div class="modal-card modal-card-smart-history">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box smart-head-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              </div>
+              <h3 class="modal-title" id="modal-smart-history-title">Summary History</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-smart-history" aria-label="Close">×</button>
+          </div>
+
+          <div class="smart-history-scroll-body">
+            <div class="smart-history-list" id="smart-history-list">
+              <!-- Rendered dynamically -->
+            </div>
+            <div class="smart-history-empty" id="smart-history-empty" style="display: none;">
+              <p>No historical daily reports found.</p>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-primary-compact" id="btn-close-smart-history-ok">Back to Summary</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Daily Summary Reminder Settings (Phase 6, 7) -->
+      <div id="modal-smart-settings" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-smart-settings-title">
+        <div class="modal-card modal-card-smart-settings">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box smart-head-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </div>
+              <h3 class="modal-title" id="modal-smart-settings-title">Daily Summary Reminder</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-smart-settings" aria-label="Close">×</button>
+          </div>
+
+          <div class="smart-settings-body">
+            <!-- Reminder Master Toggle -->
+            <div class="setting-toggle-row">
+              <div class="setting-toggle-info">
+                <span class="setting-toggle-title">Daily Summary Reminder</span>
+                <span class="setting-toggle-desc">Schedule a daily reminder to review routine completion and view today's summary</span>
+              </div>
+              <label class="switch-control" for="toggle-smart-reminder">
+                <input type="checkbox" id="toggle-smart-reminder" checked>
+                <span class="slider-round"></span>
+              </label>
+            </div>
+
+            <!-- Time Picker Row -->
+            <div class="setting-time-row" id="smart-time-picker-row">
+              <label for="input-smart-reminder-time" class="setting-time-label">
+                <span>Reminder Time</span>
+                <span class="setting-time-hint">Default: 10:00 PM</span>
+              </label>
+              <input type="time" id="input-smart-reminder-time" class="setting-time-input" value="22:00">
+            </div>
+
+            <div class="setting-info-card">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>This notification triggers natively via Android Local Notifications. Tapping the reminder opens Taskly directly to today's summary.</span>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-modal-cancel" id="btn-cancel-smart-settings">Cancel</button>
+            <button type="button" class="btn-primary-compact" id="btn-save-smart-settings">Save Settings</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Generic Delete Confirmation (Routines & Reports) -->
+      <div id="modal-smart-delete-confirm" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-smart-delete-title">
+        <div class="modal-card modal-card-confirm">
+          <div class="modal-head">
+            <h3 class="modal-title" id="modal-smart-delete-title">Confirm Deletion</h3>
+            <button type="button" class="btn-close-modal" id="btn-close-smart-delete" aria-label="Close">×</button>
+          </div>
+          <div class="modal-confirm-body">
+            <p id="smart-delete-confirm-message">Are you sure you want to delete this item?</p>
+          </div>
+          <div class="modal-actions modal-actions-confirm">
+            <button type="button" class="btn-modal-cancel" id="btn-cancel-smart-delete">Cancel</button>
+            <button type="button" class="btn-danger-compact" id="btn-proceed-smart-delete">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+              <span>Delete</span>
+            </button>
+          </div>
         </div>
       </div>
 

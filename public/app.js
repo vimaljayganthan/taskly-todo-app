@@ -26,6 +26,14 @@ function getApiBaseUrl() {
 
 const API_BASE_URL = getApiBaseUrl();
 
+function getAuthHeaders() {
+  const headers = {};
+  if (typeof state !== 'undefined' && state.userToken) {
+    headers['Authorization'] = `Bearer ${state.userToken}`;
+  }
+  return headers;
+}
+
 // Application State
 const state = {
   // User Profile
@@ -566,6 +574,9 @@ function syncAuthSession(session) {
   updatePreviewUI();
   renderProfile();
   fetchTodos();
+  if (typeof SmartListsManager !== 'undefined') {
+    SmartListsManager.syncAll().catch(err => console.warn('[SmartLists] Session sync error:', err));
+  }
 }
 
 function syncAuthSignOut() {
@@ -584,6 +595,9 @@ function syncAuthSignOut() {
   } catch (_) {}
   if (typeof syncCustomCategoriesToDOM === 'function') {
     syncCustomCategoriesToDOM('Personal');
+  }
+  if (typeof SmartListsManager !== 'undefined') {
+    SmartListsManager.clearLocalState();
   }
   updatePreviewUI();
   renderAll();
@@ -629,6 +643,9 @@ if (typeof document !== 'undefined') {
     await TasklyUpdateManager.init();
     renderQuickNotes();
     await initSupabaseAuth();
+    if (typeof SmartListsManager !== 'undefined') {
+      await SmartListsManager.init();
+    }
     updatePreviewUI();
     if (isLocalPreview() && state.isPreviewSession) {
       initPreviewData();
@@ -765,7 +782,7 @@ function restoreActiveRoute() {
     }
   }
 
-  const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add'];
+  const mainTabs = ['home', 'calendar', 'progress', 'profile', 'add', 'smart-lists'];
   const onboardingSteps = ['launch', 'carousel', 'profile-setup', 'welcome'];
 
   // 1. Check if user requests a protected main dashboard tab (via hash or ?tab=)
@@ -1541,6 +1558,9 @@ const TasklyNotifications = {
       if (typeof masterToggle.addEventListener === 'function') {
         masterToggle.addEventListener('change', async (e) => {
           await this.setMasterEnabled(e.target.checked);
+          if (typeof SmartListsManager !== 'undefined') {
+            await SmartListsManager.scheduleDailySummaryReminder();
+          }
         });
       }
     }
@@ -1551,6 +1571,9 @@ const TasklyNotifications = {
       if (typeof soundToggle.addEventListener === 'function') {
         soundToggle.addEventListener('change', async (e) => {
           await this.setSoundEnabled(e.target.checked);
+          if (typeof SmartListsManager !== 'undefined') {
+            await SmartListsManager.scheduleDailySummaryReminder();
+          }
         });
       }
     }
@@ -2384,6 +2407,14 @@ const TasklyNotifications = {
     const taskId = extra.taskId || extra.sourceId;
     const noteId = extra.noteId || extra.sourceId;
 
+    if (notification?.id === 990001 || extra?.type === 'smart_lists_summary') {
+      showMainFlow('smart-lists');
+      if (typeof SmartListsManager !== 'undefined') {
+        SmartListsManager.openSummaryModal();
+      }
+      return;
+    }
+
     if (actionId === 'COMPLETE_TASK' && taskId) {
       await handleToggleComplete(taskId);
       this.notifyImmediate({
@@ -3148,7 +3179,8 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
           calendar: '#FFE1E7',
           progress: '#FFF1B8',
           profile: '#38BDF8',
-          add: '#38BDF8'
+          add: '#38BDF8',
+          'smart-lists': '#38BDF8'
         };
         metaTheme.setAttribute('content', colorMap[tabName] || '#38BDF8');
       }
@@ -3185,7 +3217,7 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
   }
 
   // Switch tab views
-  const tabs = ['home', 'calendar', 'add', 'progress', 'profile'];
+  const tabs = ['home', 'calendar', 'add', 'progress', 'profile', 'smart-lists'];
   tabs.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.classList.toggle('active', t === tabName);
@@ -3203,6 +3235,9 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
 
   // Update views
   renderAll();
+  if (tabName === 'smart-lists' && typeof SmartListsManager !== 'undefined') {
+    SmartListsManager.renderRoutines();
+  }
   if (tabName === 'add') {
     initAddTaskDateTime();
     if (typeof syncCustomCategoriesToDOM === 'function') {
@@ -5781,6 +5816,42 @@ const TasklyUpdateManager = {
     }
   ],
 
+  // Locally bundled current-build release entry for internal / non-published builds (v1.9.0 Build 10)
+  localInstalledRelease: {
+    version: '1.9.0',
+    versionName: '1.9.0',
+    versionCode: 10,
+    releaseDate: '2026-11-08',
+    title: 'Smart Lists – Daily Routine Management',
+    summary: 'Introduced Smart Lists, a dedicated space for managing daily routines, tracking completion, and reviewing personal productivity.',
+    features: [
+      'Simple daily routine creation, editing, and deletion',
+      'Individual routine completion checkboxes',
+      'Date-specific completion tracking',
+      'Daily productivity summary reports',
+      'Configurable daily summary reminder, defaulting to 10:00 PM',
+      'Carry-forward options for incomplete routines',
+      'Historical daily reports',
+      'Four-theme support',
+      'Persistent routine data and account synchronization'
+    ],
+    improvements: [
+      'Clean printed paper report document design for daily productivity summaries',
+      'Android status bar safe-area top inset spacing and clean header navigation',
+      'Dedicated golden yellow Summary button and muted neutral grey Settings button'
+    ],
+    performance: [
+      'Optimized date-isolated routine status caching and instant checklist rendering'
+    ],
+    fixes: [
+      'Fixed daily routine completion and carry-forward count synchronization bug'
+    ],
+    security: [
+      'Row-Level Security (RLS) enforcement on all smart lists Supabase tables and endpoints'
+    ],
+    isLocalInstalled: true
+  },
+
   setCachedManifest(newManifest) {
     if (!newManifest || newManifest.versionCode == null) return;
     const newCode = parseInt(newManifest.versionCode, 10);
@@ -5984,18 +6055,47 @@ const TasklyUpdateManager = {
     this.renderUI();
   },
 
-  getReleaseHistory() {
+  getApprovedReleaseHistory() {
     let list = (this.state.manifest && Array.isArray(this.state.manifest.history) && this.state.manifest.history.length > 0)
       ? this.state.manifest.history
       : this.fallbackHistory;
     return [...list].sort((a, b) => (parseInt(b.versionCode, 10) || 0) - (parseInt(a.versionCode, 10) || 0));
   },
 
+  getLatestApprovedRelease() {
+    const approved = this.getApprovedReleaseHistory();
+    if (approved.length > 0) return approved[0];
+    return {
+      version: this.state.latestVersionName || this.config.fallbackVersionName,
+      versionName: this.state.latestVersionName || this.config.fallbackVersionName,
+      versionCode: this.state.latestVersionCode || this.config.fallbackVersionCode
+    };
+  },
+
+  getReleaseHistory() {
+    const approved = this.getApprovedReleaseHistory();
+    const installedCode = parseInt(this.state.installedVersionCode, 10) || 0;
+    const latestApproved = this.getLatestApprovedRelease();
+    const latestApprovedCode = parseInt(latestApproved.versionCode, 10) || 0;
+
+    // Show currently installed version's local history entry when newer than latest approved
+    if (this.localInstalledRelease && installedCode > latestApprovedCode) {
+      const localCode = parseInt(this.localInstalledRelease.versionCode, 10);
+      const alreadyInApproved = approved.some(r => parseInt(r.versionCode, 10) === localCode);
+      if (!alreadyInApproved && installedCode >= localCode) {
+        return [this.localInstalledRelease, ...approved];
+      }
+    }
+
+    return approved;
+  },
+
   getReleaseByVersion(versionOrCode) {
     const history = this.getReleaseHistory();
     let rel = null;
     if (versionOrCode == null) {
-      rel = history[0] || null;
+      const installedCode = parseInt(this.state.installedVersionCode, 10);
+      rel = history.find(r => parseInt(r.versionCode, 10) === installedCode) || history[0] || null;
     } else {
       const strVal = String(versionOrCode).trim().replace(/^v/i, '');
       const numVal = parseInt(strVal, 10);
@@ -6005,7 +6105,22 @@ const TasklyUpdateManager = {
         }
         const v = String(r.versionName || r.version || '').replace(/^v/i, '');
         return v === strVal;
-      }) || history[0] || null;
+      });
+
+      // Also check localInstalledRelease if not in history
+      if (!rel && this.localInstalledRelease) {
+        const localCode = parseInt(this.localInstalledRelease.versionCode, 10);
+        if (!isNaN(numVal) && (localCode === numVal)) {
+          rel = this.localInstalledRelease;
+        } else {
+          const lv = String(this.localInstalledRelease.versionName || this.localInstalledRelease.version || '').replace(/^v/i, '');
+          if (lv === strVal) {
+            rel = this.localInstalledRelease;
+          }
+        }
+      }
+
+      if (!rel) rel = history[0] || null;
     }
 
     if (!rel) return null;
@@ -6036,8 +6151,20 @@ const TasklyUpdateManager = {
   openWhatsNew(versionOrCode = null) {
     if (typeof document === 'undefined') return;
     const history = this.getReleaseHistory();
-    const latestCode = history[0] ? history[0].versionCode : (this.state.latestVersionCode || this.config.fallbackVersionCode);
-    const targetCode = (versionOrCode != null) ? versionOrCode : latestCode;
+    const installedCode = parseInt(this.state.installedVersionCode, 10);
+    const latestApproved = this.getLatestApprovedRelease();
+    const latestApprovedCode = parseInt(latestApproved.versionCode, 10);
+
+    // If no version specified, default to currently installed version if it exists in history,
+    // otherwise fallback to latest approved release
+    let defaultCode = latestApprovedCode;
+    if (history.some(r => parseInt(r.versionCode, 10) === installedCode)) {
+      defaultCode = installedCode;
+    } else if (history[0]) {
+      defaultCode = parseInt(history[0].versionCode, 10);
+    }
+
+    const targetCode = (versionOrCode != null) ? versionOrCode : defaultCode;
     const release = this.getReleaseByVersion(targetCode);
     this.state.activeWhatsNewVersionCode = release ? release.versionCode : targetCode;
 
@@ -6090,21 +6217,29 @@ const TasklyUpdateManager = {
     if (!select) return;
     select.innerHTML = '';
     const history = this.getReleaseHistory();
-    history.forEach((rel, index) => {
+    const latestApproved = this.getLatestApprovedRelease();
+    const latestApprovedCode = parseInt(latestApproved.versionCode, 10);
+    const installedCode = parseInt(this.state.installedVersionCode, 10);
+
+    history.forEach((rel) => {
       const opt = document.createElement('option');
-      opt.value = String(rel.versionCode);
-      const isLatest = (index === 0);
-      const isInstalled = (rel.versionCode === this.state.installedVersionCode);
-      let label = `v${rel.versionName || rel.version} (Build ${rel.versionCode})`;
-      if (isLatest && isInstalled) {
+      const relCode = parseInt(rel.versionCode, 10);
+      opt.value = String(relCode);
+      const isApprovedLatest = (relCode === latestApprovedCode);
+      const isInstalled = (relCode === installedCode);
+      let label = `v${rel.versionName || rel.version} (Build ${relCode})`;
+
+      if (isInstalled && isApprovedLatest) {
         label += ' — Latest & Installed';
-      } else if (isLatest) {
+      } else if (isInstalled && relCode > latestApprovedCode) {
+        label += ' — Current Installed';
+      } else if (isApprovedLatest) {
         label += ' — Latest Approved';
       } else if (isInstalled) {
-        label += ' — Currently Installed';
+        label += ' — Installed';
       }
       opt.textContent = label;
-      if (rel.versionCode === this.state.activeWhatsNewVersionCode) {
+      if (relCode === parseInt(this.state.activeWhatsNewVersionCode, 10)) {
         opt.selected = true;
       }
       select.appendChild(opt);
@@ -6463,10 +6598,9 @@ const TasklyUpdateManager = {
     // Latest approved version
     const valLatest = document.getElementById('val-latest-version');
     if (valLatest) {
-      const historyReleases = this.getReleaseHistory();
-      const latestRel = historyReleases[0];
-      const latestName = (latestRel && (latestRel.versionName || latestRel.version)) || this.state.latestVersionName || this.config.fallbackVersionName;
-      const latestCode = (latestRel && latestRel.versionCode) || this.state.latestVersionCode || this.config.fallbackVersionCode;
+      const latestApproved = this.getLatestApprovedRelease();
+      const latestName = (latestApproved && (latestApproved.versionName || latestApproved.version)) || this.state.latestVersionName || this.config.fallbackVersionName;
+      const latestCode = (latestApproved && latestApproved.versionCode) || this.state.latestVersionCode || this.config.fallbackVersionCode;
       valLatest.textContent = `v${latestName} (Build ${latestCode})`;
     }
 
@@ -6605,10 +6739,11 @@ const TasklyUpdateManager = {
     // Update What's New banner subtitle in Version Modal
     const whatsNewBannerSub = document.getElementById('whats-new-banner-subtitle');
     if (whatsNewBannerSub) {
-      const historyReleases = this.getReleaseHistory();
-      const latestRel = historyReleases[0];
-      whatsNewBannerSub.textContent = latestRel
-        ? `v${latestRel.versionName || latestRel.version} • ${latestRel.title || 'Latest features & updates'}`
+      const installedRel = this.getReleaseByVersion(this.state.installedVersionCode);
+      const latestRel = this.getLatestApprovedRelease();
+      const displayRel = installedRel || latestRel;
+      whatsNewBannerSub.textContent = displayRel
+        ? `v${displayRel.versionName || displayRel.version} • ${displayRel.title || 'Latest features & updates'}`
         : 'Explore everything introduced in recent updates.';
     }
 
@@ -6624,13 +6759,25 @@ const TasklyUpdateManager = {
 
     const historyList = document.getElementById('version-history-list');
     const history = this.getReleaseHistory();
+    const latestApproved = this.getLatestApprovedRelease();
+    const latestApprovedCode = parseInt(latestApproved.versionCode, 10);
+    const installedCode = parseInt(this.state.installedVersionCode, 10);
+
     if (historyList && history.length > 0) {
       historyList.innerHTML = '';
-      history.forEach((rel, index) => {
+      history.forEach((rel) => {
+        const relCode = parseInt(rel.versionCode, 10);
+        const isCurrentInstalled = (relCode === installedCode && relCode > latestApprovedCode);
+        const isApprovedLatest = (relCode === latestApprovedCode);
+        const isInstalled = (relCode === installedCode);
+
         const item = document.createElement('div');
         item.className = 'history-item';
-        if (index === 0) {
+        if (isApprovedLatest) {
           item.classList.add('history-item-latest');
+        }
+        if (isCurrentInstalled) {
+          item.classList.add('history-item-current-installed');
         }
 
         const head = document.createElement('div');
@@ -6644,14 +6791,22 @@ const TasklyUpdateManager = {
         ver.textContent = `v${rel.versionName || rel.version} (Build ${rel.versionCode})`;
         verWrap.appendChild(ver);
 
-        if (index === 0) {
+        if (isCurrentInstalled) {
+          const curBadge = document.createElement('span');
+          curBadge.className = 'badge-installed-release badge-current-installed';
+          curBadge.textContent = '✓ CURRENT INSTALLED';
+          verWrap.appendChild(curBadge);
+        } else if (isApprovedLatest && isInstalled) {
           const latestBadge = document.createElement('span');
           latestBadge.className = 'badge-latest-release';
-          latestBadge.textContent = '🌟 Latest';
+          latestBadge.textContent = '🌟 Latest & Installed';
           verWrap.appendChild(latestBadge);
-        }
-
-        if (rel.versionCode === this.state.installedVersionCode) {
+        } else if (isApprovedLatest) {
+          const latestBadge = document.createElement('span');
+          latestBadge.className = 'badge-latest-release';
+          latestBadge.textContent = '🌟 Latest Approved';
+          verWrap.appendChild(latestBadge);
+        } else if (isInstalled) {
           const installedBadge = document.createElement('span');
           installedBadge.className = 'badge-installed-release';
           installedBadge.textContent = '✓ Installed';
@@ -6713,6 +6868,1379 @@ const TasklyUpdateManager = {
 
 if (typeof window !== 'undefined') {
   window.TasklyUpdateManager = TasklyUpdateManager;
+}
+
+// ==========================================================================
+// Smart Lists Manager (v1.9.0 Build 10)
+// ==========================================================================
+const SmartListsManager = {
+  NOTIFICATION_ID: 990001,
+  STORAGE_KEY_ROUTINES: 'taskly_smart_routines',
+  STORAGE_KEY_COMPLETIONS: 'taskly_smart_completions',
+  STORAGE_KEY_REPORTS: 'taskly_smart_reports',
+  STORAGE_KEY_SETTINGS: 'taskly_smart_settings',
+
+  state: {
+    routines: [],
+    completions: {}, // map of `${routineId}_${date}` -> { completed: bool, carriedForward: bool }
+    reports: [],
+    settings: {
+      dailySummaryEnabled: true,
+      dailySummaryTime: '22:00'
+    },
+    activeDate: (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10),
+    activeReportDate: null,
+    pendingDeleteType: null,
+    pendingDeleteId: null,
+    isInitialized: false
+  },
+
+  async init() {
+    this.state.activeDate = (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10);
+    this.loadFromStorage();
+    if (isAuthenticated()) {
+      await this.syncAll().catch(err => console.warn('[SmartLists] Sync error:', err));
+    }
+    await this.scheduleDailySummaryReminder().catch(err => console.warn('[SmartLists] Reminder schedule error:', err));
+    this.state.isInitialized = true;
+  },
+
+  loadFromStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const r = localStorage.getItem(this.STORAGE_KEY_ROUTINES);
+      if (r) this.state.routines = JSON.parse(r);
+
+      const c = localStorage.getItem(this.STORAGE_KEY_COMPLETIONS);
+      if (c) this.state.completions = JSON.parse(c);
+
+      const rep = localStorage.getItem(this.STORAGE_KEY_REPORTS);
+      if (rep) {
+        const parsed = JSON.parse(rep);
+        if (Array.isArray(parsed)) {
+          this.state.reports = parsed.map(r => this.normalizeReport(r)).filter(Boolean);
+        }
+      }
+
+      const s = localStorage.getItem(this.STORAGE_KEY_SETTINGS);
+      if (s) this.state.settings = JSON.parse(s);
+    } catch (e) {
+      console.warn('[SmartLists] Storage load error:', e);
+    }
+  },
+
+  saveToStorage() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(this.STORAGE_KEY_ROUTINES, JSON.stringify(this.state.routines));
+      localStorage.setItem(this.STORAGE_KEY_COMPLETIONS, JSON.stringify(this.state.completions));
+      localStorage.setItem(this.STORAGE_KEY_REPORTS, JSON.stringify(this.state.reports));
+      localStorage.setItem(this.STORAGE_KEY_SETTINGS, JSON.stringify(this.state.settings));
+    } catch (e) {
+      console.warn('[SmartLists] Storage save error:', e);
+    }
+  },
+
+  clearLocalState() {
+    this.state.routines = [];
+    this.state.completions = {};
+    this.state.reports = [];
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(this.STORAGE_KEY_ROUTINES);
+        localStorage.removeItem(this.STORAGE_KEY_COMPLETIONS);
+        localStorage.removeItem(this.STORAGE_KEY_REPORTS);
+        localStorage.removeItem(this.STORAGE_KEY_SETTINGS);
+      }
+    } catch (_) {}
+  },
+
+  async syncAll() {
+    await Promise.all([
+      this.fetchRoutines(),
+      this.fetchCompletions(this.state.activeDate),
+      this.fetchReports(),
+      this.fetchSettings()
+    ]);
+  },
+
+  // --- Routines CRUD ---
+  async fetchRoutines() {
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('smart_routines')
+          .select('*')
+          .eq('user_id', state.user.id)
+          .order('order_index', { ascending: true })
+          .order('created_at', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          this.state.routines = data.map(r => ({
+            id: r.id,
+            title: r.title,
+            orderIndex: r.order_index,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at
+          }));
+          this.saveToStorage();
+          return this.state.routines;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch('/api/smart-lists/routines', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          this.state.routines = data;
+          this.saveToStorage();
+          return this.state.routines;
+        }
+      }
+    } catch (_) {}
+
+    return this.state.routines;
+  },
+
+  async addRoutine(title) {
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return null;
+    }
+    const trimmed = title.trim().slice(0, 150);
+    // Prevent duplicate submission (case-insensitive)
+    if (this.state.routines.some(r => r.title.toLowerCase() === trimmed.toLowerCase())) {
+      if (typeof alert !== 'undefined') alert('A routine with this name already exists.');
+      return null;
+    }
+
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'routine_' + Date.now();
+    const newRoutine = {
+      id: newId,
+      title: trimmed,
+      orderIndex: this.state.routines.length,
+      createdAt: new Date().toISOString(),
+      updatedAt: null
+    };
+
+    // Optimistic local add
+    this.state.routines.push(newRoutine);
+    this.saveToStorage();
+    this.renderRoutines();
+
+    // Supabase direct sync
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('smart_routines')
+          .insert({
+            id: newId,
+            user_id: state.user.id,
+            title: trimmed,
+            order_index: newRoutine.orderIndex
+          })
+          .select()
+          .single();
+        if (!error && data) {
+          newRoutine.id = data.id;
+          this.saveToStorage();
+          return newRoutine;
+        }
+      } catch (_) {}
+    }
+
+    // Backend API fallback
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      const res = await fetch('/api/smart-lists/routines', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ title: trimmed, orderIndex: newRoutine.orderIndex })
+      });
+      if (res.ok) {
+        const serverData = await res.json();
+        newRoutine.id = serverData.id;
+        this.saveToStorage();
+      }
+    } catch (_) {}
+
+    return newRoutine;
+  },
+
+  async updateRoutine(id, newTitle) {
+    if (!newTitle || typeof newTitle !== 'string' || !newTitle.trim()) {
+      return null;
+    }
+    const trimmed = newTitle.trim().slice(0, 150);
+    const routine = this.state.routines.find(r => r.id === id);
+    if (!routine) return null;
+
+    routine.title = trimmed;
+    routine.updatedAt = new Date().toISOString();
+    this.saveToStorage();
+    this.renderRoutines();
+
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routines')
+          .update({ title: trimmed, updated_at: routine.updatedAt })
+          .eq('id', id)
+          .eq('user_id', state.user.id);
+      } catch (_) {}
+    } else {
+      try {
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        await fetch(`/api/smart-lists/routines/${id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ title: trimmed })
+        });
+      } catch (_) {}
+    }
+
+    return routine;
+  },
+
+  async deleteRoutine(id) {
+    const idx = this.state.routines.findIndex(r => r.id === id);
+    if (idx === -1) return false;
+
+    this.state.routines.splice(idx, 1);
+    Object.keys(this.state.completions).forEach(key => {
+      if (key.startsWith(`${id}_`)) {
+        delete this.state.completions[key];
+      }
+    });
+    this.saveToStorage();
+    this.renderRoutines();
+
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routines')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', state.user.id);
+      } catch (_) {}
+    } else {
+      try {
+        const headers = getAuthHeaders();
+        await fetch(`/api/smart-lists/routines/${id}`, {
+          method: 'DELETE',
+          headers
+        });
+      } catch (_) {}
+    }
+
+    return true;
+  },
+
+  // --- Daily Completions ---
+  async fetchCompletions(date) {
+    const d = date || this.state.activeDate;
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('smart_routine_completions')
+          .select('*')
+          .eq('user_id', state.user.id)
+          .eq('date', d);
+        if (!error && Array.isArray(data)) {
+          data.forEach(item => {
+            const key = `${item.routine_id}_${d}`;
+            this.state.completions[key] = {
+              completed: Boolean(item.completed),
+              carriedForward: Boolean(item.carried_forward)
+            };
+          });
+          this.saveToStorage();
+          return this.state.completions;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`/api/smart-lists/completions?date=${d}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          data.forEach(item => {
+            const key = `${item.routineId}_${d}`;
+            this.state.completions[key] = {
+              completed: Boolean(item.completed),
+              carriedForward: Boolean(item.carriedForward)
+            };
+          });
+          this.saveToStorage();
+        }
+      }
+    } catch (_) {}
+
+    return this.state.completions;
+  },
+
+  getCompletion(routineId, date) {
+    const d = date || this.state.activeDate;
+    const key = `${routineId}_${d}`;
+    return this.state.completions[key] || { completed: false, carriedForward: false };
+  },
+
+  isRoutineCompleted(routineId, date) {
+    return Boolean(this.getCompletion(routineId, date).completed);
+  },
+
+  calculateDayProgress(date) {
+    const d = date || this.state.activeDate;
+    const total = this.state.routines.length;
+    let completed = 0;
+    this.state.routines.forEach(r => {
+      if (this.isRoutineCompleted(r.id, d)) completed++;
+    });
+    const incomplete = total - completed;
+    const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { total, completed, incomplete, rate };
+  },
+
+  getNextDayYmd(ymd) {
+    const parts = ymd.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    d.setDate(d.getDate() + 1);
+    return (typeof toYmdString === 'function') ? toYmdString(d) : d.toISOString().slice(0, 10);
+  },
+
+  async toggleCompletion(routineId, date) {
+    const d = date || this.state.activeDate;
+    const current = this.getCompletion(routineId, d);
+    const newStatus = !current.completed;
+    const key = `${routineId}_${d}`;
+
+    this.state.completions[key] = {
+      completed: newStatus,
+      carriedForward: current.carriedForward
+    };
+    this.saveToStorage();
+    this.renderRoutines();
+
+    // Auto-update today's summary snapshot in the background
+    this.generateDailyReport(d).catch(() => {});
+
+    // Supabase upsert
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routine_completions')
+          .upsert({
+            user_id: state.user.id,
+            routine_id: routineId,
+            date: d,
+            completed: newStatus,
+            completed_at: newStatus ? new Date().toISOString() : null,
+            carried_forward: current.carriedForward
+          }, { onConflict: 'user_id,routine_id,date' });
+      } catch (_) {}
+    } else {
+      try {
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        await fetch('/api/smart-lists/completions', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            routineId,
+            date: d,
+            completed: newStatus,
+            carriedForward: current.carriedForward
+          })
+        });
+      } catch (_) {}
+    }
+  },
+
+  // --- Reports & Summary ---
+  normalizeReport(rawReport) {
+    if (!rawReport) return null;
+
+    // Helper to safely extract an array of strings from various representations
+    const extractTitles = (field) => {
+      if (!field) return [];
+      let list = field;
+      if (typeof field === 'string') {
+        try {
+          const parsed = JSON.parse(field);
+          if (Array.isArray(parsed)) list = parsed;
+        } catch (_) {
+          return [field.trim()].filter(Boolean);
+        }
+      }
+      if (!Array.isArray(list)) return [];
+      return list.map(item => {
+        if (typeof item === 'string') return item.trim();
+        if (item && typeof item === 'object') return String(item.title || item.name || '').trim();
+        return '';
+      }).filter(Boolean);
+    };
+
+    let completed = [];
+    if (rawReport.completedRoutines) completed = extractTitles(rawReport.completedRoutines);
+    if (completed.length === 0 && rawReport.completed_routines) completed = extractTitles(rawReport.completed_routines);
+    if (completed.length === 0 && rawReport.completedList) completed = extractTitles(rawReport.completedList);
+    if (completed.length === 0 && Array.isArray(rawReport.routinesSnapshot)) {
+      completed = rawReport.routinesSnapshot.filter(r => r && r.completed).map(r => String(r.title || '').trim()).filter(Boolean);
+    }
+
+    let incomplete = [];
+    if (rawReport.incompleteRoutines) incomplete = extractTitles(rawReport.incompleteRoutines);
+    if (incomplete.length === 0 && rawReport.incomplete_routines) incomplete = extractTitles(rawReport.incomplete_routines);
+    if (incomplete.length === 0 && rawReport.incompleteList) incomplete = extractTitles(rawReport.incompleteList);
+    if (incomplete.length === 0 && Array.isArray(rawReport.routinesSnapshot)) {
+      incomplete = rawReport.routinesSnapshot.filter(r => r && !r.completed).map(r => String(r.title || '').trim()).filter(Boolean);
+    }
+
+    // Fallback ONLY for activeDate if both lists are empty and routines exist in state
+    if (completed.length === 0 && incomplete.length === 0 && rawReport.date === this.state.activeDate && this.state.routines && this.state.routines.length > 0) {
+      this.state.routines.forEach(r => {
+        const comp = this.getCompletion(r.id, rawReport.date);
+        if (comp.completed) {
+          completed.push(r.title);
+        } else {
+          incomplete.push(r.title);
+        }
+      });
+    }
+
+    // Strict mathematical consistency guarantees:
+    const completedCount = completed.length;
+    const incompleteCount = incomplete.length;
+    const totalRoutines = completedCount + incompleteCount;
+    const completionRate = totalRoutines > 0 ? Math.round((completedCount / totalRoutines) * 100) : 0;
+
+    let status = 'Not Started';
+    let statusBadge = 'Not Started';
+    if (totalRoutines === 0) {
+      status = 'Not Started';
+      statusBadge = 'No Routines';
+    } else if (completedCount === totalRoutines) {
+      status = 'Fully Completed';
+      statusBadge = 'Exceptional';
+    } else if (completionRate >= 80) {
+      status = 'Partially Completed';
+      statusBadge = 'Great Job';
+    } else if (completionRate >= 50) {
+      status = 'Partially Completed';
+      statusBadge = 'Good Progress';
+    } else if (completedCount > 0) {
+      status = 'Partially Completed';
+      statusBadge = 'Needs Focus';
+    }
+
+    let closingStatement = rawReport.closingStatement;
+    if (!closingStatement || (totalRoutines > 0 && closingStatement === 'No routines scheduled for this date.')) {
+      if (totalRoutines === 0) {
+        closingStatement = 'No routines scheduled for this date.';
+      } else if (completedCount === totalRoutines) {
+        closingStatement = 'Outstanding work! You completed 100% of your daily routines today. All objectives achieved!';
+      } else if (completionRate >= 80) {
+        closingStatement = `Great job! You achieved ${completionRate}% routine completion today. Keep up the strong consistency tomorrow!`;
+      } else if (completionRate >= 50) {
+        closingStatement = `Good progress! You reached ${completionRate}% routine completion today. Stay focused to close out the remaining routines!`;
+      } else if (completedCount > 0) {
+        closingStatement = `Some routines completed today (${completionRate}%). Keep pushing forward tomorrow to build momentum!`;
+      } else {
+        closingStatement = 'No routines were completed today. Tomorrow is a fresh opportunity to start strong!';
+      }
+    }
+
+    return {
+      id: rawReport.id || ('rep_' + (rawReport.date || Date.now())),
+      date: rawReport.date,
+      totalRoutines,
+      completedCount,
+      incompleteCount,
+      completionRate,
+      status,
+      statusBadge,
+      closingStatement,
+      completedRoutines: completed,
+      incompleteRoutines: incomplete,
+      completedList: completed,
+      incompleteList: incomplete,
+      routinesSnapshot: Array.isArray(rawReport.routinesSnapshot) && rawReport.routinesSnapshot.length > 0
+        ? rawReport.routinesSnapshot
+        : [
+            ...completed.map(t => ({ title: t, completed: true })),
+            ...incomplete.map(t => ({ title: t, completed: false }))
+          ],
+      carryForwardDecision: rawReport.carryForwardDecision || rawReport.carry_forward_decision || 'pending',
+      createdAt: rawReport.createdAt || rawReport.created_at || new Date().toISOString(),
+      updatedAt: rawReport.updatedAt || rawReport.updated_at || new Date().toISOString()
+    };
+  },
+
+  async generateDailyReport(date) {
+    const d = date || this.state.activeDate;
+    const routines = this.state.routines || [];
+    const total = routines.length;
+
+    const completedRoutineTitles = [];
+    const incompleteRoutineTitles = [];
+
+    routines.forEach(r => {
+      const comp = this.getCompletion(r.id, d);
+      if (comp.completed) {
+        completedRoutineTitles.push(r.title);
+      } else {
+        incompleteRoutineTitles.push(r.title);
+      }
+    });
+
+    const completedCount = completedRoutineTitles.length;
+    const incompleteCount = incompleteRoutineTitles.length;
+    const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+    let status = 'Not Started';
+    let statusBadge = 'Not Started';
+    if (total > 0 && completedCount === total) {
+      status = 'Fully Completed';
+      statusBadge = 'Exceptional';
+    } else if (rate >= 80) {
+      status = 'Partially Completed';
+      statusBadge = 'Great Job';
+    } else if (rate >= 50) {
+      status = 'Partially Completed';
+      statusBadge = 'Good Progress';
+    } else if (completedCount > 0) {
+      status = 'Partially Completed';
+      statusBadge = 'Needs Focus';
+    }
+
+    let closingStatement = 'No routines scheduled for this date.';
+    if (total > 0) {
+      if (completedCount === total) {
+        closingStatement = 'Outstanding work! You completed 100% of your daily routines today. All objectives achieved!';
+      } else if (rate >= 80) {
+        closingStatement = `Great job! You achieved ${rate}% routine completion today. Keep up the strong consistency tomorrow!`;
+      } else if (rate >= 50) {
+        closingStatement = `Good progress! You reached ${rate}% routine completion today. Stay focused to close out the remaining routines!`;
+      } else if (completedCount > 0) {
+        closingStatement = `Some routines completed today (${rate}%). Keep pushing forward tomorrow to build momentum!`;
+      } else {
+        closingStatement = 'No routines were completed today. Tomorrow is a fresh opportunity to start strong!';
+      }
+    }
+
+    const existingReport = this.state.reports.find(rep => rep.date === d);
+    const carryForwardDecision = existingReport ? existingReport.carryForwardDecision : 'pending';
+
+    const report = {
+      id: existingReport?.id || ((typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'rep_' + Date.now()),
+      date: d,
+      totalRoutines: total,
+      completedRoutines: completedRoutineTitles,
+      completedCount,
+      incompleteRoutines: incompleteRoutineTitles,
+      incompleteCount,
+      completionRate: rate,
+      status,
+      statusBadge,
+      closingStatement,
+      completedList: completedRoutineTitles,
+      incompleteList: incompleteRoutineTitles,
+      routinesSnapshot: routines.map(r => ({
+        id: r.id,
+        title: r.title,
+        completed: this.getCompletion(r.id, d).completed
+      })),
+      carryForwardDecision: carryForwardDecision || 'pending',
+      createdAt: existingReport?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Update in-memory & storage
+    const idx = this.state.reports.findIndex(rep => rep.date === d);
+    if (idx !== -1) {
+      this.state.reports[idx] = report;
+    } else {
+      this.state.reports.unshift(report);
+    }
+    this.saveToStorage();
+
+    // Persist to Supabase / API
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routine_reports')
+          .upsert({
+            id: report.id,
+            user_id: state.user.id,
+            date: d,
+            total_routines: total,
+            completed_count: completedCount,
+            incomplete_count: incompleteCount,
+            completion_rate: rate,
+            status,
+            completed_routines: completedRoutineTitles,
+            incomplete_routines: incompleteRoutineTitles,
+            carry_forward_decision: report.carryForwardDecision,
+            updated_at: report.updatedAt
+          }, { onConflict: 'user_id,date' });
+      } catch (_) {}
+    } else {
+      try {
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        await fetch('/api/smart-lists/reports', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(report)
+        });
+      } catch (_) {}
+    }
+
+    return report;
+  },
+
+  async fetchReports() {
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('smart_routine_reports')
+          .select('*')
+          .eq('user_id', state.user.id)
+          .order('date', { ascending: false });
+        if (!error && Array.isArray(data)) {
+          this.state.reports = data.map(r => this.normalizeReport({
+            id: r.id,
+            date: r.date,
+            totalRoutines: r.total_routines,
+            completedCount: r.completed_count,
+            incompleteCount: r.incomplete_count,
+            completionRate: r.completion_rate,
+            status: r.status,
+            completedRoutines: r.completed_routines || [],
+            incompleteRoutines: r.incomplete_routines || [],
+            carryForwardDecision: r.carry_forward_decision || 'pending',
+            createdAt: r.created_at,
+            updatedAt: r.updated_at
+          })).filter(Boolean);
+          this.saveToStorage();
+          return this.state.reports;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch('/api/smart-lists/reports', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          this.state.reports = data.map(r => this.normalizeReport(r)).filter(Boolean);
+          this.saveToStorage();
+          return this.state.reports;
+        }
+      }
+    } catch (_) {}
+
+    return this.state.reports;
+  },
+
+  async deleteReport(idOrDate) {
+    const idx = this.state.reports.findIndex(r => r.id === idOrDate || r.date === idOrDate);
+    if (idx === -1) return false;
+    const report = this.state.reports[idx];
+
+    this.state.reports.splice(idx, 1);
+    this.saveToStorage();
+
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routine_reports')
+          .delete()
+          .eq('id', report.id)
+          .eq('user_id', state.user.id);
+      } catch (_) {}
+    } else {
+      try {
+        const headers = getAuthHeaders();
+        await fetch(`/api/smart-lists/reports/${report.id}`, { method: 'DELETE', headers });
+      } catch (_) {}
+    }
+
+    this.renderHistoryList();
+    return true;
+  },
+
+  // --- Carry Forward ---
+  async setCarryForwardDecision(date, decision) {
+    const d = date || this.state.activeReportDate || this.state.activeDate;
+    if (!['yes', 'no'].includes(decision)) return;
+
+    let report = this.state.reports.find(r => r.date === d);
+    if (!report) {
+      report = await this.generateDailyReport(d);
+    }
+
+    report.carryForwardDecision = decision;
+    report.updatedAt = new Date().toISOString();
+
+    if (decision === 'yes') {
+      // Calculate tomorrow date string
+      const curParts = d.split('-').map(Number);
+      const nextDay = new Date(curParts[0], curParts[1] - 1, curParts[2]);
+      nextDay.setDate(nextDay.getDate() + 1);
+      const nextDayStr = (typeof toYmdString === 'function') ? toYmdString(nextDay) : nextDay.toISOString().slice(0, 10);
+
+      // Carry incomplete routines into tomorrow
+      const routines = this.state.routines || [];
+      for (const r of routines) {
+        const comp = this.getCompletion(r.id, d);
+        if (!comp.completed) {
+          const tomKey = `${r.id}_${nextDayStr}`;
+          this.state.completions[tomKey] = {
+            completed: false,
+            carriedForward: true
+          };
+
+          // Upsert to DB
+          if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+            supabaseClient
+              .from('smart_routine_completions')
+              .upsert({
+                user_id: state.user.id,
+                routine_id: r.id,
+                date: nextDayStr,
+                completed: false,
+                carried_forward: true
+              }, { onConflict: 'user_id,routine_id,date' })
+              .then(() => {})
+              .catch(() => {});
+          } else {
+            const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+            fetch('/api/smart-lists/completions', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                routineId: r.id,
+                date: nextDayStr,
+                completed: false,
+                carriedForward: true
+              })
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+
+    this.saveToStorage();
+    await this.generateDailyReport(d);
+
+    // Re-render summary modal to display updated status
+    this.openSummaryModal(d);
+
+    // If active date is tomorrow, refresh routines
+    if (this.state.activeDate !== d) {
+      this.renderRoutines();
+    }
+    return report;
+  },
+
+  async resetCarryForwardDecision(date) {
+    const d = date || this.state.activeReportDate || this.state.activeDate;
+    const report = this.state.reports.find(r => r.date === d);
+    if (!report) return null;
+
+    report.carryForwardDecision = 'pending';
+    this.saveToStorage();
+    this.openSummaryModal(d);
+    return report;
+  },
+
+  // --- Settings & Notifications ---
+  async fetchSettings() {
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('smart_routine_settings')
+          .select('*')
+          .eq('user_id', state.user.id)
+          .single();
+        if (!error && data) {
+          this.state.settings = {
+            dailySummaryEnabled: Boolean(data.daily_summary_enabled),
+            dailySummaryTime: data.daily_summary_time || '22:00'
+          };
+          this.saveToStorage();
+          return this.state.settings;
+        }
+      } catch (_) {}
+    }
+
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch('/api/smart-lists/settings', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.dailySummaryEnabled === 'boolean') {
+          this.state.settings = data;
+          this.saveToStorage();
+          return this.state.settings;
+        }
+      }
+    } catch (_) {}
+
+    return this.state.settings;
+  },
+
+  async saveSettings(settings) {
+    this.state.settings = {
+      dailySummaryEnabled: typeof settings.dailySummaryEnabled === 'boolean'
+        ? settings.dailySummaryEnabled
+        : this.state.settings.dailySummaryEnabled,
+      dailySummaryTime: typeof settings.dailySummaryTime === 'string' && settings.dailySummaryTime.trim()
+        ? settings.dailySummaryTime.trim()
+        : this.state.settings.dailySummaryTime
+    };
+    this.saveToStorage();
+
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        await supabaseClient
+          .from('smart_routine_settings')
+          .upsert({
+            user_id: state.user.id,
+            daily_summary_enabled: this.state.settings.dailySummaryEnabled,
+            daily_summary_time: this.state.settings.dailySummaryTime,
+            updated_at: new Date().toISOString()
+          });
+      } catch (_) {}
+    } else {
+      try {
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        await fetch('/api/smart-lists/settings', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(this.state.settings)
+        });
+      } catch (_) {}
+    }
+
+    await this.scheduleDailySummaryReminder();
+    return this.state.settings;
+  },
+
+  async saveSettingsFromUI() {
+    const toggle = document.getElementById('toggle-smart-reminder');
+    const timeInput = document.getElementById('input-smart-reminder-time');
+
+    const enabled = toggle ? Boolean(toggle.checked) : true;
+    const time = (timeInput && timeInput.value) ? timeInput.value : '22:00';
+
+    await this.saveSettings({ dailySummaryEnabled: enabled, dailySummaryTime: time });
+    this.closeSettingsModal();
+  },
+
+  async scheduleDailySummaryReminder() {
+    const plugin = (typeof TasklyNotifications !== 'undefined') ? TasklyNotifications.getPlugin() : null;
+    if (!plugin || typeof plugin.schedule !== 'function') return;
+
+    // Check master notification setting
+    const masterEnabled = (typeof TasklyNotifications !== 'undefined') ? TasklyNotifications.areNotificationsEnabled() : true;
+    const featureEnabled = Boolean(this.state.settings.dailySummaryEnabled);
+
+    // Cancel existing reminder to avoid duplicate scheduling
+    try {
+      if (typeof plugin.cancel === 'function') {
+        await plugin.cancel({ notifications: [{ id: this.NOTIFICATION_ID }] });
+      }
+    } catch (_) {}
+
+    if (!masterEnabled || !featureEnabled) {
+      return;
+    }
+
+    const timeStr = this.state.settings.dailySummaryTime || '22:00';
+    const parts = timeStr.split(':');
+    const hour = parseInt(parts[0], 10) || 22;
+    const minute = parseInt(parts[1], 10) || 0;
+
+    const channelConfig = (typeof TasklyNotifications !== 'undefined') 
+      ? TasklyNotifications.getActiveChannelConfig() 
+      : { channelId: 'taskly-reminders-v3', sound: 'taskly_meow.wav' };
+
+    try {
+      await plugin.schedule({
+        notifications: [
+          {
+            id: this.NOTIFICATION_ID,
+            title: 'Daily Routine Summary',
+            body: 'Review your daily routines and check today\'s completion report.',
+            schedule: {
+              on: { hour, minute },
+              repeats: true,
+              allowWhileIdle: true
+            },
+            channelId: channelConfig.channelId,
+            sound: channelConfig.sound,
+            smallIcon: 'ic_stat_paw',
+            iconColor: '#38BDF8',
+            extra: {
+              type: 'smart_lists_summary'
+            }
+          }
+        ]
+      });
+    } catch (e) {
+      console.warn('[SmartLists] Native schedule warning:', e);
+    }
+  },
+
+  // --- UI Operations & Rendering ---
+  openScreen() {
+    this.state.activeDate = (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10);
+    showMainFlow('smart-lists');
+    this.updateDateDisplay();
+    this.renderRoutines();
+  },
+
+  updateDateDisplay() {
+    if (typeof document === 'undefined') return;
+    const dateEl = document.getElementById('smart-lists-date-display');
+    if (dateEl) {
+      const now = new Date();
+      const options = { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' };
+      dateEl.textContent = now.toLocaleDateString('en-US', options);
+    }
+  },
+
+  renderRoutines() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('smart-routines-list');
+    const emptyState = document.getElementById('smart-empty-state');
+    const progressText = document.getElementById('smart-progress-text');
+    const footerSub = document.getElementById('footer-summary-sub');
+
+    if (!list) return;
+    list.innerHTML = '';
+
+    const routines = this.state.routines || [];
+    const date = this.state.activeDate;
+
+    if (routines.length === 0) {
+      if (emptyState) emptyState.style.display = 'flex';
+      if (progressText) progressText.textContent = '0 / 0 completed';
+      if (footerSub) footerSub.textContent = 'Add your routines to generate reports';
+      return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
+    let completedCount = 0;
+
+    routines.forEach(routine => {
+      const comp = this.getCompletion(routine.id, date);
+      if (comp.completed) completedCount++;
+
+      const card = document.createElement('div');
+      card.className = `smart-routine-card ${comp.completed ? 'completed' : ''}`;
+      card.setAttribute('data-routine-id', routine.id);
+
+      const left = document.createElement('div');
+      left.className = 'smart-routine-left';
+
+      // Checkbox wrap
+      const checkWrap = document.createElement('label');
+      checkWrap.className = 'smart-checkbox-wrap';
+      checkWrap.setAttribute('aria-label', `Mark ${routine.title} as ${comp.completed ? 'incomplete' : 'complete'}`);
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = comp.completed;
+      chk.addEventListener('change', () => {
+        this.toggleCompletion(routine.id, date);
+      });
+
+      const customCheck = document.createElement('span');
+      customCheck.className = 'smart-custom-check';
+      customCheck.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>';
+
+      checkWrap.appendChild(chk);
+      checkWrap.appendChild(customCheck);
+
+      // Info
+      const info = document.createElement('div');
+      info.className = 'smart-routine-info';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'routine-title';
+      titleSpan.textContent = routine.title;
+      info.appendChild(titleSpan);
+
+      if (comp.carriedForward) {
+        const carryBadge = document.createElement('span');
+        carryBadge.className = 'badge-carried-forward';
+        carryBadge.textContent = '↳ Carried forward';
+        info.appendChild(carryBadge);
+      }
+
+      left.appendChild(checkWrap);
+      left.appendChild(info);
+
+      // Action buttons
+      const actions = document.createElement('div');
+      actions.className = 'smart-routine-actions';
+
+      const btnEdit = document.createElement('button');
+      btnEdit.type = 'button';
+      btnEdit.className = 'btn-routine-action btn-routine-edit';
+      btnEdit.setAttribute('aria-label', `Edit ${routine.title}`);
+      btnEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+      btnEdit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openEditRoutine(routine.id);
+      });
+
+      const btnDelete = document.createElement('button');
+      btnDelete.type = 'button';
+      btnDelete.className = 'btn-routine-action btn-routine-delete';
+      btnDelete.setAttribute('aria-label', `Delete ${routine.title}`);
+      btnDelete.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+      btnDelete.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openDeleteConfirm('routine', routine.id, routine.title);
+      });
+
+      actions.appendChild(btnEdit);
+      actions.appendChild(btnDelete);
+
+      card.appendChild(left);
+      card.appendChild(actions);
+      list.appendChild(card);
+    });
+
+    const total = routines.length;
+    const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+    if (progressText) {
+      progressText.textContent = `${completedCount} / ${total} completed • ${rate}%`;
+    }
+    if (footerSub) {
+      footerSub.textContent = `${completedCount} of ${total} routines completed today (${rate}%)`;
+    }
+  },
+
+  openEditRoutine(id) {
+    const routine = this.state.routines.find(r => r.id === id);
+    if (!routine) return;
+
+    const editBox = document.getElementById('smart-edit-routine-box');
+    const idInput = document.getElementById('edit-smart-routine-id');
+    const titleInput = document.getElementById('input-smart-edit-title');
+
+    if (idInput) idInput.value = routine.id;
+    if (titleInput) {
+      titleInput.value = routine.title;
+      setTimeout(() => titleInput.focus(), 50);
+    }
+    if (editBox) editBox.style.display = 'block';
+  },
+
+  // --- Modals Management ---
+  async openSummaryModal(targetDate) {
+    const d = targetDate || this.state.activeDate;
+    this.state.activeReportDate = d;
+
+    // Generate or fetch report for date
+    let rawReport = this.state.reports.find(r => r.date === d);
+    if (!rawReport || d === this.state.activeDate) {
+      rawReport = await this.generateDailyReport(d);
+    }
+    const report = this.normalizeReport(rawReport);
+    this.renderSummaryModal(report);
+
+    const modal = document.getElementById('modal-smart-summary');
+    if (modal) modal.classList.add('active');
+  },
+
+  renderSummaryModal(report) {
+    if (!report || typeof document === 'undefined') return;
+
+    const d = report.date || this.state.activeReportDate || this.state.activeDate;
+
+    // Format human date
+    const dateParts = d.split('-').map(Number);
+    const dObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+    const humanDate = dObj.toLocaleDateString('en-US', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const dateEl = document.getElementById('smart-summary-date');
+    if (dateEl) dateEl.textContent = humanDate;
+
+    const badgeEl = document.getElementById('smart-summary-status-badge');
+    if (badgeEl) {
+      badgeEl.textContent = report.statusBadge || report.status;
+      badgeEl.className = 'report-status-badge ' + (
+        (report.statusBadge === 'Exceptional' || report.status === 'Fully Completed') ? 'status-completed' :
+        (report.statusBadge === 'Great Job' || report.statusBadge === 'Good Progress') ? 'status-partial' : 'status-not-started'
+      );
+    }
+
+    // Metrics
+    const totalEl = document.getElementById('summary-metric-total');
+    const compEl = document.getElementById('summary-metric-completed');
+    const incompEl = document.getElementById('summary-metric-incomplete');
+    const rateEl = document.getElementById('summary-metric-rate');
+    const barEl = document.getElementById('smart-summary-progress-bar');
+    const compCountEl = document.getElementById('summary-completed-count');
+    const incompCountEl = document.getElementById('summary-incomplete-count');
+
+    if (totalEl) totalEl.textContent = String(report.totalRoutines);
+    if (compEl) compEl.textContent = String(report.completedCount);
+    if (incompEl) incompEl.textContent = String(report.incompleteCount);
+    if (rateEl) rateEl.textContent = `${report.completionRate}%`;
+    if (barEl) barEl.style.width = `${report.completionRate}%`;
+    if (compCountEl) compCountEl.textContent = String(report.completedCount);
+    if (incompCountEl) incompCountEl.textContent = String(report.incompleteCount);
+
+    // Section 1 - Completed List
+    const compList = document.getElementById('smart-summary-completed-list');
+    if (compList) {
+      compList.innerHTML = '';
+      if (report.completedRoutines && report.completedRoutines.length > 0) {
+        report.completedRoutines.forEach(title => {
+          const li = document.createElement('li');
+          li.className = 'paper-list-item item-completed';
+          li.innerHTML = `<span class="paper-check">✓</span> <span class="paper-routine-title">${title}</span>`;
+          compList.appendChild(li);
+        });
+      } else {
+        const li = document.createElement('li');
+        li.className = 'empty-list-notice';
+        li.textContent = 'No routines were completed on this date.';
+        compList.appendChild(li);
+      }
+    }
+
+    // Section 2 - Incomplete List
+    const incompList = document.getElementById('smart-summary-incomplete-list');
+    if (incompList) {
+      incompList.innerHTML = '';
+      if (report.incompleteRoutines && report.incompleteRoutines.length > 0) {
+        report.incompleteRoutines.forEach(title => {
+          const li = document.createElement('li');
+          li.className = 'paper-list-item item-incomplete';
+          li.innerHTML = `<span class="paper-bullet">○</span> <span class="paper-routine-title">${title}</span>`;
+          incompList.appendChild(li);
+        });
+      } else if (report.totalRoutines === 0) {
+        const li = document.createElement('li');
+        li.className = 'empty-list-notice';
+        li.textContent = 'No routines were scheduled on this date.';
+        incompList.appendChild(li);
+      } else {
+        const li = document.createElement('li');
+        li.className = 'empty-list-notice';
+        li.textContent = 'All routines were completed successfully.';
+        incompList.appendChild(li);
+      }
+    }
+
+    // Section 3 - Carry Forward Section
+    const carryCard = document.getElementById('smart-carry-forward-card');
+    const carryActions = document.getElementById('smart-carry-actions-group');
+    const carryBanner = document.getElementById('smart-carry-status-banner');
+    const carryText = document.getElementById('smart-carry-status-text');
+    const carryTag = document.getElementById('smart-carry-decision-tag');
+
+    if (carryCard) {
+      const decision = report.carryForwardDecision || 'pending';
+      if (report.totalRoutines === 0 || report.incompleteCount === 0) {
+        if (carryTag) carryTag.textContent = 'Carry Forward: NOT REQUIRED';
+        if (carryText) carryText.textContent = 'All routines for this date were completed. No items need to be carried forward.';
+        if (carryActions) carryActions.style.display = 'none';
+        if (carryBanner) carryBanner.style.display = 'none';
+      } else if (decision === 'yes') {
+        if (carryTag) carryTag.textContent = 'Carry Forward: YES (Carried into tomorrow)';
+        if (carryText) carryText.textContent = 'Incomplete routines were scheduled into tomorrow\'s routine checklist.';
+        if (carryActions) carryActions.style.display = 'none';
+        if (carryBanner) carryBanner.style.display = 'flex';
+      } else if (decision === 'no') {
+        if (carryTag) carryTag.textContent = 'Carry Forward: NO (Closed for today)';
+        if (carryText) carryText.textContent = 'These incomplete routines were closed and will not be carried into tomorrow.';
+        if (carryActions) carryActions.style.display = 'none';
+        if (carryBanner) carryBanner.style.display = 'flex';
+      } else {
+        if (carryTag) carryTag.textContent = 'Carry Forward: PENDING';
+        if (carryText) carryText.textContent = 'Would you like to carry forward today\'s incomplete routines into tomorrow?';
+        if (carryActions) carryActions.style.display = 'flex';
+        if (carryBanner) carryBanner.style.display = 'none';
+      }
+    }
+
+    // Section 4 - Overall Result / Closing Statement
+    const closingEl = document.getElementById('smart-summary-closing-statement');
+    if (closingEl) {
+      closingEl.textContent = report.closingStatement || 'Keep consistency going tomorrow!';
+    }
+  },
+
+  closeSummaryModal() {
+    const modal = document.getElementById('modal-smart-summary');
+    if (modal) modal.classList.remove('active');
+  },
+
+  async openHistoryModal() {
+    await this.fetchReports();
+    this.renderHistoryList();
+    const modal = document.getElementById('modal-smart-history');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeHistoryModal() {
+    const modal = document.getElementById('modal-smart-history');
+    if (modal) modal.classList.remove('active');
+  },
+
+  renderHistoryList() {
+    if (typeof document === 'undefined') return;
+    const list = document.getElementById('smart-history-list');
+    const empty = document.getElementById('smart-history-empty');
+    if (!list) return;
+
+    list.innerHTML = '';
+    const reports = this.state.reports || [];
+
+    if (reports.length === 0) {
+      if (empty) empty.style.display = 'block';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    reports.forEach(rawRep => {
+      const rep = this.normalizeReport(rawRep);
+      const parts = rep.date.split('-').map(Number);
+      const dObj = new Date(parts[0], parts[1] - 1, parts[2]);
+      const human = dObj.toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+
+      const item = document.createElement('div');
+      item.className = 'smart-history-item';
+      item.setAttribute('data-report-date', rep.date);
+
+      const left = document.createElement('div');
+      left.className = 'history-item-left';
+      left.addEventListener('click', () => {
+        this.closeHistoryModal();
+        this.openSummaryModal(rep.date);
+      });
+
+      const rowHead = document.createElement('div');
+      rowHead.className = 'history-row-header';
+
+      const dateHeading = document.createElement('span');
+      dateHeading.className = 'history-item-date';
+      dateHeading.textContent = human;
+
+      const badge = document.createElement('span');
+      badge.className = 'history-status-badge ' + (
+        (rep.statusBadge === 'Exceptional' || rep.status === 'Fully Completed') ? 'status-completed' :
+        (rep.statusBadge === 'Great Job' || rep.statusBadge === 'Good Progress') ? 'status-partial' : 'status-not-started'
+      );
+      badge.textContent = rep.statusBadge || rep.status;
+
+      rowHead.appendChild(dateHeading);
+      rowHead.appendChild(badge);
+
+      const statsRow = document.createElement('div');
+      statsRow.className = 'history-row-stats';
+      statsRow.innerHTML = `<span class="history-stats-count">${rep.completedCount} / ${rep.totalRoutines} completed</span> <span class="history-stats-rate">(${rep.completionRate}%)</span>`;
+
+      left.appendChild(rowHead);
+      left.appendChild(statsRow);
+
+      const actions = document.createElement('div');
+      actions.className = 'history-item-actions';
+
+      const btnView = document.createElement('button');
+      btnView.type = 'button';
+      btnView.className = 'btn-history-view';
+      btnView.textContent = 'View Report';
+      btnView.addEventListener('click', () => {
+        this.closeHistoryModal();
+        this.openSummaryModal(rep.date);
+      });
+
+      const btnDel = document.createElement('button');
+      btnDel.type = 'button';
+      btnDel.className = 'btn-history-delete';
+      btnDel.setAttribute('aria-label', `Delete report for ${human}`);
+      btnDel.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+      btnDel.addEventListener('click', () => {
+        this.openDeleteConfirm('report', rep.date, human);
+      });
+
+      actions.appendChild(btnView);
+      actions.appendChild(btnDel);
+
+      item.appendChild(left);
+      item.appendChild(actions);
+      list.appendChild(item);
+    });
+  },
+
+  openSettingsModal() {
+    const toggle = document.getElementById('toggle-smart-reminder');
+    const timeInput = document.getElementById('input-smart-reminder-time');
+
+    if (toggle) toggle.checked = Boolean(this.state.settings.dailySummaryEnabled);
+    if (timeInput) timeInput.value = this.state.settings.dailySummaryTime || '22:00';
+
+    const modal = document.getElementById('modal-smart-settings');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeSettingsModal() {
+    const modal = document.getElementById('modal-smart-settings');
+    if (modal) modal.classList.remove('active');
+  },
+
+  openDeleteConfirm(type, id, label) {
+    this.state.pendingDeleteType = type;
+    this.state.pendingDeleteId = id;
+
+    const msgEl = document.getElementById('smart-delete-confirm-message');
+    if (msgEl) {
+      if (type === 'routine') {
+        msgEl.textContent = `Are you sure you want to delete "${label}"? It will be removed from future daily lists. Past historical reports will be preserved.`;
+      } else {
+        msgEl.textContent = `Are you sure you want to delete the daily summary report for ${label}? Saved routines will remain safe.`;
+      }
+    }
+
+    const modal = document.getElementById('modal-smart-delete-confirm');
+    if (modal) modal.classList.add('active');
+  },
+
+  closeDeleteConfirm() {
+    this.state.pendingDeleteType = null;
+    this.state.pendingDeleteId = null;
+    const modal = document.getElementById('modal-smart-delete-confirm');
+    if (modal) modal.classList.remove('active');
+  },
+
+  async executePendingDelete() {
+    const type = this.state.pendingDeleteType;
+    const id = this.state.pendingDeleteId;
+    this.closeDeleteConfirm();
+
+    if (type === 'routine' && id) {
+      await this.deleteRoutine(id);
+    } else if (type === 'report' && id) {
+      await this.deleteReport(id);
+    }
+  }
+};
+
+if (typeof window !== 'undefined') {
+  window.SmartListsManager = SmartListsManager;
 }
 
 // ==========================================================================
@@ -7838,6 +9366,168 @@ function setupEventListeners() {
   wirePasswordToggle('btn-toggle-new-password', 'input-new-password');
   wirePasswordToggle('btn-toggle-confirm-password', 'input-confirm-password');
 
+  // Smart Lists Event Listeners (v1.9.0 Build 10)
+  const menuSmartLists = document.getElementById('menu-smart-lists');
+  const btnOpenSmartLists = document.getElementById('btn-open-smart-lists');
+  const btnBackFromSmart = document.getElementById('btn-back-from-smart-lists');
+  const btnOpenSmartSummary = document.getElementById('btn-open-smart-summary');
+  const btnFooterSmartSummary = document.getElementById('btn-smart-footer-summary');
+  const btnOpenSmartSettings = document.getElementById('btn-open-smart-settings');
+
+  if (menuSmartLists) menuSmartLists.addEventListener('click', () => SmartListsManager.openScreen());
+  if (btnOpenSmartLists) btnOpenSmartLists.addEventListener('click', () => SmartListsManager.openScreen());
+  if (btnBackFromSmart) btnBackFromSmart.addEventListener('click', () => showMainFlow('profile'));
+  if (btnOpenSmartSummary) btnOpenSmartSummary.addEventListener('click', () => SmartListsManager.openSummaryModal());
+  if (btnFooterSmartSummary) btnFooterSmartSummary.addEventListener('click', () => SmartListsManager.openSummaryModal());
+  if (btnOpenSmartSettings) btnOpenSmartSettings.addEventListener('click', () => SmartListsManager.openSettingsModal());
+
+  // Add routine triggers
+  const btnToggleAddRoutine = document.getElementById('btn-toggle-add-routine');
+  const btnEmptyAddRoutine = document.getElementById('btn-empty-add-routine');
+  const btnCancelAddRoutine = document.getElementById('btn-cancel-add-routine');
+  const formAddRoutine = document.getElementById('form-smart-add-routine');
+  const inputAddRoutine = document.getElementById('input-smart-routine-title');
+
+  if (btnToggleAddRoutine) {
+    btnToggleAddRoutine.addEventListener('click', () => {
+      if (formAddRoutine) {
+        formAddRoutine.style.display = 'flex';
+        btnToggleAddRoutine.style.display = 'none';
+        if (inputAddRoutine) inputAddRoutine.focus();
+      }
+    });
+  }
+  if (btnEmptyAddRoutine) {
+    btnEmptyAddRoutine.addEventListener('click', () => {
+      if (formAddRoutine) {
+        formAddRoutine.style.display = 'flex';
+        if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'none';
+        if (inputAddRoutine) inputAddRoutine.focus();
+      }
+    });
+  }
+  if (btnCancelAddRoutine) {
+    btnCancelAddRoutine.addEventListener('click', () => {
+      if (formAddRoutine) {
+        formAddRoutine.style.display = 'none';
+        formAddRoutine.reset();
+      }
+      if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'flex';
+    });
+  }
+  if (formAddRoutine) {
+    formAddRoutine.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const val = inputAddRoutine ? inputAddRoutine.value : '';
+      await SmartListsManager.addRoutine(val);
+      if (formAddRoutine) {
+        formAddRoutine.style.display = 'none';
+        formAddRoutine.reset();
+      }
+      if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'flex';
+    });
+  }
+
+  // Edit routine form
+  const formEditRoutine = document.getElementById('form-smart-edit-routine');
+  const editBox = document.getElementById('smart-edit-routine-box');
+  const btnCancelEditRoutine = document.getElementById('btn-cancel-edit-routine');
+  if (btnCancelEditRoutine) {
+    btnCancelEditRoutine.addEventListener('click', () => {
+      if (editBox) editBox.style.display = 'none';
+      if (formEditRoutine) formEditRoutine.reset();
+    });
+  }
+  if (formEditRoutine) {
+    formEditRoutine.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const idInput = document.getElementById('edit-smart-routine-id');
+      const titleInput = document.getElementById('input-smart-edit-title');
+      if (idInput && titleInput) {
+        await SmartListsManager.updateRoutine(idInput.value, titleInput.value);
+      }
+      if (editBox) editBox.style.display = 'none';
+      if (formEditRoutine) formEditRoutine.reset();
+    });
+  }
+
+  // Summary modal listeners
+  const modalSmartSummary = document.getElementById('modal-smart-summary');
+  const btnCloseSmartSummary = document.getElementById('btn-close-smart-summary');
+  const btnCloseSmartSummaryOk = document.getElementById('btn-close-smart-summary-ok');
+  const btnCarryYes = document.getElementById('btn-carry-forward-yes');
+  const btnCarryNo = document.getElementById('btn-carry-forward-no');
+  const btnChangeCarry = document.getElementById('btn-change-carry-forward');
+  const btnSmartOpenHistory = document.getElementById('btn-smart-open-history');
+
+  if (btnCloseSmartSummary) btnCloseSmartSummary.addEventListener('click', () => SmartListsManager.closeSummaryModal());
+  if (btnCloseSmartSummaryOk) btnCloseSmartSummaryOk.addEventListener('click', () => SmartListsManager.closeSummaryModal());
+  if (modalSmartSummary) {
+    modalSmartSummary.addEventListener('click', (e) => {
+      if (e.target === modalSmartSummary) SmartListsManager.closeSummaryModal();
+    });
+  }
+  if (btnCarryYes) {
+    btnCarryYes.addEventListener('click', () => SmartListsManager.setCarryForwardDecision(SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate, 'yes'));
+  }
+  if (btnCarryNo) {
+    btnCarryNo.addEventListener('click', () => SmartListsManager.setCarryForwardDecision(SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate, 'no'));
+  }
+  if (btnChangeCarry) {
+    btnChangeCarry.addEventListener('click', () => SmartListsManager.resetCarryForwardDecision(SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate));
+  }
+  if (btnSmartOpenHistory) {
+    btnSmartOpenHistory.addEventListener('click', () => {
+      SmartListsManager.closeSummaryModal();
+      SmartListsManager.openHistoryModal();
+    });
+  }
+
+  // History modal listeners
+  const modalSmartHistory = document.getElementById('modal-smart-history');
+  const btnCloseSmartHistory = document.getElementById('btn-close-smart-history');
+  const btnCloseSmartHistoryOk = document.getElementById('btn-close-smart-history-ok');
+  if (btnCloseSmartHistory) btnCloseSmartHistory.addEventListener('click', () => SmartListsManager.closeHistoryModal());
+  if (btnCloseSmartHistoryOk) {
+    btnCloseSmartHistoryOk.addEventListener('click', () => {
+      SmartListsManager.closeHistoryModal();
+      SmartListsManager.openSummaryModal();
+    });
+  }
+  if (modalSmartHistory) {
+    modalSmartHistory.addEventListener('click', (e) => {
+      if (e.target === modalSmartHistory) SmartListsManager.closeHistoryModal();
+    });
+  }
+
+  // Settings modal listeners
+  const modalSmartSettings = document.getElementById('modal-smart-settings');
+  const btnCloseSmartSettings = document.getElementById('btn-close-smart-settings');
+  const btnCancelSmartSettings = document.getElementById('btn-cancel-smart-settings');
+  const btnSaveSmartSettings = document.getElementById('btn-save-smart-settings');
+  if (btnCloseSmartSettings) btnCloseSmartSettings.addEventListener('click', () => SmartListsManager.closeSettingsModal());
+  if (btnCancelSmartSettings) btnCancelSmartSettings.addEventListener('click', () => SmartListsManager.closeSettingsModal());
+  if (btnSaveSmartSettings) btnSaveSmartSettings.addEventListener('click', () => SmartListsManager.saveSettingsFromUI());
+  if (modalSmartSettings) {
+    modalSmartSettings.addEventListener('click', (e) => {
+      if (e.target === modalSmartSettings) SmartListsManager.closeSettingsModal();
+    });
+  }
+
+  // Delete confirm modal listeners
+  const modalSmartDelete = document.getElementById('modal-smart-delete-confirm');
+  const btnCloseSmartDelete = document.getElementById('btn-close-smart-delete');
+  const btnCancelSmartDelete = document.getElementById('btn-cancel-smart-delete');
+  const btnProceedSmartDelete = document.getElementById('btn-proceed-smart-delete');
+  if (btnCloseSmartDelete) btnCloseSmartDelete.addEventListener('click', () => SmartListsManager.closeDeleteConfirm());
+  if (btnCancelSmartDelete) btnCancelSmartDelete.addEventListener('click', () => SmartListsManager.closeDeleteConfirm());
+  if (btnProceedSmartDelete) btnProceedSmartDelete.addEventListener('click', () => SmartListsManager.executePendingDelete());
+  if (modalSmartDelete) {
+    modalSmartDelete.addEventListener('click', (e) => {
+      if (e.target === modalSmartDelete) SmartListsManager.closeDeleteConfirm();
+    });
+  }
+
   // Log Out / Confirmation Modal
   const btnLogout = document.getElementById('btn-logout');
   const modalLogout = document.getElementById('modal-logout-confirm');
@@ -8208,6 +9898,7 @@ if (typeof module !== 'undefined' && module.exports) {
     handleChangePassword,
     wirePasswordToggle,
     TasklyUpdateManager,
+    SmartListsManager,
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };

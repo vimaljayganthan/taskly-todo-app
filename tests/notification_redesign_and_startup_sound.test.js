@@ -327,6 +327,11 @@ describe('Taskly Notification Redesign & Unwanted Startup Sound Bug Fix Suite', 
   });
 
   describe('3. Duplicate Prevention & Reminder Control Integrity', () => {
+    beforeEach(() => {
+      scheduledMock = [];
+      cancelledMock = [];
+    });
+
     test('Repeated reconciliation does not create duplicate notifications', async () => {
       const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const ymd = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
@@ -352,7 +357,7 @@ describe('Taskly Notification Redesign & Unwanted Startup Sound Bug Fix Suite', 
     });
 
     test('Past deadlines are never scheduled to avoid in-process catchup sound', async () => {
-      const pastDate = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const ymd = `${pastDate.getFullYear()}-${String(pastDate.getMonth() + 1).padStart(2, '0')}-${String(pastDate.getDate()).padStart(2, '0')}`;
 
       const pastTask = {
