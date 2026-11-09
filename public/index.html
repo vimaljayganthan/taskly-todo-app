@@ -1078,12 +1078,10 @@
                 </div>
               </div>
 
-              <!-- Today's Routine Status Breakdown Pills -->
+              <!-- Today's Routine Status Breakdown Pills (Simplified to 2 Counters: Done & Pending) -->
               <div class="smart-breakdown-row" id="smart-today-breakdown-row">
                 <span class="breakdown-chip chip-completed" id="chip-count-completed">✓ 0 Done</span>
                 <span class="breakdown-chip chip-pending" id="chip-count-pending">○ 0 Pending</span>
-                <span class="breakdown-chip chip-postponed" id="chip-count-postponed">↳ 0 Postponed</span>
-                <span class="breakdown-chip chip-cancelled" id="chip-count-cancelled">✕ 0 Cancelled</span>
               </div>
             </div>
 
@@ -1150,12 +1148,13 @@
                   </div>
                   <div class="next-day-header-actions">
                     <span class="next-day-count-badge" id="smart-tomorrow-count-badge">0 Routines</span>
-                    <button type="button" class="btn-next-day-add" id="btn-add-tomorrow-routine" title="Add routine for tomorrow">+ Tomorrow</button>
+                    <button type="button" class="btn-next-day-add" id="btn-add-tomorrow-routine" title="Add routine for tomorrow">+ Add Routine</button>
                   </div>
                 </div>
 
                 <!-- Add Tomorrow Routine Form (collapsible) -->
                 <div class="next-day-add-box" id="next-day-add-box" style="display: none;">
+                  <div id="add-tomorrow-error-msg" class="smart-error-banner" style="display: none;" role="alert"></div>
                   <form id="form-next-day-add" class="smart-add-form">
                     <div class="smart-add-input-wrap">
                       <input type="text" id="input-tomorrow-routine-title" class="smart-routine-input" placeholder="Routine for tomorrow..." maxlength="150" autocomplete="off" required>
@@ -1970,14 +1969,14 @@
             <div class="update-version-diff-card">
               <div class="diff-version-col diff-installed">
                 <span class="diff-col-label">Installed</span>
-                <span class="diff-col-val" id="announcement-installed-version">v1.9.0 (Build 10)</span>
+                <span class="diff-col-val" id="announcement-installed-version">v2.0.0 (Build 11)</span>
               </div>
               <div class="diff-arrow-wrap">
                 <span class="diff-arrow">➜</span>
               </div>
               <div class="diff-version-col diff-available">
                 <span class="diff-col-label">Available</span>
-                <span class="diff-col-val" id="announcement-available-version">v2.0.0 (Build 11)</span>
+                <span class="diff-col-val" id="announcement-available-version">v2.1.0 (Build 12)</span>
               </div>
             </div>
 
@@ -3051,6 +3050,37 @@
             <button type="button" class="btn-modal-cancel" id="btn-cancel-remove-tomorrow">Cancel</button>
             <button type="button" class="btn-danger-compact" id="btn-proceed-remove-tomorrow">Remove from Tomorrow</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal: Edit Tomorrow Routine Occurrence (Taskly v2.1.0) -->
+      <div id="modal-smart-edit-tomorrow" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-edit-tomorrow-title">
+        <div class="modal-card modal-card-tomorrow-edit">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box smart-head-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+              </div>
+              <h3 class="modal-title" id="modal-edit-tomorrow-title">Edit Tomorrow's Routine</h3>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-edit-tomorrow-modal" aria-label="Close">×</button>
+          </div>
+          <form id="form-smart-edit-tomorrow" class="modal-tomorrow-edit-body">
+            <input type="hidden" id="edit-tomorrow-routine-id" value="">
+            <div id="edit-tomorrow-error-msg" class="smart-error-banner" style="display: none;" role="alert"></div>
+            <div class="modal-input-group">
+              <label for="input-edit-tomorrow-title" class="modal-field-label">Routine Name</label>
+              <input type="text" id="input-edit-tomorrow-title" class="smart-routine-input modal-field-input" placeholder="Routine name for tomorrow..." maxlength="150" autocomplete="off" required>
+            </div>
+
+            <div class="modal-actions modal-actions-confirm">
+              <button type="button" class="btn-modal-cancel" id="btn-cancel-edit-tomorrow">Cancel</button>
+              <button type="submit" class="btn-smart-save" id="btn-save-edit-tomorrow">Save Changes</button>
+            </div>
+          </form>
         </div>
       </div>
 

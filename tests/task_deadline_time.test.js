@@ -175,7 +175,8 @@ describe('Taskly Task Deadline Date & Time Input Suite', () => {
         app.initAddTaskDateTime();
 
         // Date should be initialized to today (YYYY-MM-DD)
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const d = new Date();
+        const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         assert.ok(mockDateInput.value.length === 10, 'Due date must be initialized');
         assert.strictEqual(mockDateInput.value, todayStr, 'Due date must match local today');
 

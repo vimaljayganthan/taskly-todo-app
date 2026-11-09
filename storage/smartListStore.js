@@ -54,7 +54,17 @@ async function persistData() {
 
 function formatCompletion(c) {
   if (!c) return null;
-  const status = c.status || (c.completed ? 'completed' : 'pending');
+  const isRemoved = Boolean(
+    c.removed ||
+    c.status === 'removed' ||
+    (c.status === 'cancelled' && (
+      c.cancellationReason === 'removed_from_tomorrow' ||
+      c.cancellation_reason === 'removed_from_tomorrow' ||
+      c.cancellationReason === 'created_for_future' ||
+      c.cancellation_reason === 'created_for_future'
+    ))
+  );
+  const status = isRemoved ? 'removed' : (c.status || (c.completed ? 'completed' : 'pending'));
   return {
     id: c.id,
     userId: c.userId || c.user_id,
@@ -62,7 +72,9 @@ function formatCompletion(c) {
     routineId: c.routineId,
     date: c.date,
     status,
+    removed: isRemoved,
     completed: status === 'completed',
+    titleOverride: c.titleOverride || c.title_override || null,
     postponedTo: c.postponedTo || c.postponed_to || null,
     cancellationReason: c.cancellationReason || c.cancellation_reason || null,
     completedAt: c.completedAt || c.completed_at || null,
@@ -74,14 +86,23 @@ function formatCompletion(c) {
 }
 
 const SmartListStore = {
-  async getRoutines(userId) {
+  async getRoutines(userId, date = null) {
     const data = await ensureDataLoaded();
+    const cleanDate = date ? toYmdString(date) : null;
     return (data.routines || [])
-      .filter(r => r.userId === userId && !r.deletedAt)
+      .filter(r => {
+        if (r.userId !== userId && r.user_id !== userId) return false;
+        if (r.deletedAt) return false;
+        if (cleanDate) {
+          if (r.startDate && cleanDate < toYmdString(r.startDate)) return false;
+          if (r.endDate && cleanDate > toYmdString(r.endDate)) return false;
+        }
+        return true;
+      })
       .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0) || new Date(a.createdAt) - new Date(b.createdAt));
   },
 
-  async addRoutine(userId, { title, orderIndex = 0 }) {
+  async addRoutine(userId, { title, orderIndex = 0, startDate = null, endDate = null, recurrence = 'daily' }) {
     const data = await ensureDataLoaded();
     const newRoutine = {
       id: crypto.randomUUID(),
@@ -89,6 +110,9 @@ const SmartListStore = {
       user_id: userId,
       title: title.trim(),
       orderIndex: Number(orderIndex) || 0,
+      startDate: startDate ? toYmdString(startDate) : null,
+      endDate: endDate ? toYmdString(endDate) : null,
+      recurrence: recurrence || (endDate ? 'once' : 'daily'),
       createdAt: new Date().toISOString(),
       updatedAt: null,
       deletedAt: null
@@ -297,7 +321,13 @@ const SmartListStore = {
       throw err;
     }
 
-    const userRoutines = (data.routines || []).filter(r => (r.userId === userId || r.user_id === userId) && !r.deletedAt);
+    const userRoutines = (data.routines || []).filter(r => {
+      if (r.userId !== userId && r.user_id !== userId) return false;
+      if (r.deletedAt) return false;
+      if (r.startDate && cleanDate < toYmdString(r.startDate)) return false;
+      if (r.endDate && cleanDate > toYmdString(r.endDate)) return false;
+      return true;
+    });
     const existingCompletions = (data.completions || []).filter(c => (c.userId === userId || c.user_id === userId));
 
     const carriedRoutines = [];
@@ -457,24 +487,34 @@ const SmartListStore = {
     const data = await ensureDataLoaded();
     const cleanDate = date ? toYmdString(date) : HabitStreakService.addDays(toYmdString(new Date()), 1);
 
-    const userRoutines = (data.routines || []).filter(r => (r.userId === userId || r.user_id === userId) && !r.deletedAt);
     const dayCompletions = (data.completions || []).filter(c => (c.userId === userId || c.user_id === userId) && c.date === cleanDate);
+
+    const userRoutines = (data.routines || []).filter(r => {
+      if (r.userId !== userId && r.user_id !== userId) return false;
+      if (r.deletedAt) return false;
+      if (r.startDate && cleanDate < toYmdString(r.startDate)) return false;
+      const comp = dayCompletions.find(c => c.routineId === r.id);
+      const isCarried = Boolean(comp?.carriedForward || comp?.carried_forward);
+      if (r.endDate && cleanDate > toYmdString(r.endDate) && !isCarried) return false;
+      return true;
+    });
 
     const result = [];
     userRoutines.forEach(routine => {
       const comp = dayCompletions.find(c => c.routineId === routine.id);
       // Skip if explicitly removed from this date
-      if (comp && (comp.status === 'removed' || comp.removed === true)) {
+      if (comp && (comp.status === 'removed' || comp.removed === true || (comp.status === 'cancelled' && (comp.cancellationReason === 'removed_from_tomorrow' || comp.cancellationReason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only')))) {
         return;
       }
 
       const isCarried = Boolean(comp?.carriedForward || comp?.carried_forward);
       const originalDate = comp?.originalDate || comp?.original_date || null;
       const status = comp ? (comp.status || (comp.completed ? 'completed' : 'pending')) : 'pending';
+      const displayTitle = comp?.titleOverride || comp?.title || routine.title;
 
       result.push({
         routineId: routine.id,
-        title: routine.title,
+        title: displayTitle,
         orderIndex: routine.orderIndex || 0,
         date: cleanDate,
         status,
@@ -492,24 +532,70 @@ const SmartListStore = {
     };
   },
 
-  async assignRoutineToDate(userId, { routineId, date, title }) {
+  async assignRoutineToDate(userId, { routineId, date, title, isOneDay = true }) {
     const data = await ensureDataLoaded();
     const cleanDate = toYmdString(date || HabitStreakService.addDays(toYmdString(new Date()), 1));
+    const todayStr = HabitStreakService.toYmdString(new Date());
 
     let targetRoutineId = routineId;
     let routine = null;
 
     if (targetRoutineId) {
       routine = data.routines.find(r => r.id === targetRoutineId && (r.userId === userId || r.user_id === userId) && !r.deletedAt);
-      if (!routine) {
-        const err = new Error('Routine not found or deleted');
-        err.statusCode = 404;
+    }
+
+    if (!routine && title && typeof title === 'string' && title.trim()) {
+      const trimmedTitle = title.trim();
+      if (trimmedTitle.length > 150) {
+        const err = new Error('Routine title must not exceed 150 characters');
+        err.statusCode = 400;
         throw err;
       }
-    } else if (title && typeof title === 'string' && title.trim()) {
-      routine = await this.addRoutine(userId, { title: title.trim() });
+
+      // Check duplicates for this target date (case-insensitive)
+      const existingNextDay = await this.getNextDayRoutines(userId, { date: cleanDate });
+      if (existingNextDay.routines.some(r => r.title.toLowerCase() === trimmedTitle.toLowerCase())) {
+        const err = new Error('A routine with this name already exists for tomorrow');
+        err.statusCode = 409;
+        throw err;
+      }
+
+      routine = {
+        id: targetRoutineId || crypto.randomUUID(),
+        userId,
+        user_id: userId,
+        title: trimmedTitle,
+        orderIndex: (data.routines || []).filter(r => r.userId === userId || r.user_id === userId).length,
+        startDate: cleanDate,
+        endDate: isOneDay ? cleanDate : null,
+        recurrence: isOneDay ? 'once' : 'daily',
+        createdAt: new Date().toISOString(),
+        updatedAt: null
+      };
+      data.routines.push(routine);
       targetRoutineId = routine.id;
-    } else {
+
+      // If target date is in the future, mark routine explicitly removed for today so it never appears in today's active list
+      if (cleanDate > todayStr) {
+        data.completions.push({
+          id: crypto.randomUUID(),
+          userId,
+          user_id: userId,
+          routineId: targetRoutineId,
+          date: todayStr,
+          status: 'removed',
+          removed: true,
+          cancellationReason: isOneDay ? 'tomorrow_only' : 'created_for_future',
+          completed: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } else if (!routine && targetRoutineId) {
+      const err = new Error('Routine not found or deleted');
+      err.statusCode = 404;
+      throw err;
+    } else if (!routine) {
       const err = new Error('Either routineId or title is required');
       err.statusCode = 400;
       throw err;
@@ -547,6 +633,117 @@ const SmartListStore = {
     };
   },
 
+  async updateOccurrenceTitle(userId, { routineId, date, title, applyToFuture = false }) {
+    const data = await ensureDataLoaded();
+    const cleanDate = toYmdString(date);
+    const todayStr = HabitStreakService.toYmdString(new Date());
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      const err = new Error('Routine title cannot be empty');
+      err.statusCode = 400;
+      throw err;
+    }
+    const trimmedTitle = title.trim();
+    if (trimmedTitle.length > 150) {
+      const err = new Error('Routine title must not exceed 150 characters');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const routine = data.routines.find(r => r.id === routineId && (r.userId === userId || r.user_id === userId) && !r.deletedAt);
+    if (!routine) {
+      const err = new Error('Routine not found or access denied');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Duplicate check for target date (case-insensitive among other routines)
+    const existingNextDay = await this.getNextDayRoutines(userId, { date: cleanDate });
+    if (existingNextDay.routines.some(r => r.routineId !== routineId && r.title.toLowerCase() === trimmedTitle.toLowerCase())) {
+      const err = new Error('A routine with this name already exists for tomorrow');
+      err.statusCode = 409;
+      throw err;
+    }
+
+    const oldTitle = routine.title;
+
+    // If applyToFuture is true: update routine definition, but preserve today's title by setting titleOverride on today
+    if (applyToFuture) {
+      if (cleanDate > todayStr) {
+        let todayComp = data.completions.find(c => (c.userId === userId || c.user_id === userId) && c.routineId === routineId && c.date === todayStr);
+        if (todayComp) {
+          if (!todayComp.titleOverride) todayComp.titleOverride = oldTitle;
+          if (todayComp.cancellationReason === 'tomorrow_only') {
+            todayComp.cancellationReason = 'created_for_future';
+          }
+        } else {
+          data.completions.push({
+            id: crypto.randomUUID(),
+            userId,
+            user_id: userId,
+            routineId,
+            date: todayStr,
+            titleOverride: oldTitle,
+            status: 'pending',
+            completed: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+      // Clear any stale titleOverride on future dates (date >= cleanDate) so future occurrences reflect the updated master title
+      (data.completions || []).forEach(c => {
+        if ((c.userId === userId || c.user_id === userId) && c.routineId === routineId && c.date >= cleanDate) {
+          c.titleOverride = null;
+          c.updatedAt = new Date().toISOString();
+        }
+      });
+      routine.title = trimmedTitle;
+      routine.endDate = null; // Clears one-day constraint so it recurs daily into the future indefinitely!
+      routine.recurrence = 'daily';
+      if (routine.startDate && routine.startDate > cleanDate) {
+        routine.startDate = cleanDate;
+      }
+      routine.updatedAt = new Date().toISOString();
+    }
+
+    // Occurrence-level override for cleanDate
+    let comp = data.completions.find(c => (c.userId === userId || c.user_id === userId) && c.routineId === routineId && c.date === cleanDate);
+    if (comp) {
+      comp.titleOverride = trimmedTitle;
+      comp.updatedAt = new Date().toISOString();
+    } else {
+      comp = {
+        id: crypto.randomUUID(),
+        userId,
+        user_id: userId,
+        routineId,
+        date: cleanDate,
+        titleOverride: trimmedTitle,
+        status: 'pending',
+        completed: false,
+        completedAt: null,
+        postponedTo: null,
+        cancellationReason: null,
+        carriedForward: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      data.completions.push(comp);
+    }
+
+    await persistData();
+    return {
+      success: true,
+      routineId,
+      date: cleanDate,
+      title: trimmedTitle,
+      applyToFuture: Boolean(applyToFuture),
+      occurrence: formatCompletion(comp),
+      routine
+    };
+  },
+
   async removeOccurrenceFromDate(userId, { routineId, date }) {
     const data = await ensureDataLoaded();
     const cleanDate = toYmdString(date);
@@ -555,6 +752,7 @@ const SmartListStore = {
     if (comp) {
       comp.status = 'removed';
       comp.removed = true;
+      comp.cancellationReason = 'removed_from_tomorrow';
       comp.updatedAt = new Date().toISOString();
     } else {
       comp = {
@@ -565,6 +763,7 @@ const SmartListStore = {
         date: cleanDate,
         status: 'removed',
         removed: true,
+        cancellationReason: 'removed_from_tomorrow',
         completed: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -820,6 +1019,9 @@ const SmartListStore = {
       reports: [],
       settings: {}
     };
+  },
+  __clearCache() {
+    inMemoryData = null;
   }
 };
 

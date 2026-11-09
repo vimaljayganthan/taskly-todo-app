@@ -141,9 +141,17 @@ function calculateDayStatistics({ routines = [], completions = [], date, resetAt
 
   const routineBreakdown = routines
     .map(r => {
+      // Skip routines that have a future start date or past end date
+      if (r.startDate && targetDate < toYmdString(r.startDate)) {
+        return null;
+      }
+      if (r.endDate && targetDate > toYmdString(r.endDate)) {
+        return null;
+      }
+
       const comp = compMap.get(r.id);
-      // Skip occurrences explicitly removed from a specific date (e.g. removed from tomorrow only)
-      if (comp && (comp.status === 'removed' || comp.removed === true)) {
+      // Skip occurrences explicitly removed from a specific date (e.g. removed from tomorrow only or created for future)
+      if (comp && (comp.status === 'removed' || comp.removed === true || comp.cancellationReason === 'created_for_future' || comp.cancellation_reason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only' || comp.cancellation_reason === 'tomorrow_only' || comp.cancellationReason === 'removed_from_tomorrow' || comp.cancellation_reason === 'removed_from_tomorrow')) {
         return null;
       }
 
@@ -180,7 +188,7 @@ function calculateDayStatistics({ routines = [], completions = [], date, resetAt
 
       return {
         routineId: r.id,
-        title: r.title,
+        title: comp?.titleOverride || comp?.title || r.title,
         status,
         postponedTo,
         cancellationReason,

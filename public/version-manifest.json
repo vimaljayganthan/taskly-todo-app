@@ -1,16 +1,59 @@
 {
-  "latestVersion": "2.0.0",
-  "versionCode": 11,
-  "title": "Taskly v2.0.0 – Build 11: Habit Streaks & Productivity Analytics",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.0.0/taskly-v2.0.0.apk",
-  "releaseNotes": "# Taskly v2.0.0 (Build 11) — Habit Streaks & Productivity Analytics\n\nIntroduced comprehensive habit streak tracking, robust 4-state routine lifecycle management (completed, pending, postponed, cancelled), intelligent carry-forward and next-day routine scheduling, streak reset safeguards, unified productivity analytics separating tasks from habits, and interactive in-app update announcements.\n\n### What's New\n- **Habit Streak Engine**: Intelligent habit tracking requiring an 80% daily qualification threshold to extend streaks, with current streak, longest streak, and consistency percentages.\n- **4-State Routine Lifecycle**: Complete state machine supporting Completed, Pending, Postponed (carried forward to tomorrow), and Cancelled routines with full audit integrity.\n- **Undo Cancellation**: Instantly restore erroneously cancelled routines back to pending, dynamically recalculating streak denominators without losing progress.\n- **Next-Day Routine Planning**: Dedicated tomorrow view allowing advance scheduling, viewing carried-forward items, and occurrence isolation without affecting recurring routines.\n- **Streak Reset Controls**: Dedicated reset modal with user confirmation to restart streak counters from zero while preserving routine definitions and historical task/routine analytics.\n- **Dedicated Productivity Analytics**: Clear separation between Task Analytics and Routine/Habit Analytics in the Progress tab, with responsive charts and rate indicators.\n- **In-App Update Announcements**: Native and web update modal highlighting new features upon upgrade, with notification duplicate prevention and permission guards.\n- **Four-Theme Visual Polish**: Pixel-perfect layout across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.",
-  "releaseDate": "2026-11-08",
+  "latestVersion": "2.1.0",
+  "versionCode": 12,
+  "title": "Taskly v2.1.0 – Reliability & Smart Lists Update",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.0/taskly-v2.1.0.apk",
+  "releaseNotes": "# Taskly v2.1.0 (Build 12) — Reliability & Smart Lists Update\n\nTaskly v2.1.0 brings improved Smart Lists reliability and carry-forward synchronization. Routine updates now appear immediately without restarting the application. We have also improved Supabase persistence, fixed synchronization issues and strengthened duplicate-action protection.\n\n### Carry-Forward Improvements\n- Fixed carry-forward changes not appearing immediately in the application.\n- Fixed missing Supabase persistence for Android/Capacitor carry-forward operations.\n- Fixed carried-forward routines being incorrectly excluded by date-range filtering.\n- Improved synchronization between local application state and Supabase.\n- Added immediate refresh of routine lists, counts, daily summaries, streak indicators and productivity analytics.\n- Added protection against duplicate carry-forward actions.\n- Improved failure handling and state rollback when persistence fails.\n\n### Reliability Improvements\n- Improved Smart Lists data synchronization.\n- Improved application state consistency.\n- Improved Android Capacitor behaviour.\n- Preserved existing routine completion and streak calculations.\n- Improved error handling during cloud synchronization.",
+  "releaseDate": "2026-11-10",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.7 MB",
-  "fileSizeBytes": 18562521,
-  "sha256": "a1c39d5ec5b9c8c2133de89c98e7331fb682d1c64dbcbeab1654c2e567e8880a",
+  "fileSizeBytes": 18571173,
+  "sha256": "286596d7e4224af9e68ecd3e0270388d46c26e27179c9745e5b58843df37967f",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.1.0",
+      "versionName": "2.1.0",
+      "versionCode": 12,
+      "releaseDate": "2026-11-10",
+      "title": "Taskly v2.1.0 – Reliability & Smart Lists Update",
+      "summary": "# Taskly v2.1.0 (Build 12) — Reliability & Smart Lists Update\n\nTaskly v2.1.0 brings improved Smart Lists reliability and carry-forward synchronization. Routine updates now appear immediately without restarting the application. We have also improved Supabase persistence, fixed synchronization issues and strengthened duplicate-action protection.\n\n### Carry-Forward Improvements\n- Fixed carry-forward changes not appearing immediately in the application.\n- Fixed missing Supabase persistence for Android/Capacitor carry-forward operations.\n- Fixed carried-forward routines being incorrectly excluded by date-range filtering.\n- Improved synchronization between local application state and Supabase.\n- Added immediate refresh of routine lists, counts, daily summaries, streak indicators and productivity analytics.\n- Added protection against duplicate carry-forward actions.\n- Improved failure handling and state rollback when persistence fails.\n\n### Reliability Improvements\n- Improved Smart Lists data synchronization.\n- Improved application state consistency.\n- Improved Android Capacitor behaviour.\n- Preserved existing routine completion and streak calculations.\n- Improved error handling during cloud synchronization.",
+      "features": [
+        "Immediate carry-forward UI refresh without requiring application restart",
+        "Direct Supabase cloud persistence for Android/Capacitor carry-forward decisions",
+        "Robust date-range filtering preserving carried-forward routines",
+        "Protection against duplicate carry-forward actions with button state locking",
+        "Automatic state rollback safeguarding UI and data integrity on synchronization failure",
+        "Immediate refresh of routine lists, counts, daily summaries, streak indicators and productivity analytics",
+        "Preserved routine completion states and 80% habit qualification streak calculations"
+      ],
+      "improvements": [
+        "Improved Smart Lists data synchronization between local application state and Supabase",
+        "Improved application state consistency across screen navigation and app pauses",
+        "Improved Android Capacitor behaviour and cloud persistence reliability"
+      ],
+      "performance": [
+        "Instantaneous UI state transitions with zero artificial delays or blocking loaders",
+        "Eliminated duplicate and redundant network queries during carry-forward operations"
+      ],
+      "fixes": [
+        "Fixed carry-forward changes not appearing immediately in the application",
+        "Fixed missing Supabase persistence for Android/Capacitor carry-forward operations",
+        "Fixed carried-forward routines being incorrectly excluded by date-range filtering",
+        "Improved error handling during cloud synchronization"
+      ],
+      "security": [
+        "Preserved Row-Level Security (RLS) enforcement on all routine tables and completions",
+        "Cryptographically signed production APK with verified SHA-256 integrity"
+      ],
+      "apkFileName": "taskly-v2.1.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18571173,
+      "sha256": "286596d7e4224af9e68ecd3e0270388d46c26e27179c9745e5b58843df37967f",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.0/taskly-v2.1.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
     {
       "version": "2.0.0",
       "versionName": "2.0.0",

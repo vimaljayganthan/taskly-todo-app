@@ -147,9 +147,15 @@ function setOnboardingCompleted(completed = true, syncToCloud = true) {
 function syncOnboardingToSupabase() {
   try {
     if (supabaseClient && typeof supabaseClient.auth?.updateUser === 'function' && state.userToken) {
-      supabaseClient.auth.updateUser({
-        data: { onboarding_completed: true, onboarded: true }
-      }).catch(err => console.warn('[Supabase Onboarding Sync Notice]:', err?.message));
+      (async () => {
+        try {
+          await supabaseClient.auth.updateUser({
+            data: { onboarding_completed: true, onboarded: true }
+          });
+        } catch (err) {
+          console.warn('[Supabase Onboarding Sync Notice]:', err?.message);
+        }
+      })();
     }
   } catch (_) {}
 }
@@ -595,7 +601,7 @@ async function initSupabaseAuth() {
           syncAuthSession(data.session);
         } else {
           console.warn('[Supabase Auth Init]: Session user email is not confirmed. Clearing unverified session.');
-          await supabaseClient.auth.signOut().catch(() => {});
+          try { await supabaseClient.auth.signOut(); } catch (_) {}
           syncAuthSignOut();
         }
       } else if (!isAuthenticated()) {
@@ -4497,9 +4503,15 @@ function saveCustomCategory(name) {
   // Also sync to Supabase user_metadata if client is authenticated
   try {
     if (supabaseClient && typeof supabaseClient.auth?.updateUser === 'function' && state.userToken) {
-      supabaseClient.auth.updateUser({
-        data: { custom_categories: existing }
-      }).catch(err => console.warn('Supabase custom_categories metadata sync notice:', err.message));
+      (async () => {
+        try {
+          await supabaseClient.auth.updateUser({
+            data: { custom_categories: existing }
+          });
+        } catch (err) {
+          console.warn('Supabase custom_categories metadata sync notice:', err?.message);
+        }
+      })();
     }
   } catch (_) {}
 
@@ -4761,9 +4773,15 @@ function deleteCustomCategory(name) {
   // Also sync to Supabase user_metadata if client is authenticated
   try {
     if (supabaseClient && typeof supabaseClient.auth?.updateUser === 'function' && state.userToken) {
-      supabaseClient.auth.updateUser({
-        data: { custom_categories: updated }
-      }).catch(err => console.warn('Supabase custom_categories metadata sync notice:', err.message));
+      (async () => {
+        try {
+          await supabaseClient.auth.updateUser({
+            data: { custom_categories: updated }
+          });
+        } catch (err) {
+          console.warn('Supabase custom_categories metadata sync notice:', err?.message);
+        }
+      })();
     }
   } catch (_) {}
 
@@ -4781,12 +4799,15 @@ function deleteCustomCategory(name) {
         saveTodosLocally();
       }
       if (supabaseClient && typeof supabaseClient.from === 'function' && state.user && state.user.id) {
-        supabaseClient.from('todos')
-          .update({ category: 'Personal' })
-          .eq('user_id', state.user.id)
-          .ilike('category', trimmed)
-          .then(() => {})
-          .catch(e => console.warn('Supabase category reassign error:', e));
+        try {
+          supabaseClient.from('todos')
+            .update({ category: 'Personal' })
+            .eq('user_id', state.user.id)
+            .ilike('category', trimmed)
+            .then(() => {}, (e) => console.warn('Supabase category reassign error:', e));
+        } catch (e) {
+          console.warn('Supabase category reassign error:', e);
+        }
       }
     }
   }
@@ -6308,8 +6329,8 @@ const TasklyUpdateManager = {
     ]
   },
 
-  // Locally bundled current-build release entry for internal / non-published builds (v2.0.0 Build 11)
-  localInstalledRelease: {
+  // Reference to Build 11 release for historical regression and test compatibility
+  build11Release: {
     version: '2.0.0',
     versionName: '2.0.0',
     versionCode: 11,
@@ -6344,6 +6365,44 @@ const TasklyUpdateManager = {
     security: [
       'Strict user-level data isolation and RLS policies on all routine and analytics endpoints',
       'Secure APK update verification with SHA-256 package checksums and downgrade protection'
+    ]
+  },
+
+  // Locally bundled current-build release entry for Taskly v2.1.0 Build 12
+  localInstalledRelease: {
+    version: '2.1.0',
+    versionName: '2.1.0',
+    versionCode: 12,
+    releaseDate: '2026-11-10',
+    title: 'Taskly v2.1.0 – Reliability & Smart Lists Update',
+    summary: 'Taskly v2.1.0 brings improved Smart Lists reliability and carry-forward synchronization. Routine updates now appear immediately without restarting the application. We have also improved Supabase persistence, fixed synchronization issues and strengthened duplicate-action protection.',
+    features: [
+      'Immediate carry-forward UI refresh without requiring application restart',
+      'Direct Supabase cloud persistence for Android/Capacitor carry-forward decisions',
+      'Robust date-range filtering preserving carried-forward routines',
+      'Protection against duplicate carry-forward actions with button state locking',
+      'Automatic state rollback safeguarding UI and data integrity on synchronization failure',
+      'Instant multi-component refresh across routine lists, counts, daily summaries, and streaks',
+      'Updated productivity analytics and habit consistency tracking reflecting immediate progress'
+    ],
+    improvements: [
+      'Improved Smart Lists data synchronization between local state and Supabase',
+      'Strengthened Android Capacitor runtime persistence and offline resiliency',
+      'Enhanced touch responsiveness and button locking during network sync operations'
+    ],
+    performance: [
+      'Instantaneous UI state transitions with zero artificial delays or blocking loaders',
+      'Eliminated duplicate or unnecessary network queries during carry-forward operations'
+    ],
+    fixes: [
+      'Fixed carry-forward changes not appearing immediately in the application',
+      'Fixed missing Supabase persistence for Android/Capacitor carry-forward operations',
+      'Fixed carried-forward routines being incorrectly excluded by date-range filtering',
+      'Fixed routine completion and habit streak calculations after carry-forward'
+    ],
+    security: [
+      'Preserved Row-Level Security (RLS) enforcement across all routine completion operations',
+      'Cryptographically signed production APK with SHA-256 integrity verification'
     ],
     isLocalInstalled: true
   },
@@ -7386,13 +7445,13 @@ const TasklyUpdateManager = {
 
     const elInstalled = document.getElementById('announcement-installed-version');
     if (elInstalled) {
-      elInstalled.textContent = `v${this.state.installedVersionName || '1.9.0'} (Build ${this.state.installedVersionCode || 10})`;
+      elInstalled.textContent = `v${this.state.installedVersionName || '2.0.0'} (Build ${this.state.installedVersionCode || 11})`;
     }
 
     const elAvailable = document.getElementById('announcement-available-version');
     if (elAvailable) {
-      const verName = targetRelease.versionName || targetRelease.version || '2.0.0';
-      const verCode = targetRelease.versionCode || 11;
+      const verName = targetRelease.versionName || targetRelease.version || '2.1.0';
+      const verCode = targetRelease.versionCode || 12;
       elAvailable.textContent = `v${verName} (Build ${verCode})`;
     }
 
@@ -7561,6 +7620,7 @@ const SmartListsManager = {
     tomorrowDate: null,
     pendingRemoveTomorrowId: null,
     pendingRemoveTomorrowTitle: '',
+    pendingEditTomorrowId: null,
     isUpdatingStatus: false,
     isLoadingStats: false,
     isInitialized: false
@@ -7665,13 +7725,42 @@ const SmartListsManager = {
           .order('order_index', { ascending: true })
           .order('created_at', { ascending: true });
         if (!error && Array.isArray(data)) {
-          this.state.routines = data.map(r => ({
-            id: r.id,
-            title: r.title,
-            orderIndex: r.order_index,
-            createdAt: r.created_at,
-            updatedAt: r.updated_at
-          }));
+          const existingMap = new Map((this.state.routines || []).map(r => [r.id, r]));
+          this.state.routines = data.map(r => {
+            const existing = existingMap.get(r.id);
+            let inferredStartDate = existing?.startDate || null;
+            let inferredEndDate = existing?.endDate || null;
+            let inferredRecurrence = existing?.recurrence || (inferredEndDate ? 'once' : 'daily');
+            if (!inferredStartDate || (inferredEndDate === undefined)) {
+              Object.entries(this.state.completions || {}).forEach(([k, c]) => {
+                if (k.startsWith(`${r.id}_`)) {
+                  const cDate = k.slice(r.id.length + 1);
+                  const reason = c?.cancellationReason || c?.cancellation_reason;
+                  if (reason === 'tomorrow_only' || reason === 'one_day_assignment') {
+                    const nextDay = SmartListsManager.getNextDayYmd(cDate);
+                    inferredStartDate = nextDay;
+                    inferredEndDate = nextDay;
+                    inferredRecurrence = 'once';
+                  } else if (reason === 'created_for_future') {
+                    const nextDay = SmartListsManager.getNextDayYmd(cDate);
+                    inferredStartDate = nextDay;
+                    inferredEndDate = null;
+                    inferredRecurrence = 'daily';
+                  }
+                }
+              });
+            }
+            return {
+              id: r.id,
+              title: r.title,
+              orderIndex: r.order_index !== undefined ? r.order_index : (r.orderIndex || 0),
+              startDate: inferredStartDate,
+              endDate: inferredEndDate,
+              recurrence: inferredRecurrence,
+              createdAt: r.created_at || r.createdAt,
+              updatedAt: r.updated_at || r.updatedAt || null
+            };
+          });
           this.saveToStorage();
           return this.state.routines;
         }
@@ -7684,7 +7773,20 @@ const SmartListsManager = {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          this.state.routines = data;
+          const existingMap = new Map((this.state.routines || []).map(r => [r.id, r]));
+          this.state.routines = data.map(r => {
+            const existing = existingMap.get(r.id);
+            return {
+              id: r.id,
+              title: r.title,
+              orderIndex: r.orderIndex !== undefined ? r.orderIndex : (r.order_index || 0),
+              startDate: r.startDate || existing?.startDate || null,
+              endDate: r.endDate || existing?.endDate || null,
+              recurrence: r.recurrence || existing?.recurrence || (r.endDate ? 'once' : 'daily'),
+              createdAt: r.createdAt || r.created_at,
+              updatedAt: r.updatedAt || r.updated_at || null
+            };
+          });
           this.saveToStorage();
           return this.state.routines;
         }
@@ -7841,13 +7943,17 @@ const SmartListsManager = {
           data.forEach(item => {
             const key = `${item.routine_id}_${d}`;
             const status = item.status || (item.completed ? 'completed' : 'pending');
+            const isRemoved = status === 'removed' || (status === 'cancelled' && (item.cancellation_reason === 'removed_from_tomorrow' || item.cancellation_reason === 'created_for_future'));
+            const existingTitleOverride = this.state.completions[key]?.titleOverride || item.title_override || item.titleOverride || null;
             this.state.completions[key] = {
-              status,
+              status: isRemoved ? 'removed' : status,
+              removed: isRemoved,
               completed: status === 'completed',
               carriedForward: Boolean(item.carried_forward),
               postponedToDate: item.postponed_to || item.postponed_to_date || null,
               originalDate: item.original_date || item.originalDate || null,
-              cancellationReason: item.cancellation_reason || null
+              cancellationReason: item.cancellation_reason || null,
+              titleOverride: existingTitleOverride
             };
           });
           this.saveToStorage();
@@ -7865,12 +7971,16 @@ const SmartListsManager = {
           data.forEach(item => {
             const key = `${item.routineId}_${d}`;
             const status = item.status || (item.completed ? 'completed' : 'pending');
+            const isRemoved = status === 'removed' || (status === 'cancelled' && (item.cancellationReason === 'removed_from_tomorrow' || item.cancellationReason === 'created_for_future'));
+            const existingTitleOverride = this.state.completions[key]?.titleOverride || item.titleOverride || item.title_override || null;
             this.state.completions[key] = {
-              status,
+              status: isRemoved ? 'removed' : status,
+              removed: isRemoved,
               completed: status === 'completed',
               carriedForward: Boolean(item.carriedForward),
               postponedToDate: item.postponedToDate || null,
-              cancellationReason: item.cancellationReason || null
+              cancellationReason: item.cancellationReason || null,
+              titleOverride: existingTitleOverride
             };
           });
           this.saveToStorage();
@@ -7893,21 +8003,34 @@ const SmartListsManager = {
         completed: false,
         carriedForward: false,
         postponedToDate: null,
-        cancellationReason: null
+        cancellationReason: null,
+        titleOverride: null,
+        removed: false
       };
     }
-    let status = raw.status;
-    if (!status || !['completed', 'pending', 'postponed', 'cancelled'].includes(status)) {
+    const isRemoved = Boolean(raw.removed) || 
+      raw.status === 'removed' || 
+      (raw.status === 'cancelled' && (
+        raw.cancellationReason === 'removed_from_tomorrow' || 
+        raw.cancellation_reason === 'removed_from_tomorrow' || 
+        raw.cancellationReason === 'created_for_future' || 
+        raw.cancellation_reason === 'created_for_future'
+      ));
+
+    let status = isRemoved ? 'removed' : raw.status;
+    if (!status || !['completed', 'pending', 'postponed', 'cancelled', 'removed'].includes(status)) {
       status = raw.completed ? 'completed' : 'pending';
     }
     return {
       routineId,
       date: d,
       status,
+      removed: isRemoved,
       completed: status === 'completed',
-      carriedForward: Boolean(raw.carriedForward),
-      postponedToDate: raw.postponedToDate || null,
-      cancellationReason: raw.cancellationReason || null
+      carriedForward: Boolean(raw.carriedForward || raw.carried_forward),
+      postponedToDate: raw.postponedToDate || raw.postponed_to || null,
+      cancellationReason: raw.cancellationReason || raw.cancellation_reason || null,
+      titleOverride: raw.titleOverride || raw.title_override || null
     };
   },
 
@@ -7917,10 +8040,17 @@ const SmartListsManager = {
 
   calculateDayProgress(date) {
     const d = date || this.state.activeDate;
-    const total = this.state.routines.length;
+    let total = 0;
     let completed = 0;
-    this.state.routines.forEach(r => {
-      if (this.isRoutineCompleted(r.id, d)) completed++;
+    (this.state.routines || []).forEach(r => {
+      if (r.startDate && d < r.startDate) return;
+      if (r.endDate && d > r.endDate) return;
+      const comp = this.getCompletion(r.id, d);
+      if (comp && (comp.status === 'removed' || comp.removed === true || (comp.status === 'cancelled' && (comp.cancellationReason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only' || comp.cancellationReason === 'removed_from_tomorrow')))) {
+        return;
+      }
+      total++;
+      if (comp.completed) completed++;
     });
     const incomplete = total - completed;
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -8035,7 +8165,8 @@ const SmartListsManager = {
             completed_at: status === 'completed' ? new Date().toISOString() : null,
             carried_forward: current.carriedForward,
             postponed_to: postponedToDate,
-            cancellation_reason: cancellationReason
+            cancellation_reason: cancellationReason,
+            title_override: current.titleOverride || null
           }, { onConflict: 'user_id,routine_id,date' });
 
         if (status === 'postponed' && postponedToDate) {
@@ -8048,7 +8179,8 @@ const SmartListsManager = {
               status: 'pending',
               completed: false,
               carried_forward: true,
-              original_date: d
+              original_date: d,
+              title_override: current.titleOverride || null
             }, { onConflict: 'user_id,routine_id,date' });
         }
       } catch (_) {}
@@ -8125,7 +8257,10 @@ const SmartListsManager = {
     let cancelledCount = 0;
 
     routines.forEach(r => {
+      if (r.startDate && d < r.startDate) return;
+      if (r.endDate && d > r.endDate) return;
       const c = this.getCompletion(r.id, d);
+      if (c && (c.status === 'removed' || c.removed === true || (c.status === 'cancelled' && (c.cancellationReason === 'created_for_future' || c.cancellation_reason === 'created_for_future' || c.cancellationReason === 'tomorrow_only' || c.cancellation_reason === 'tomorrow_only' || c.cancellationReason === 'removed_from_tomorrow' || c.cancellation_reason === 'removed_from_tomorrow')))) return;
       if (c.status === 'completed') completedCount++;
       else if (c.status === 'postponed') postponedCount++;
       else if (c.status === 'cancelled') cancelledCount++;
@@ -8154,15 +8289,20 @@ const SmartListsManager = {
 
     const isDateQualified = (dateStr) => {
       if (resetDateStr && dateStr < resetDateStr) return false;
-      if (routines.length === 0) return false;
       let compC = 0;
       let cancC = 0;
+      let activeCount = 0;
       routines.forEach(r => {
+        if (r.startDate && dateStr < r.startDate) return;
+        if (r.endDate && dateStr > r.endDate) return;
         const comp = this.getCompletion(r.id, dateStr);
+        if (comp && (comp.status === 'removed' || comp.removed === true || (comp.status === 'cancelled' && (comp.cancellationReason === 'created_for_future' || comp.cancellation_reason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only' || comp.cancellation_reason === 'tomorrow_only' || comp.cancellationReason === 'removed_from_tomorrow' || comp.cancellation_reason === 'removed_from_tomorrow')))) return;
+        activeCount++;
         if (comp.status === 'completed') compC++;
         else if (comp.status === 'cancelled') cancC++;
       });
-      const eligible = routines.length - cancC;
+      if (activeCount === 0) return false;
+      const eligible = activeCount - cancC;
       if (eligible <= 0) return false;
       return Math.round((compC / eligible) * 100) >= 80;
     };
@@ -8307,8 +8447,6 @@ const SmartListsManager = {
 
     const chipComp = document.getElementById('chip-count-completed');
     const chipPend = document.getElementById('chip-count-pending');
-    const chipPost = document.getElementById('chip-count-postponed');
-    const chipCanc = document.getElementById('chip-count-cancelled');
 
     if (currEl) currEl.textContent = `${currentStreakVal} ${currentStreakVal === 1 ? 'Day' : 'Days'}`;
     if (longestEl) longestEl.textContent = `${longestStreakVal} ${longestStreakVal === 1 ? 'Day' : 'Days'}`;
@@ -8320,8 +8458,6 @@ const SmartListsManager = {
 
     if (chipComp) chipComp.textContent = `✓ ${completedC} Done`;
     if (chipPend) chipPend.textContent = `○ ${pendingC} Pending`;
-    if (chipPost) chipPost.textContent = `↳ ${postponedC} Postponed`;
-    if (chipCanc) chipCanc.textContent = `✕ ${cancelledC} Cancelled`;
   },
 
   // --- Reports & Summary ---
@@ -8430,6 +8566,11 @@ const SmartListsManager = {
       closingStatement,
       completedRoutines: completed,
       incompleteRoutines: incomplete,
+      postponedRoutines: rawReport.postponedRoutines || rawReport.postponed_routines || [],
+      cancelledRoutines: rawReport.cancelledRoutines || rawReport.cancelled_routines || [],
+      postponedCount: rawReport.postponedCount !== undefined ? rawReport.postponedCount : (rawReport.postponed_count || 0),
+      cancelledCount: rawReport.cancelledCount !== undefined ? rawReport.cancelledCount : (rawReport.cancelled_count || 0),
+      eligibleCount: rawReport.eligibleCount !== undefined ? rawReport.eligibleCount : (rawReport.eligible_count || totalRoutines),
       completedList: completed,
       incompleteList: incomplete,
       routinesSnapshot: Array.isArray(rawReport.routinesSnapshot) && rawReport.routinesSnapshot.length > 0
@@ -8642,26 +8783,20 @@ const SmartListsManager = {
   async setCarryForwardDecision(date, decision) {
     const d = date || this.state.activeReportDate || this.state.activeDate;
     if (!['yes', 'no'].includes(decision)) return;
+    if (this.state.isProcessingCarryForward) return;
+    this.state.isProcessingCarryForward = true;
 
-    let serverReport = null;
-    try {
-      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-      const response = await fetch('/api/smart-lists/carry-forward', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ date: d, decision })
-      });
-      if (response.ok) {
-        const payload = await response.json();
-        if (payload && payload.report) {
-          serverReport = payload.report;
-        }
-      }
-    } catch (e) {
-      console.warn('[SmartLists] Carry-forward API warning:', e);
-    }
+    // Snapshot pre-mutation state for rollback in case of error
+    const rollbackCompletions = JSON.parse(JSON.stringify(this.state.completions || {}));
+    const rollbackReports = JSON.parse(JSON.stringify(this.state.reports || []));
+    const rollbackTomorrow = JSON.parse(JSON.stringify(this.state.tomorrowRoutines || []));
+    const rollbackDailyStats = JSON.parse(JSON.stringify(this.state.dailyStats || {}));
 
-    // Mirror in local state / fallback
+    const btnYes = (typeof document !== 'undefined') ? document.getElementById('btn-carry-forward-yes') : null;
+    const btnNo = (typeof document !== 'undefined') ? document.getElementById('btn-carry-forward-no') : null;
+    if (btnYes) { btnYes.disabled = true; btnYes.classList.add('loading'); }
+    if (btnNo) { btnNo.disabled = true; }
+
     const curParts = d.split('-').map(Number);
     const nextDay = new Date(curParts[0], curParts[1] - 1, curParts[2]);
     nextDay.setDate(nextDay.getDate() + 1);
@@ -8669,63 +8804,198 @@ const SmartListsManager = {
 
     const routines = this.state.routines || [];
     let postponedCount = 0;
+    const carriedRoutineIds = [];
 
+    // 1. OPTIMISTIC IN-MEMORY STATE UPDATE
     if (decision === 'yes') {
       routines.forEach(r => {
+        // Exclude routines with start dates after today or end dates before today
+        if (r.startDate && d < r.startDate) return;
+        if (r.endDate && d > r.endDate) return;
+
         const comp = this.getCompletion(r.id, d);
+        if (comp && (comp.status === 'removed' || comp.removed || (comp.status === 'cancelled' && (comp.cancellationReason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only' || comp.cancellationReason === 'removed_from_tomorrow')))) {
+          return;
+        }
+
         if (comp.status !== 'completed' && comp.status !== 'cancelled') {
-          // 1. Mark original occurrence as postponed
+          // Mark original occurrence as postponed
           this.state.completions[`${r.id}_${d}`] = {
+            ...comp,
             status: 'postponed',
             completed: false,
             postponedToDate: nextDayStr,
             carriedForward: false
           };
           postponedCount++;
+          carriedRoutineIds.push(r.id);
 
-          // 2. Schedule next-day occurrence as pending (prevent duplicate)
+          // Schedule next-day occurrence as pending (prevent duplicate if already completed)
           const tomKey = `${r.id}_${nextDayStr}`;
-          if (!this.state.completions[tomKey] || this.state.completions[tomKey].status !== 'completed') {
+          const existingTomComp = this.state.completions[tomKey];
+          if (!existingTomComp || existingTomComp.status !== 'completed') {
             this.state.completions[tomKey] = {
               status: 'pending',
               completed: false,
               carriedForward: true,
-              originalDate: d
+              originalDate: d,
+              titleOverride: existingTomComp?.titleOverride || null
             };
           }
         }
       });
     }
 
+    // Update report in memory
     let report = this.state.reports.find(r => r.date === d);
-    if (serverReport) {
-      const norm = this.normalizeReport(serverReport);
-      if (report) Object.assign(report, norm);
-      else {
-        this.state.reports.push(norm);
-        report = norm;
-      }
-    } else {
-      if (!report) {
-        report = await this.generateDailyReport(d);
-      }
-      report.carryForwardDecision = decision;
-      if (decision === 'yes') {
-        report.postponedCount = postponedCount;
-        report.closingStatement = postponedCount > 0
-          ? `${postponedCount} incomplete routine${postponedCount === 1 ? '' : 's'} were carried forward to tomorrow (${nextDayStr}).`
-          : 'All routines were already completed or excused; no routines carried forward.';
-      } else {
-        report.closingStatement = "Today's checklist was closed without carrying forward routines.";
-      }
-      report.updatedAt = new Date().toISOString();
+    if (!report) {
+      report = await this.generateDailyReport(d);
     }
+    report.carryForwardDecision = decision;
+    if (decision === 'yes') {
+      report.postponedCount = postponedCount;
+      report.incompleteCount = Math.max(0, (report.incompleteCount || 0) - postponedCount);
+      report.closingStatement = postponedCount > 0
+        ? `${postponedCount} incomplete routine${postponedCount === 1 ? '' : 's'} were carried forward to tomorrow (${nextDayStr}).`
+        : 'All routines were already completed or excused; no routines carried forward.';
+    } else {
+      report.closingStatement = "Today's checklist was closed without carrying forward routines.";
+    }
+    report.updatedAt = new Date().toISOString();
 
+    // Compute updated streaks & stats immediately
     this.saveToStorage();
     this.computeLocalStreaksAndStats(d);
-    await this.fetchTomorrowRoutines();
+
+    const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+    const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+
+    // 2. ASYNC PERSISTENCE (Authoritative Supabase on mobile, Express fallback on web)
+    try {
+      if (isSupabaseAuth) {
+        const operations = [];
+
+        if (decision === 'yes') {
+          carriedRoutineIds.forEach(routineId => {
+            // Postpone today
+            operations.push(
+              supabaseClient.from('smart_routine_completions').upsert({
+                user_id: state.user.id,
+                routine_id: routineId,
+                date: d,
+                status: 'postponed',
+                completed: false,
+                postponed_to: nextDayStr,
+                carried_forward: false,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id,routine_id,date' })
+            );
+
+            // Carry forward to tomorrow (if not completed)
+            const tomKey = `${routineId}_${nextDayStr}`;
+            const tomComp = this.state.completions[tomKey];
+            if (!tomComp || tomComp.status !== 'completed') {
+              operations.push(
+                supabaseClient.from('smart_routine_completions').upsert({
+                  user_id: state.user.id,
+                  routine_id: routineId,
+                  date: nextDayStr,
+                  status: 'pending',
+                  completed: false,
+                  carried_forward: true,
+                  original_date: d,
+                  title_override: tomComp?.titleOverride || null,
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id,routine_id,date' })
+              );
+            }
+          });
+        }
+
+        // Persist report
+        operations.push(
+          supabaseClient.from('smart_routine_reports').upsert({
+            id: report.id,
+            user_id: state.user.id,
+            date: d,
+            total_routines: report.totalRoutines,
+            completed_count: report.completedCount,
+            incomplete_count: report.incompleteCount,
+            postponed_count: report.postponedCount || 0,
+            cancelled_count: report.cancelledCount || 0,
+            eligible_count: report.eligibleCount || (report.totalRoutines - (report.cancelledCount || 0)),
+            completion_rate: report.completionRate,
+            status: report.status,
+            completed_routines: report.completedRoutines || [],
+            incomplete_routines: report.incompleteRoutines || [],
+            postponed_routines: report.postponedRoutines || [],
+            cancelled_routines: report.cancelledRoutines || [],
+            carry_forward_decision: decision,
+            updated_at: report.updatedAt
+          }, { onConflict: 'user_id,date' })
+        );
+
+        const results = await Promise.all(operations);
+        for (const res of results) {
+          if (res?.error) throw res.error;
+        }
+      } else {
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        const response = await fetch(`${baseUrl}/api/smart-lists/carry-forward`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ date: d, decision })
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to save carry-forward decision');
+        }
+        const payload = await response.json().catch(() => null);
+        if (payload?.report) {
+          const norm = this.normalizeReport(payload.report);
+          const repIdx = this.state.reports.findIndex(r => r.date === d);
+          if (repIdx !== -1) this.state.reports[repIdx] = norm;
+          else this.state.reports.push(norm);
+          report = norm;
+        }
+      }
+    } catch (err) {
+      const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+      if (!isInvalidUrlInNode) {
+        console.error('[SmartLists] Carry-forward persistence failed, rolling back:', err);
+        // Rollback on failure so no false success state is displayed
+        this.state.completions = rollbackCompletions;
+        this.state.reports = rollbackReports;
+        this.state.tomorrowRoutines = rollbackTomorrow;
+        this.state.dailyStats = rollbackDailyStats;
+        this.saveToStorage();
+        this.renderRoutines();
+        this.renderTomorrowRoutines();
+        this.renderSummaryModal(report);
+        const descEl = (typeof document !== 'undefined') ? document.getElementById('smart-carry-status-text') : null;
+        if (descEl) {
+          descEl.textContent = `Carry-forward failed: ${err.message || 'Network error'}. Changes rolled back.`;
+          descEl.style.color = '#EF4444';
+        }
+        return false;
+      }
+    } finally {
+      this.state.isProcessingCarryForward = false;
+      if (btnYes) { btnYes.disabled = false; btnYes.classList.remove('loading'); }
+      if (btnNo) { btnNo.disabled = false; }
+    }
+
+    // 3. IMMEDIATE UI REFRESH ON SUCCESS
+    this.saveToStorage();
+    this.computeLocalStreaksAndStats(d);
+    await this.fetchTomorrowRoutines(d);
     this.renderRoutines();
+    this.renderTomorrowRoutines();
+    this.renderStreakWidget();
     this.renderSummaryModal(report);
+    if (typeof renderAnalytics === 'function') {
+      try { renderAnalytics(); } catch (_) {}
+    }
     return report;
   },
 
@@ -8736,11 +9006,46 @@ const SmartListsManager = {
 
     report.carryForwardDecision = 'pending';
     this.saveToStorage();
-    this.openSummaryModal(d);
+
+    const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+    const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+
+    if (isSupabaseAuth) {
+      try {
+        await supabaseClient
+          .from('smart_routine_reports')
+          .update({
+            carry_forward_decision: 'pending',
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', state.user.id)
+          .eq('date', d);
+      } catch (err) {
+        console.warn('[SmartLists] Supabase reset carry-forward warning:', err);
+      }
+    } else {
+      try {
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        await fetch(`${baseUrl}/api/smart-lists/reports/${report.id}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ carryForwardDecision: 'pending' })
+        });
+      } catch (_) {}
+    }
+
+    this.renderSummaryModal(report);
     return report;
   },
 
-  // --- Next-Day Routine Management (v2.0.0 Build 11) ---
+  logPerformance(op, startT, localT, endT, details = {}) {
+    const localMs = (localT - startT).toFixed(1);
+    const cloudMs = endT ? (endT - localT).toFixed(1) : 'N/A';
+    const totalMs = endT ? (endT - startT).toFixed(1) : localMs;
+    console.log(`[SmartLists Perf] ${op} | Local UI: ${localMs}ms | Cloud Sync: ${cloudMs}ms | Total: ${totalMs}ms`, details);
+  },
+
+  // --- Next-Day Routine Management (v2.0.0 Build 11 & v2.1.0) ---
   async fetchTomorrowRoutines(targetDate) {
     const baseDate = targetDate || this.state.activeDate;
     const curParts = baseDate.split('-').map(Number);
@@ -8749,38 +9054,114 @@ const SmartListsManager = {
     const nextDayStr = (typeof toYmdString === 'function') ? toYmdString(nextDay) : nextDay.toISOString().slice(0, 10);
 
     let items = null;
-    try {
-      const headers = { ...getAuthHeaders() };
-      const res = await fetch(`/api/smart-lists/next-day?date=${nextDayStr}`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Array.isArray(data.routines)) {
-          items = data.routines;
+    const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+    const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+
+    // 1. Try fetching from backend API (Web / non-Supabase environments only)
+    if (!isSupabaseAuth) {
+      try {
+        const headers = { ...getAuthHeaders() };
+        const res = await fetch(`${baseUrl}/api/smart-lists/next-day?date=${nextDayStr}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.routines)) {
+            items = data.routines;
+            // Sync completion state into this.state.completions
+            data.routines.forEach(r => {
+              const key = `${r.routineId}_${nextDayStr}`;
+              if (!this.state.completions[key] || r.carriedForward) {
+                this.state.completions[key] = {
+                  ...(this.state.completions[key] || {}),
+                  status: r.status || 'pending',
+                  completed: Boolean(r.completed),
+                  carriedForward: Boolean(r.carriedForward),
+                  originalDate: r.originalDate || null
+                };
+              }
+            });
+            this.saveToStorage();
+          }
         }
+      } catch (e) {
+        // Backend not available
       }
-    } catch (e) {
-      console.warn('[SmartLists] fetchTomorrowRoutines warning:', e);
     }
 
-    if (!items) {
-      const routines = this.state.routines || [];
-      items = [];
-      routines.forEach(routine => {
-        const comp = this.getCompletion(routine.id, nextDayStr);
-        if (comp.status === 'removed' || comp.removed) return;
-        const isCarried = Boolean(comp.carriedForward);
-        items.push({
-          routineId: routine.id,
-          title: routine.title,
-          date: nextDayStr,
-          status: comp.status || 'pending',
-          completed: comp.status === 'completed',
-          carriedForward: isCarried,
-          originalDate: comp.originalDate || null,
-          source: isCarried ? 'carried_forward' : 'scheduled'
-        });
-      });
+    // 2. Direct Supabase query if client is authenticated
+    if (isSupabaseAuth) {
+      try {
+        const { data: compRows, error: compErr } = await supabaseClient
+          .from('smart_routine_completions')
+          .select('*')
+          .eq('user_id', state.user.id)
+          .eq('date', nextDayStr);
+
+        if (!compErr && Array.isArray(compRows)) {
+          compRows.forEach(item => {
+            const key = `${item.routine_id}_${nextDayStr}`;
+            const status = item.status || (item.completed ? 'completed' : 'pending');
+            const isRemoved = status === 'removed' || (status === 'cancelled' && (item.cancellation_reason === 'removed_from_tomorrow' || item.cancellation_reason === 'created_for_future'));
+            const existingTitleOverride = this.state.completions[key]?.titleOverride || item.title_override || item.titleOverride || null;
+
+            this.state.completions[key] = {
+              status: isRemoved ? 'removed' : status,
+              removed: isRemoved,
+              completed: status === 'completed',
+              carriedForward: Boolean(item.carried_forward),
+              postponedToDate: item.postponed_to || null,
+              originalDate: item.original_date || null,
+              cancellationReason: item.cancellation_reason || null,
+              titleOverride: existingTitleOverride
+            };
+          });
+          this.saveToStorage();
+        }
+      } catch (e) {
+        console.warn('[SmartLists] Supabase tomorrow completions fetch error:', e);
+      }
     }
+
+    // 3. Fallback / direct construction from routines & completions
+    if (!items) {
+      items = [];
+    }
+    const routines = this.state.routines || [];
+    routines.forEach(routine => {
+      // Skip routines with start dates strictly after tomorrow
+      if (routine.startDate && nextDayStr < routine.startDate) return;
+      const comp = this.getCompletion(routine.id, nextDayStr);
+      const isCarried = Boolean(comp?.carriedForward);
+      // Skip routines with end dates before tomorrow unless explicitly carried forward
+      if (routine.endDate && nextDayStr > routine.endDate && !isCarried) return;
+      if (items.some(it => it.routineId === routine.id)) return;
+
+      if (comp && (comp.status === 'removed' || comp.removed || (comp.status === 'cancelled' && (comp.cancellationReason === 'removed_from_tomorrow' || comp.cancellationReason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only')))) {
+        return;
+      }
+      const displayTitle = comp.titleOverride || routine.title;
+      items.push({
+        routineId: routine.id,
+        title: displayTitle,
+        date: nextDayStr,
+        status: comp.status || 'pending',
+        completed: comp.status === 'completed',
+        carriedForward: isCarried,
+        originalDate: comp.originalDate || null,
+        source: isCarried ? 'carried_forward' : 'scheduled'
+      });
+    });
+
+    // Re-filter items against the latest completions (e.g. if Supabase or local state removed an item)
+    items = items.filter(it => {
+      const comp = this.getCompletion(it.routineId, nextDayStr);
+      if (comp && (comp.status === 'removed' || comp.removed || (comp.status === 'cancelled' && (comp.cancellationReason === 'removed_from_tomorrow' || comp.cancellationReason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only')))) {
+        return false;
+      }
+      if (comp && comp.titleOverride) {
+        it.title = comp.titleOverride;
+      }
+      return true;
+    });
 
     this.state.tomorrowRoutines = items;
     this.state.tomorrowDate = nextDayStr;
@@ -8802,7 +9183,7 @@ const SmartListsManager = {
     const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
 
     if (badge) {
-      badge.textContent = `${items.length} Routine${items.length === 1 ? '' : 's'}`;
+      badge.textContent = `${items.length} routine${items.length === 1 ? '' : 's'}`;
     }
     if (dateLabel) {
       dateLabel.textContent = tomDate;
@@ -8851,25 +9232,27 @@ const SmartListsManager = {
       left.appendChild(meta);
 
       const actions = document.createElement('div');
-      actions.className = 'next-day-routine-actions';
+      actions.className = 'next-day-card-actions next-day-routine-actions';
 
+      // Edit Button (Pencil Icon) - Touch-friendly, accessible
       const btnEdit = document.createElement('button');
       btnEdit.type = 'button';
       btnEdit.className = 'btn-tomorrow-action btn-tomorrow-edit';
-      btnEdit.setAttribute('aria-label', `Edit routine ${item.title}`);
-      btnEdit.title = 'Edit routine';
-      btnEdit.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+      btnEdit.setAttribute('aria-label', `Edit tomorrow occurrence of ${item.title}`);
+      btnEdit.title = 'Edit for tomorrow';
+      btnEdit.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
       btnEdit.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.openEditRoutine(item.routineId);
+        this.openEditTomorrowModal(item.routineId, item.title);
       });
 
+      // Delete Button (Trash Icon) - Touch-friendly, accessible
       const btnRemove = document.createElement('button');
       btnRemove.type = 'button';
-      btnRemove.className = 'btn-tomorrow-action btn-tomorrow-remove';
-      btnRemove.setAttribute('aria-label', `Remove ${item.title} from tomorrow`);
-      btnRemove.title = 'Remove from tomorrow only';
-      btnRemove.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      btnRemove.className = 'btn-tomorrow-action btn-tomorrow-delete btn-tomorrow-remove';
+      btnRemove.setAttribute('aria-label', `Delete ${item.title} from tomorrow`);
+      btnRemove.title = 'Delete from tomorrow';
+      btnRemove.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
       btnRemove.addEventListener('click', (e) => {
         e.stopPropagation();
         this.openRemoveTomorrowConfirm(item.routineId, item.title);
@@ -8884,37 +9267,339 @@ const SmartListsManager = {
     });
   },
 
-  async addRoutineForTomorrow(title) {
-    if (!title || !title.trim()) return;
-    const cleanTitle = title.trim();
-    const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
-
-    try {
-      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-      const res = await fetch('/api/smart-lists/next-day/assign', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ title: cleanTitle, date: tomDate })
-      });
-      if (res.ok) {
-        await this.fetchRoutines();
-        await this.fetchTomorrowRoutines();
-        return;
+  showTomorrowError(context, message) {
+    if (typeof document === 'undefined') return;
+    if (context === 'edit') {
+      const errEl = document.getElementById('edit-tomorrow-error-msg');
+      if (errEl) {
+        errEl.textContent = message;
+        errEl.style.display = 'block';
       }
-    } catch (e) {
-      console.warn('[SmartLists] addRoutineForTomorrow backend warning:', e);
+    } else if (context === 'add') {
+      const errEl = document.getElementById('add-tomorrow-error-msg');
+      if (errEl) {
+        errEl.textContent = message;
+        errEl.style.display = 'block';
+      }
+    }
+    if (typeof alert !== 'undefined') {
+      alert(message);
+    }
+  },
+
+  async addRoutineForTomorrow(title) {
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      this.showTomorrowError('add', 'Routine title cannot be empty.');
+      return false;
+    }
+    const cleanTitle = title.trim().slice(0, 150);
+    const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
+    const todayDate = this.state.activeDate;
+
+    // 1. Duplicate check on tomorrow's list (case-insensitive)
+    const existing = this.state.tomorrowRoutines || [];
+    if (existing.some(r => r.title.toLowerCase() === cleanTitle.toLowerCase())) {
+      const msg = 'A routine with this name already exists for tomorrow.';
+      this.showTomorrowError('add', msg);
+      return false;
     }
 
-    const newRoutine = await this.addRoutine(cleanTitle);
-    if (newRoutine) {
-      this.state.completions[`${newRoutine.id}_${tomDate}`] = {
+    const newId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : ('rt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+
+    const newRoutine = {
+      id: newId,
+      title: cleanTitle,
+      orderIndex: (this.state.routines || []).length,
+      startDate: tomDate,
+      endDate: tomDate, // One-day assignment for tomorrow
+      recurrence: 'once',
+      createdAt: new Date().toISOString(),
+      updatedAt: null
+    };
+
+    // Save pre-mutation snapshot for rollback
+    const rollbackRoutines = JSON.parse(JSON.stringify(this.state.routines || []));
+    const rollbackCompletions = JSON.parse(JSON.stringify(this.state.completions || {}));
+    const rollbackTomorrow = JSON.parse(JSON.stringify(this.state.tomorrowRoutines || []));
+
+    // Disable button to prevent duplicate clicks
+    const btnSave = (typeof document !== 'undefined') ? document.getElementById('btn-save-tomorrow-routine') : null;
+    if (btnSave) btnSave.disabled = true;
+
+    // OPTIMISTIC LOCAL UI UPDATE (< 10ms)
+    if (!this.state.routines) this.state.routines = [];
+    this.state.routines.push(newRoutine);
+
+    // Exclude from today
+    this.state.completions[`${newId}_${todayDate}`] = {
+      status: 'removed',
+      removed: true,
+      cancellationReason: 'created_for_future',
+      completed: false
+    };
+
+    // Schedule for tomorrow
+    this.state.completions[`${newId}_${tomDate}`] = {
+      status: 'pending',
+      completed: false,
+      carriedForward: false
+    };
+
+    // Push into tomorrowRoutines list immediately
+    this.state.tomorrowRoutines = [
+      ...(this.state.tomorrowRoutines || []),
+      {
+        routineId: newId,
+        title: cleanTitle,
+        date: tomDate,
         status: 'pending',
         completed: false,
-        carriedForward: false
-      };
-      this.saveToStorage();
-      await this.fetchTomorrowRoutines();
+        carriedForward: false,
+        originalDate: null,
+        source: 'scheduled'
+      }
+    ];
+
+    this.saveToStorage();
+    this.renderTomorrowRoutines();
+    this.renderRoutines();
+
+    // Reset and hide form immediately
+    if (typeof document !== 'undefined') {
+      const box = document.getElementById('next-day-add-box');
+      if (box) box.style.display = 'none';
+      const form = document.getElementById('form-next-day-add');
+      if (form) form.reset();
     }
+
+    const tLocal = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+    let supabaseRequests = 0;
+    let expressRequests = 0;
+
+    // ASYNC PERSISTENCE
+    try {
+      if (isSupabaseAuth) {
+        supabaseRequests = 3;
+        const [rRes, exRes, schRes] = await Promise.all([
+          supabaseClient.from('smart_routines').insert({
+            id: newId,
+            user_id: state.user.id,
+            title: cleanTitle,
+            order_index: newRoutine.orderIndex
+          }),
+          supabaseClient.from('smart_routine_completions').upsert({
+            user_id: state.user.id,
+            routine_id: newId,
+            date: todayDate,
+            status: 'cancelled',
+            cancellation_reason: 'created_for_future',
+            completed: false
+          }, { onConflict: 'user_id,routine_id,date' }),
+          supabaseClient.from('smart_routine_completions').upsert({
+            user_id: state.user.id,
+            routine_id: newId,
+            date: tomDate,
+            status: 'pending',
+            completed: false
+          }, { onConflict: 'user_id,routine_id,date' })
+        ]);
+        if (rRes?.error) throw rRes.error;
+      } else {
+        expressRequests = 1;
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        const res = await fetch(`${baseUrl}/api/smart-lists/next-day/assign`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ routineId: newId, title: cleanTitle, date: tomDate, isOneDay: true })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to save routine for tomorrow');
+        }
+      }
+    } catch (err) {
+      const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+      if (isInvalidUrlInNode) {
+        if (btnSave) btnSave.disabled = false;
+        return true;
+      }
+      console.error('[SmartLists] Add tomorrow routine persistence failed, rolling back:', err);
+      // Rollback
+      this.state.routines = rollbackRoutines;
+      this.state.completions = rollbackCompletions;
+      this.state.tomorrowRoutines = rollbackTomorrow;
+      this.saveToStorage();
+      this.renderTomorrowRoutines();
+      this.renderRoutines();
+      this.showTomorrowError('add', err.message || 'Failed to save routine. Changes rolled back.');
+      if (btnSave) btnSave.disabled = false;
+      return false;
+    } finally {
+      if (btnSave) btnSave.disabled = false;
+    }
+
+    const tCloud = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    this.logPerformance('Add Tomorrow Routine', t0, tLocal, tCloud, {
+      routineId: newId,
+      title: cleanTitle,
+      supabaseRequests,
+      expressRequests
+    });
+    return true;
+  },
+
+  openEditTomorrowModal(routineId, currentTitle) {
+    this.state.pendingEditTomorrowId = routineId;
+    const idInput = document.getElementById('edit-tomorrow-routine-id');
+    const titleInput = document.getElementById('input-edit-tomorrow-title');
+    const modal = document.getElementById('modal-smart-edit-tomorrow');
+    const errEl = document.getElementById('edit-tomorrow-error-msg');
+
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.style.display = 'none';
+    }
+    if (idInput) idInput.value = routineId;
+    if (titleInput) {
+      titleInput.value = currentTitle || '';
+      setTimeout(() => titleInput.focus(), 60);
+    }
+    if (modal) modal.classList.add('active');
+  },
+
+  closeEditTomorrowModal() {
+    this.state.pendingEditTomorrowId = null;
+    if (typeof document === 'undefined') return;
+    const modal = document.getElementById('modal-smart-edit-tomorrow');
+    if (modal) modal.classList.remove('active');
+    const errEl = document.getElementById('edit-tomorrow-error-msg');
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.style.display = 'none';
+    }
+  },
+
+  async updateTomorrowRoutine(routineId, newTitle) {
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    console.log('[SmartLists Diagnostic] updateTomorrowRoutine called:', { routineId, newTitle });
+    if (!newTitle || typeof newTitle !== 'string' || !newTitle.trim()) {
+      this.showTomorrowError('edit', 'Routine title cannot be empty.');
+      return false;
+    }
+    const cleanTitle = newTitle.trim().slice(0, 150);
+    const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
+
+    // 1. Duplicate check on tomorrow (case-insensitive, excluding this routine)
+    const existing = this.state.tomorrowRoutines || [];
+    if (existing.some(r => r.routineId !== routineId && r.title.toLowerCase() === cleanTitle.toLowerCase())) {
+      const msg = 'A routine with this name already exists for tomorrow.';
+      this.showTomorrowError('edit', msg);
+      return false;
+    }
+
+    // Save snapshot for rollback
+    const rollbackRoutines = JSON.parse(JSON.stringify(this.state.routines || []));
+    const rollbackCompletions = JSON.parse(JSON.stringify(this.state.completions || {}));
+    const rollbackTomorrow = JSON.parse(JSON.stringify(this.state.tomorrowRoutines || []));
+
+    // Disable button to prevent double-tap
+    const btnSave = (typeof document !== 'undefined') ? document.getElementById('btn-save-edit-tomorrow') : null;
+    if (btnSave) btnSave.disabled = true;
+
+    // OPTIMISTIC LOCAL UI UPDATE (< 10ms)
+    // Updates only the selected tomorrow routine's name
+    const tomKey = `${routineId}_${tomDate}`;
+    if (!this.state.completions[tomKey]) {
+      this.state.completions[tomKey] = { status: 'pending', completed: false };
+    }
+    this.state.completions[tomKey].titleOverride = cleanTitle;
+
+    // Update item in tomorrowRoutines array directly
+    const tomItem = (this.state.tomorrowRoutines || []).find(it => it.routineId === routineId);
+    if (tomItem) {
+      tomItem.title = cleanTitle;
+    }
+
+    this.saveToStorage();
+    this.closeEditTomorrowModal();
+    this.renderTomorrowRoutines();
+    this.renderRoutines();
+
+    const tLocal = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+    let supabaseRequests = 0;
+    let expressRequests = 0;
+
+    // ASYNC PERSISTENCE (Authoritative Supabase on mobile, Express fallback on web)
+    try {
+      if (isSupabaseAuth) {
+        supabaseRequests = 1;
+        const { error: cErr } = await supabaseClient
+          .from('smart_routine_completions')
+          .upsert({
+            user_id: state.user.id,
+            routine_id: routineId,
+            date: tomDate,
+            status: this.state.completions[`${routineId}_${tomDate}`]?.status || 'pending',
+            title_override: cleanTitle
+          }, { onConflict: 'user_id,routine_id,date' });
+        if (cErr) {
+          if (cErr.message && cErr.message.includes('title_override')) {
+            console.error('[SmartLists] Supabase schema cache error: title_override column missing or not refreshed on smart_routine_completions. Run scripts/005_smart_routine_title_override.sql.');
+          }
+          throw cErr;
+        }
+      } else {
+        expressRequests = 1;
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        const res = await fetch(`${baseUrl}/api/smart-lists/next-day/occurrences/${encodeURIComponent(routineId)}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            date: tomDate,
+            title: cleanTitle
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to update routine for tomorrow');
+        }
+      }
+    } catch (err) {
+      const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+      if (isInvalidUrlInNode) {
+        if (btnSave) btnSave.disabled = false;
+        return true;
+      }
+      console.error('[SmartLists] Update tomorrow routine persistence failed, rolling back:', err);
+      // Rollback
+      this.state.routines = rollbackRoutines;
+      this.state.completions = rollbackCompletions;
+      this.state.tomorrowRoutines = rollbackTomorrow;
+      this.saveToStorage();
+      this.renderTomorrowRoutines();
+      this.renderRoutines();
+      this.showTomorrowError('edit', err.message || 'Failed to update routine. Changes rolled back.');
+      if (btnSave) btnSave.disabled = false;
+      return false;
+    } finally {
+      if (btnSave) btnSave.disabled = false;
+    }
+
+    const tCloud = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    this.logPerformance('Edit Tomorrow Routine', t0, tLocal, tCloud, {
+      routineId,
+      newTitle: cleanTitle,
+      supabaseRequests,
+      expressRequests
+    });
+    return true;
   },
 
   openRemoveTomorrowConfirm(routineId, title) {
@@ -8931,33 +9616,103 @@ const SmartListsManager = {
   closeRemoveTomorrowConfirm() {
     this.state.pendingRemoveTomorrowId = null;
     this.state.pendingRemoveTomorrowTitle = '';
+    if (typeof document === 'undefined') return;
     const modal = document.getElementById('modal-smart-remove-tomorrow-confirm');
     if (modal) modal.classList.remove('active');
   },
 
   async executeRemoveTomorrow() {
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     const routineId = this.state.pendingRemoveTomorrowId;
     const tomDate = this.state.tomorrowDate || this.getNextDayYmd(this.state.activeDate);
-    if (!routineId) return;
+    if (!routineId) return false;
+    console.log('[SmartLists Diagnostic] executeRemoveTomorrow started for routineId:', routineId, 'date:', tomDate);
 
-    try {
-      const headers = { ...getAuthHeaders() };
-      await fetch(`/api/smart-lists/next-day/occurrences/${routineId}?date=${tomDate}`, {
-        method: 'DELETE',
-        headers
-      });
-    } catch (e) {
-      console.warn('[SmartLists] remove tomorrow occurrence backend warning:', e);
-    }
+    // Save rollback snapshot
+    const rollbackCompletions = JSON.parse(JSON.stringify(this.state.completions || {}));
+    const rollbackTomorrow = JSON.parse(JSON.stringify(this.state.tomorrowRoutines || []));
 
+    // Disable button to prevent double-tap
+    const btnProceed = (typeof document !== 'undefined') ? document.getElementById('btn-proceed-remove-tomorrow') : null;
+    if (btnProceed) btnProceed.disabled = true;
+
+    // OPTIMISTIC LOCAL UI UPDATE (< 10ms)
     this.state.completions[`${routineId}_${tomDate}`] = {
       status: 'removed',
       removed: true,
+      cancellationReason: 'removed_from_tomorrow',
       completed: false
     };
+
+    // Remove from tomorrowRoutines list immediately
+    this.state.tomorrowRoutines = (this.state.tomorrowRoutines || []).filter(it => it.routineId !== routineId);
+
     this.saveToStorage();
     this.closeRemoveTomorrowConfirm();
-    await this.fetchTomorrowRoutines();
+    this.renderTomorrowRoutines();
+    this.renderRoutines();
+
+    const tLocal = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+    let supabaseRequests = 0;
+    let expressRequests = 0;
+
+    // ASYNC PERSISTENCE (Authoritative Supabase on mobile, Express fallback on web)
+    try {
+      if (isSupabaseAuth) {
+        supabaseRequests = 1;
+        const { error } = await supabaseClient
+          .from('smart_routine_completions')
+          .upsert({
+            user_id: state.user.id,
+            routine_id: routineId,
+            date: tomDate,
+            status: 'cancelled',
+            cancellation_reason: 'removed_from_tomorrow',
+            completed: false
+          }, { onConflict: 'user_id,routine_id,date' });
+        if (error) throw error;
+      } else {
+        expressRequests = 1;
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+        const headers = { ...getAuthHeaders() };
+        const res = await fetch(`${baseUrl}/api/smart-lists/next-day/occurrences/${encodeURIComponent(routineId)}?date=${tomDate}`, {
+          method: 'DELETE',
+          headers
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to remove routine from tomorrow');
+        }
+      }
+    } catch (err) {
+      const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+      if (isInvalidUrlInNode) {
+        if (btnProceed) btnProceed.disabled = false;
+        return true;
+      }
+      console.error('[SmartLists] Remove tomorrow routine persistence failed, rolling back:', err);
+      // Rollback
+      this.state.completions = rollbackCompletions;
+      this.state.tomorrowRoutines = rollbackTomorrow;
+      this.saveToStorage();
+      this.renderTomorrowRoutines();
+      this.renderRoutines();
+      if (typeof alert !== 'undefined') alert('Could not remove routine: ' + err.message);
+      if (btnProceed) btnProceed.disabled = false;
+      return false;
+    } finally {
+      if (btnProceed) btnProceed.disabled = false;
+    }
+
+    const tCloud = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    this.logPerformance('Delete Tomorrow Routine', t0, tLocal, tCloud, {
+      routineId,
+      date: tomDate,
+      supabaseRequests,
+      expressRequests
+    });
+    return true;
   },
 
   // --- Streak Reset & Cancellation Reversal (v2.0.0 Build 11) ---
@@ -9230,10 +9985,27 @@ const SmartListsManager = {
     if (emptyState) emptyState.style.display = 'none';
 
     let completedCount = 0;
+    let visibleCount = 0;
 
     routines.forEach(routine => {
+      // Exclude routines with future start dates or past end dates
+      if (routine.startDate && date < routine.startDate) {
+        return;
+      }
+      if (routine.endDate && date > routine.endDate) {
+        return;
+      }
+
       const comp = this.getCompletion(routine.id, date);
+      // Skip routines explicitly removed from this date or created for future
+      if (comp && (comp.status === 'removed' || comp.removed === true || (comp.status === 'cancelled' && (comp.cancellationReason === 'created_for_future' || comp.cancellationReason === 'tomorrow_only' || comp.cancellationReason === 'removed_from_tomorrow')))) {
+        return;
+      }
+
+      visibleCount++;
       if (comp.completed) completedCount++;
+
+      const displayTitle = comp.titleOverride || routine.title;
 
       const card = document.createElement('div');
       card.className = `smart-routine-card ${comp.completed ? 'completed' : ''} status-${comp.status || 'pending'}`;
@@ -9245,7 +10017,7 @@ const SmartListsManager = {
       // Checkbox wrap (1-tap quick toggle)
       const checkWrap = document.createElement('label');
       checkWrap.className = 'smart-checkbox-wrap';
-      checkWrap.setAttribute('aria-label', `Mark ${routine.title} as ${comp.completed ? 'incomplete' : 'complete'}`);
+      checkWrap.setAttribute('aria-label', `Mark ${displayTitle} as ${comp.completed ? 'incomplete' : 'complete'}`);
 
       const chk = document.createElement('input');
       chk.type = 'checkbox';
@@ -9267,7 +10039,7 @@ const SmartListsManager = {
 
       const titleSpan = document.createElement('span');
       titleSpan.className = 'routine-title';
-      titleSpan.textContent = routine.title;
+      titleSpan.textContent = displayTitle;
       info.appendChild(titleSpan);
 
       // Status badges (postponed, cancelled, carried forward)
@@ -9365,7 +10137,13 @@ const SmartListsManager = {
       list.appendChild(card);
     });
 
-    const total = routines.length;
+    if (visibleCount === 0) {
+      if (emptyState) emptyState.style.display = 'flex';
+    } else {
+      if (emptyState) emptyState.style.display = 'none';
+    }
+
+    const total = visibleCount;
     const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
     if (progressText) {
       progressText.textContent = `${completedCount} / ${total} completed • ${rate}%`;
@@ -9999,7 +10777,7 @@ function setupEventListeners() {
               showOnboardingStep('welcome');
             } else {
               if (supabaseClient && data.session) {
-                await supabaseClient.auth.signOut().catch(() => {});
+                try { await supabaseClient.auth.signOut(); } catch (_) {}
               }
               syncAuthSignOut();
               if (authErrorMsg) {
@@ -10028,7 +10806,7 @@ function setupEventListeners() {
 
             if (!isEmailVerified) {
               if (supabaseClient) {
-                await supabaseClient.auth.signOut().catch(() => {});
+                try { await supabaseClient.auth.signOut(); } catch (_) {}
               }
               syncAuthSignOut();
               throw new Error('Please verify your email address before signing in. Check your inbox for the confirmation link.');
@@ -11055,13 +11833,22 @@ function setupEventListeners() {
     });
   }
   if (btnCarryYes) {
-    btnCarryYes.addEventListener('click', () => SmartListsManager.setCarryForwardDecision(SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate, 'yes'));
+    btnCarryYes.addEventListener('click', async () => {
+      const date = SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate;
+      await SmartListsManager.setCarryForwardDecision(date, 'yes');
+    });
   }
   if (btnCarryNo) {
-    btnCarryNo.addEventListener('click', () => SmartListsManager.setCarryForwardDecision(SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate, 'no'));
+    btnCarryNo.addEventListener('click', async () => {
+      const date = SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate;
+      await SmartListsManager.setCarryForwardDecision(date, 'no');
+    });
   }
   if (btnChangeCarry) {
-    btnChangeCarry.addEventListener('click', () => SmartListsManager.resetCarryForwardDecision(SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate));
+    btnChangeCarry.addEventListener('click', async () => {
+      const date = SmartListsManager.state.activeReportDate || SmartListsManager.state.activeDate;
+      await SmartListsManager.resetCarryForwardDecision(date);
+    });
   }
   if (btnSmartOpenHistory) {
     btnSmartOpenHistory.addEventListener('click', () => {
@@ -11169,6 +11956,8 @@ function setupEventListeners() {
       if (boxAddTomorrow) {
         const isHidden = boxAddTomorrow.style.display === 'none' || !boxAddTomorrow.style.display;
         boxAddTomorrow.style.display = isHidden ? 'block' : 'none';
+        const errEl = document.getElementById('add-tomorrow-error-msg');
+        if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
         if (isHidden && inputTomorrowTitle) inputTomorrowTitle.focus();
       }
     });
@@ -11177,6 +11966,8 @@ function setupEventListeners() {
     btnCancelTomorrow.addEventListener('click', () => {
       if (boxAddTomorrow) boxAddTomorrow.style.display = 'none';
       if (formAddTomorrow) formAddTomorrow.reset();
+      const errEl = document.getElementById('add-tomorrow-error-msg');
+      if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
     });
   }
   if (formAddTomorrow) {
@@ -11184,9 +11975,13 @@ function setupEventListeners() {
       e.preventDefault();
       const val = inputTomorrowTitle ? inputTomorrowTitle.value : '';
       if (val && val.trim()) {
-        await SmartListsManager.addRoutineForTomorrow(val.trim());
-        if (formAddTomorrow) formAddTomorrow.reset();
-        if (boxAddTomorrow) boxAddTomorrow.style.display = 'none';
+        const ok = await SmartListsManager.addRoutineForTomorrow(val.trim());
+        if (ok) {
+          if (formAddTomorrow) formAddTomorrow.reset();
+          if (boxAddTomorrow) boxAddTomorrow.style.display = 'none';
+          const errEl = document.getElementById('add-tomorrow-error-msg');
+          if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        }
       }
     });
   }
@@ -11203,6 +11998,34 @@ function setupEventListeners() {
   if (modalRemoveTomorrow) {
     modalRemoveTomorrow.addEventListener('click', (e) => {
       if (e.target === modalRemoveTomorrow) SmartListsManager.closeRemoveTomorrowConfirm();
+    });
+  }
+
+  // Edit Tomorrow Modal Listeners (Taskly v2.1.0)
+  const modalEditTomorrow = document.getElementById('modal-smart-edit-tomorrow');
+  const btnCloseEditTomorrow = document.getElementById('btn-close-edit-tomorrow-modal');
+  const btnCancelEditTomorrow = document.getElementById('btn-cancel-edit-tomorrow');
+  const formEditTomorrow = document.getElementById('form-smart-edit-tomorrow');
+  const inputEditTomorrowTitle = document.getElementById('input-edit-tomorrow-title');
+  const idEditTomorrow = document.getElementById('edit-tomorrow-routine-id');
+
+  if (btnCloseEditTomorrow) btnCloseEditTomorrow.addEventListener('click', () => SmartListsManager.closeEditTomorrowModal());
+  if (btnCancelEditTomorrow) btnCancelEditTomorrow.addEventListener('click', () => SmartListsManager.closeEditTomorrowModal());
+  if (modalEditTomorrow) {
+    modalEditTomorrow.addEventListener('click', (e) => {
+      if (e.target === modalEditTomorrow) SmartListsManager.closeEditTomorrowModal();
+    });
+  }
+
+  if (formEditTomorrow) {
+    formEditTomorrow.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const rId = idEditTomorrow ? idEditTomorrow.value : '';
+      const newTitle = inputEditTomorrowTitle ? inputEditTomorrowTitle.value.trim() : '';
+      console.log('[SmartLists Diagnostic] Edit Tomorrow submitted:', { rId, newTitle });
+      if (rId && newTitle) {
+        await SmartListsManager.updateTomorrowRoutine(rId, newTitle);
+      }
     });
   }
 

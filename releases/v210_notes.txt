@@ -1,0 +1,12 @@
+# Taskly v2.1.0 (Build 12) — Reliability & Smart Lists Update
+
+Taskly v2.1.0 brings improved Smart Lists reliability and carry-forward synchronization. Routine updates now appear immediately without restarting the application. We have also improved Supabase persistence, fixed synchronization issues and strengthened duplicate-action protection.
+
+### What's New & Improvements
+- **Immediate Carry-Forward Refresh**: Routine carry-forward actions update the application UI immediately without requiring an application restart.
+- **Direct Supabase Cloud Persistence**: Android/Capacitor carry-forward operations now persist reliably to Supabase cloud tables with automatic error rollback safeguards.
+- **Date-Range Filtering Protection**: Fixed date-range filtering so carried-forward routines remain preserved and visible in tomorrow's schedule even when their initial end date matches today.
+- **Duplicate-Action Prevention**: Added concurrency locks and submit button state management to prevent duplicate or accidental double carry-forward submissions.
+- **Immediate Cross-Component Sync**: Routine lists, count badges, daily summaries, habit streak indicators, and productivity analytics refresh instantly upon completion updates.
+- **Smart Lists Data Synchronization**: Enhanced application state consistency and offline-first resiliency across all supported devices and web browsers.
+- **Cryptographic Security**: Production release APK signed with Taskly's verified release key with SHA-256 package checksum verification.

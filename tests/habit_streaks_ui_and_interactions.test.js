@@ -131,7 +131,7 @@ describe('Taskly v2.0.0 Build 11 — Phase 3: Habit Streaks UI & Interactions Su
       assert.ok(cardIdx > tabIdx, 'Streak card must be placed within tab-smart-lists');
     });
 
-    test('2. Streak card contains all required metrics elements and chips', () => {
+    test('2. Streak card contains all required metrics elements and simplified chips (v2.1.0)', () => {
       const requiredIds = [
         'habit-current-streak-count',
         'habit-longest-streak-count',
@@ -139,13 +139,14 @@ describe('Taskly v2.0.0 Build 11 — Phase 3: Habit Streaks UI & Interactions Su
         'habit-weekly-consistency',
         'habit-monthly-consistency',
         'chip-count-completed',
-        'chip-count-pending',
-        'chip-count-postponed',
-        'chip-count-cancelled'
+        'chip-count-pending'
       ];
       requiredIds.forEach(id => {
         assert.ok(INDEX_HTML.includes(`id="${id}"`), `Element #${id} must exist in index.html`);
       });
+      // Postponed & cancelled chips removed from streak summary UI
+      assert.ok(!INDEX_HTML.includes('id="chip-count-postponed"'), 'chip-count-postponed must be removed from streak summary');
+      assert.ok(!INDEX_HTML.includes('id="chip-count-cancelled"'), 'chip-count-cancelled must be removed from streak summary');
     });
 
     test('3. index.html contains modal-smart-status-picker and all 4 status option buttons', () => {
@@ -424,8 +425,8 @@ describe('Taskly v2.0.0 Build 11 — Phase 3: Habit Streaks UI & Interactions Su
       assert.strictEqual(document.getElementById('habit-monthly-days').textContent, '6/8 days');
       assert.strictEqual(document.getElementById('chip-count-completed').textContent, '✓ 4 Done');
       assert.strictEqual(document.getElementById('chip-count-pending').textContent, '○ 0 Pending');
-      assert.strictEqual(document.getElementById('chip-count-postponed').textContent, '↳ 1 Postponed');
-      assert.strictEqual(document.getElementById('chip-count-cancelled').textContent, '✕ 1 Cancelled');
+      assert.strictEqual(document.getElementById('chip-count-postponed').textContent, '');
+      assert.strictEqual(document.getElementById('chip-count-cancelled').textContent, '');
     });
   });
 

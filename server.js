@@ -530,7 +530,8 @@ app.use('/api/smart-lists', authenticateUser);
 // Routines CRUD
 app.get('/api/smart-lists/routines', async (req, res, next) => {
   try {
-    const routines = await SmartListStore.getRoutines(req.user.id);
+    const date = req.query.date;
+    const routines = await SmartListStore.getRoutines(req.user.id, date);
     res.json(routines);
   } catch (err) {
     next(err);
@@ -741,8 +742,8 @@ app.get('/api/smart-lists/next-day', async (req, res, next) => {
 
 app.post('/api/smart-lists/next-day/assign', async (req, res, next) => {
   try {
-    const { routineId, date, title } = req.body;
-    const result = await SmartListStore.assignRoutineToDate(req.user.id, { routineId, date, title });
+    const { routineId, date, title, isOneDay } = req.body;
+    const result = await SmartListStore.assignRoutineToDate(req.user.id, { routineId, date, title, isOneDay });
     res.json({ success: true, ...result });
   } catch (err) {
     if (err.name === 'ValidationError' || err.statusCode === 400) {
@@ -750,6 +751,40 @@ app.post('/api/smart-lists/next-day/assign', async (req, res, next) => {
     }
     if (err.statusCode === 404) {
       return res.status(404).json({ error: err.message });
+    }
+    if (err.statusCode === 409) {
+      return res.status(409).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+app.patch('/api/smart-lists/next-day/occurrences/:routineId', async (req, res, next) => {
+  try {
+    const { routineId } = req.params;
+    const { date, title, applyToFuture } = req.body;
+    if (!date) {
+      return res.status(400).json({ error: 'date is required' });
+    }
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Routine title is required' });
+    }
+    const result = await SmartListStore.updateOccurrenceTitle(req.user.id, {
+      routineId,
+      date,
+      title,
+      applyToFuture: Boolean(applyToFuture)
+    });
+    res.json(result);
+  } catch (err) {
+    if (err.name === 'ValidationError' || err.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.statusCode === 404) {
+      return res.status(404).json({ error: err.message });
+    }
+    if (err.statusCode === 409) {
+      return res.status(409).json({ error: err.message });
     }
     next(err);
   }
