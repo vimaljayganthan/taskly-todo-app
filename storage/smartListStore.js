@@ -140,12 +140,22 @@ const SmartListStore = {
 
   async deleteRoutine(userId, routineId) {
     const data = await ensureDataLoaded();
-    const idx = data.routines.findIndex(r => r.id === routineId && r.userId === userId);
+    const idx = data.routines.findIndex(r => r.id === routineId && (r.userId === userId || r.user_id === userId));
     if (idx === -1) return false;
 
     // Hard delete from routine list so it no longer appears in future days
     // Historical reports remain unaffected because reports store snapshots
     data.routines.splice(idx, 1);
+
+    // Safely clean up future/today completions for this deleted routine to prevent orphaned entries in tomorrow or future days
+    const todayStr = HabitStreakService.toYmdString(new Date());
+    data.completions = (data.completions || []).filter(c => {
+      const isThisRoutine = (c.userId === userId || c.user_id === userId) && (c.routineId === routineId || c.routine_id === routineId);
+      if (!isThisRoutine) return true;
+      // Preserve historical completions strictly before today for habit tracking integrity
+      return c.date < todayStr;
+    });
+
     await persistData();
     return true;
   },
@@ -748,27 +758,38 @@ const SmartListStore = {
     const data = await ensureDataLoaded();
     const cleanDate = toYmdString(date);
 
-    let comp = data.completions.find(c => (c.userId === userId || c.user_id === userId) && c.routineId === routineId && c.date === cleanDate);
+    // Check if parent routine exists
+    const routine = (data.routines || []).find(r => (r.id === routineId) && (r.userId === userId || r.user_id === userId) && !r.deletedAt);
+
+    let comp = data.completions.find(c => (c.userId === userId || c.user_id === userId) && (c.routineId === routineId || c.routine_id === routineId) && c.date === cleanDate);
     if (comp) {
-      comp.status = 'removed';
-      comp.removed = true;
-      comp.cancellationReason = 'removed_from_tomorrow';
-      comp.updatedAt = new Date().toISOString();
+      if (!routine) {
+        // If parent routine was already deleted, remove the orphaned completion record safely
+        data.completions = data.completions.filter(c => c !== comp);
+      } else {
+        comp.status = 'removed';
+        comp.removed = true;
+        comp.cancellationReason = 'removed_from_tomorrow';
+        comp.updatedAt = new Date().toISOString();
+      }
     } else {
-      comp = {
-        id: crypto.randomUUID(),
-        userId,
-        user_id: userId,
-        routineId,
-        date: cleanDate,
-        status: 'removed',
-        removed: true,
-        cancellationReason: 'removed_from_tomorrow',
-        completed: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      data.completions.push(comp);
+      // Only insert a cancellation record if the parent routine actually exists
+      if (routine) {
+        comp = {
+          id: crypto.randomUUID(),
+          userId,
+          user_id: userId,
+          routineId,
+          date: cleanDate,
+          status: 'removed',
+          removed: true,
+          cancellationReason: 'removed_from_tomorrow',
+          completed: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        data.completions.push(comp);
+      }
     }
 
     await persistData();

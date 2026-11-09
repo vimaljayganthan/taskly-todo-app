@@ -1,0 +1,20 @@
+# Taskly v2.1.1 (Build 12.1) — Critical Routine Deletion Fix
+
+Taskly v2.1.1 (Build 12.1) addresses a critical routine deletion error on Supabase. Deleting a routine from today's list now immediately cleans up future and tomorrow occurrences. Removing tomorrow entries after parent routine deletion no longer triggers foreign key constraint violations, and orphaned completion records are safely pruned without application errors.
+
+### What's New & Improvements
+- **Routine Deletion Foreign-Key Fix**: Fixed Supabase foreign key constraint violation (`smart_routine_completions_routine_id_fkey`) when deleting routines that also appear in future schedules.
+- **Safe Stale-Entry Cleanup**: Removing tomorrow routine occurrences after a parent routine is deleted executes safely and idempotently without errors or invalid foreign-key upserts.
+- **Immediate Deletion Synchronization**: Today's checklist, tomorrow's routine list, routine count badges, and the daily summary update immediately upon deletion without requiring an app restart.
+- **Historical Data Preservation**: Completion records and historical habit reports for previous days remain strictly preserved and unaffected.
+- **Carry-Forward & Smart Lists Reliability**: Preserves carry-forward persistence, immediate UI refresh, and multi-day routine tracking.
+- **Build 12.1 Identification**: Release identity clearly marked as Build 12.1 (integer versionCode `121`) across the in-app Version History, What's New modal, and manifests.
+- **Cryptographic Security**: Signed with Taskly's verified release key (`CN=Vimal Jayganthan`) with SHA-256 package checksum verification.
+
+### Package Verification
+- **Package ID**: `com.taskly.app`
+- **Version Name**: `2.1.1`
+- **Version Code**: `121` (Build 12.1)
+- **APK Filename**: `taskly-v2.1.1.apk`
+- **File Size**: `18,574,585 bytes` (~17.7 MB)
+- **SHA-256 Checksum**: `c8e80b4cf9b4ada49724cd8bd1bd2ce28c7071de836689c71953bd5e9a763ee8`

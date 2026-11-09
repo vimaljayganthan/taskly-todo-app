@@ -270,56 +270,58 @@ describe('Taskly v2.0.0 Build 11 — Productivity Analytics & Version History Su
   // ==========================================================================
   // PART 3: Version History & Release Decoupling
   // ==========================================================================
-  describe('3. Version History & Update Architecture (v2.1.0 Build 12)', () => {
+  describe('3. Version History & Update Architecture (v2.1.1 Build 12.1)', () => {
     beforeEach(() => {
       clientApp.TasklyUpdateManager.state.manifest = MANIFEST_JSON;
     });
 
-    test('TasklyUpdateManager.localInstalledRelease is configured for v2.1.0 Build 12 and preserves Build 11 reference', () => {
+    test('TasklyUpdateManager.localInstalledRelease is configured for v2.1.1 Build 12.1 (code 121) and preserves Build 12 & 11 references', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
       assert.ok(updateMgr.localInstalledRelease);
-      assert.strictEqual(updateMgr.localInstalledRelease.versionName, '2.1.0');
-      assert.strictEqual(updateMgr.localInstalledRelease.versionCode, 12);
+      assert.strictEqual(updateMgr.localInstalledRelease.versionName, '2.1.1');
+      assert.strictEqual(updateMgr.localInstalledRelease.versionCode, 121);
+      assert.strictEqual(updateMgr.localInstalledRelease.displayBuild, '12.1');
       assert.strictEqual(updateMgr.localInstalledRelease.releaseDate, '2026-11-10');
-      assert.strictEqual(updateMgr.localInstalledRelease.title, 'Taskly v2.1.0 – Reliability & Smart Lists Update');
+      assert.ok(updateMgr.localInstalledRelease.title.includes('Taskly v2.1.1 (Build 12.1)'));
 
+      assert.ok(updateMgr.build12Release, 'Must preserve build12Release reference');
+      assert.strictEqual(updateMgr.build12Release.versionCode, 12);
       assert.ok(updateMgr.build11Release, 'Must preserve build11Release reference');
       assert.strictEqual(updateMgr.build11Release.versionCode, 11);
 
-      const requiredBuild12Highlights = [
-        'Immediate carry-forward UI refresh without requiring application restart',
-        'Direct Supabase cloud persistence for Android/Capacitor carry-forward decisions',
-        'Robust date-range filtering preserving carried-forward routines',
-        'Protection against duplicate carry-forward actions with button state locking',
-        'Automatic state rollback safeguarding UI and data integrity on synchronization failure'
+      const requiredBuild121Highlights = [
+        'Safe and idempotent routine deletion preventing foreign key constraint violations',
+        'Instant removal of deleted routines from tomorrow\'s list and routine counts without restarting',
+        'Automatic cleanup of orphaned completion records when parent routines are removed'
       ];
-      requiredBuild12Highlights.forEach(h => {
+      requiredBuild121Highlights.forEach(h => {
         assert.ok(
           updateMgr.localInstalledRelease.features.some(f => f.includes(h.slice(0, 30))),
-          `Missing Build 12 feature highlight: ${h}`
+          `Missing Build 12.1 feature highlight: ${h}`
         );
       });
     });
 
-    test('getApprovedReleaseHistory strictly preserves all approved production releases including Build 12', () => {
+    test('getApprovedReleaseHistory strictly preserves all approved production releases including Build 12.1 (code 121)', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
       const approved = updateMgr.getApprovedReleaseHistory();
-      assert.strictEqual(approved.length, 10, 'Must preserve Build 12 + Build 11 + all 8 previous releases');
+      assert.strictEqual(approved.length, 11, 'Must preserve Build 12.1 + Build 12 + Build 11 + all 8 previous releases');
 
-      const expectedVersionCodes = [12, 11, 10, 9, 8, 7, 6, 5, 3, 1];
+      const expectedVersionCodes = [121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1];
       const actualCodes = approved.map(r => parseInt(r.versionCode, 10));
       assert.deepStrictEqual(actualCodes, expectedVersionCodes);
     });
 
-    test('getReleaseHistory cleanly prepends v2.1.0 Build 12 when installed is 12 without duplicating', () => {
+    test('getReleaseHistory cleanly prepends v2.1.1 Build 12.1 when installed is 121 without duplicating', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
-      updateMgr.state.installedVersionCode = 12;
-      updateMgr.state.installedVersionName = '2.1.0';
+      updateMgr.state.installedVersionCode = 121;
+      updateMgr.state.installedVersionName = '2.1.1';
 
       const history = updateMgr.getReleaseHistory();
-      assert.strictEqual(history.length, 10, 'History includes Build 12 + Build 11 + 8 previous releases');
-      assert.strictEqual(history[0].versionCode, 12);
-      assert.strictEqual(history[1].versionCode, 11);
+      assert.strictEqual(history.length, 11, 'History includes Build 12.1 + Build 12 + Build 11 + 8 previous releases');
+      assert.strictEqual(history[0].versionCode, 121);
+      assert.strictEqual(history[1].versionCode, 12);
+      assert.strictEqual(history[2].versionCode, 11);
     });
   });
 

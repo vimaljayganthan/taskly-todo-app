@@ -1,16 +1,57 @@
 {
-  "latestVersion": "2.1.0",
-  "versionCode": 12,
-  "title": "Taskly v2.1.0 – Reliability & Smart Lists Update",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.0/taskly-v2.1.0.apk",
-  "releaseNotes": "# Taskly v2.1.0 (Build 12) — Reliability & Smart Lists Update\n\nTaskly v2.1.0 brings improved Smart Lists reliability and carry-forward synchronization. Routine updates now appear immediately without restarting the application. We have also improved Supabase persistence, fixed synchronization issues and strengthened duplicate-action protection.\n\n### Carry-Forward Improvements\n- Fixed carry-forward changes not appearing immediately in the application.\n- Fixed missing Supabase persistence for Android/Capacitor carry-forward operations.\n- Fixed carried-forward routines being incorrectly excluded by date-range filtering.\n- Improved synchronization between local application state and Supabase.\n- Added immediate refresh of routine lists, counts, daily summaries, streak indicators and productivity analytics.\n- Added protection against duplicate carry-forward actions.\n- Improved failure handling and state rollback when persistence fails.\n\n### Reliability Improvements\n- Improved Smart Lists data synchronization.\n- Improved application state consistency.\n- Improved Android Capacitor behaviour.\n- Preserved existing routine completion and streak calculations.\n- Improved error handling during cloud synchronization.",
+  "latestVersion": "2.1.1",
+  "versionCode": 121,
+  "title": "Taskly v2.1.1 (Build 12.1) – Routine Deletion & Foreign Key Integrity Hotfix",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.1/taskly-v2.1.1.apk",
+  "releaseNotes": "# Taskly v2.1.1 (Build 12.1) — Routine Deletion & Foreign Key Integrity Hotfix\n\nTaskly v2.1.1 (Build 12.1) addresses a critical routine deletion error on Supabase. Deleting a routine from today's list now immediately cleans up future and tomorrow occurrences. Removing tomorrow entries after parent routine deletion no longer triggers foreign key constraint violations, and orphaned completion records are safely pruned without application errors.\n\n### Bug Fixes\n- Fixed foreign key constraint violation (smart_routine_completions_routine_id_fkey) when removing routines.\n- Fixed deleted routines remaining visible in tomorrow's routine list.\n- Fixed failed remove operations when deleting tomorrow entries after parent routine is deleted.\n- Fixed orphaned completion records lingering after parent routine removal.\n\n### Reliability Improvements\n- Safe, idempotent deletion of remaining tomorrow entries without errors.\n- Verified existence check before attempting completion state updates or upserts.\n- Immediate UI synchronization across routine counts, daily summaries, and habit streaks upon deletion.",
   "releaseDate": "2026-11-10",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.7 MB",
-  "fileSizeBytes": 18571173,
-  "sha256": "286596d7e4224af9e68ecd3e0270388d46c26e27179c9745e5b58843df37967f",
+  "fileSizeBytes": 18574585,
+  "sha256": "c8e80b4cf9b4ada49724cd8bd1bd2ce28c7071de836689c71953bd5e9a763ee8",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.1.1",
+      "versionName": "2.1.1",
+      "versionCode": 121,
+      "releaseDate": "2026-11-10",
+      "title": "Taskly v2.1.1 (Build 12.1) – Routine Deletion & Foreign Key Integrity Hotfix",
+      "summary": "# Taskly v2.1.1 (Build 12.1) — Routine Deletion & Foreign Key Integrity Hotfix\n\nTaskly v2.1.1 (Build 12.1) addresses a critical routine deletion error on Supabase. Deleting a routine from today's list now immediately cleans up future and tomorrow occurrences. Removing tomorrow entries after parent routine deletion no longer triggers foreign key constraint violations, and orphaned completion records are safely pruned without application errors.\n\n### Bug Fixes\n- Fixed foreign key constraint violation (smart_routine_completions_routine_id_fkey) when removing routines.\n- Fixed deleted routines remaining visible in tomorrow's routine list.\n- Fixed failed remove operations when deleting tomorrow entries after parent routine is deleted.\n- Fixed orphaned completion records lingering after parent routine removal.\n\n### Reliability Improvements\n- Safe, idempotent deletion of remaining tomorrow entries without errors.\n- Verified existence check before attempting completion state updates or upserts.\n- Immediate UI synchronization across routine counts, daily summaries, and habit streaks upon deletion.",
+      "features": [
+        "Safe and idempotent routine deletion preventing foreign key constraint violations",
+        "Instant removal of deleted routines from tomorrow's list and routine counts without restarting",
+        "Automatic cleanup of orphaned completion records when parent routines are removed",
+        "Robust existence verification before attempting completion state updates or upserts",
+        "Multi-device and multi-user routine deletion isolation and integrity protection"
+      ],
+      "improvements": [
+        "Strengthened referential integrity safeguards across Supabase and local storage",
+        "Eliminated spurious error alerts when removing deleted routines from tomorrow",
+        "Immediate UI synchronization across routine counts, daily summaries, and habit streaks upon deletion"
+      ],
+      "performance": [
+        "Optimistic sub-10ms UI deletion updates with asynchronous background database reconciliation",
+        "Eliminated redundant network queries and failed retries during routine deletion"
+      ],
+      "fixes": [
+        "Fixed foreign key constraint violation (smart_routine_completions_routine_id_fkey) during routine deletion",
+        "Fixed deleted routines remaining visible in tomorrow's routine list",
+        "Fixed failed remove operations when deleting tomorrow entries after parent routine is deleted",
+        "Fixed orphaned completion records lingering after parent routine removal"
+      ],
+      "security": [
+        "Preserved strict Row-Level Security (RLS) enforcement on all routine deletion operations",
+        "Cryptographically signed production APK with verified SHA-256 package integrity"
+      ],
+      "apkFileName": "taskly-v2.1.1.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18574313,
+      "sha256": "38e0dc6bc66a056edffefe4bea7c3f7e23a49d482273f9bc77b117cd09eac618",
+      "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.1/taskly-v2.1.1.apk",
+      "displayBuild": "12.1",
+      "buildLabel": "Build 12.1"
+    },
     {
       "version": "2.1.0",
       "versionName": "2.1.0",
@@ -296,5 +337,7 @@
       "improvements": [],
       "fixes": []
     }
-  ]
+  ],
+  "displayBuild": "12.1",
+  "buildLabel": "Build 12.1"
 }

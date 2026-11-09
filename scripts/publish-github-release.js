@@ -12,9 +12,9 @@ function getGitHubToken() {
 async function createRelease() {
   const token = getGitHubToken();
   const repo = 'vimaljayganthan/taskly-todo-app';
-  const tag = 'v2.1.0';
-  const title = 'Taskly v2.1.0 – Reliability & Smart Lists Update';
-  const notesFile = path.join(__dirname, '../releases/v210_notes.txt');
+  const tag = 'v2.1.1';
+  const title = 'Taskly v2.1.1 – Critical Routine Deletion Fix';
+  const notesFile = path.join(__dirname, '../releases/v211_notes.txt');
   const releaseNotes = fs.readFileSync(notesFile, 'utf8');
 
   console.log(`Checking if release ${tag} exists...`);
@@ -56,10 +56,10 @@ async function createRelease() {
   }
 
   // Upload APK asset
-  const apkPath = path.join(__dirname, '../releases/taskly-v2.1.0.apk');
+  const apkPath = path.join(__dirname, '../releases/taskly-v2.1.1.apk');
   const apkStats = fs.statSync(apkPath);
   const apkBuffer = fs.readFileSync(apkPath);
-  const assetName = 'taskly-v2.1.0.apk';
+  const assetName = 'taskly-v2.1.1.apk';
 
   // Check existing assets
   if (releaseData.assets && releaseData.assets.length > 0) {
