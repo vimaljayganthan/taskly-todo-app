@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "test:live-supabase": "node scripts/verify-live-supabase.js",
     "migrate:firestore": "node scripts/migrate-to-firestore.js",
     "migrate:supabase": "node scripts/migrate-to-supabase.js",

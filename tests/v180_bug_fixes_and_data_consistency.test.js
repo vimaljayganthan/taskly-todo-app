@@ -6,7 +6,7 @@
  * PART 3: Slow or Failed Task Updates Reliability
  */
 
-const { test, describe, beforeEach } = require('node:test');
+const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -134,6 +134,15 @@ describe('Taskly v1.8.0 Build 9 - Critical Bug Fixes and Data Consistency Suite'
   beforeEach(() => {
     mockStorage.clear();
     mockElements.clear();
+    TasklyUpdateManager.state.manifest = null;
+    TasklyUpdateManager.state.latestVersionCode = null;
+    TasklyUpdateManager.state.latestVersionName = null;
+  });
+
+  afterEach(() => {
+    TasklyUpdateManager.state.manifest = null;
+    TasklyUpdateManager.state.latestVersionCode = null;
+    TasklyUpdateManager.state.latestVersionName = null;
   });
 
   // =========================================================================

@@ -1,36 +1,14 @@
 {
-  "routines": [
-    {
-      "id": "fb5104ba-9cab-4807-9e91-7f32ade3fded",
-      "userId": "usr-test-alice-uuid",
-      "user_id": "usr-test-alice-uuid",
-      "title": "Performance API Routine",
-      "orderIndex": 0,
-      "startDate": null,
-      "endDate": null,
-      "recurrence": "daily",
-      "createdAt": "2026-11-09T18:52:31.901Z",
-      "updatedAt": null,
-      "deletedAt": null
-    }
-  ],
-  "completions": [
-    {
-      "id": "d9443d8f-91a3-4653-818b-f9a0ca4084a3",
-      "userId": "usr-test-alice-uuid",
-      "user_id": "usr-test-alice-uuid",
-      "routineId": "fb5104ba-9cab-4807-9e91-7f32ade3fded",
-      "date": "2026-11-08",
-      "status": "completed",
-      "completed": true,
-      "completedAt": "2026-11-09T18:52:31.901Z",
-      "postponedTo": null,
-      "cancellationReason": null,
-      "carriedForward": false,
-      "createdAt": "2026-11-09T18:52:31.901Z",
-      "updatedAt": "2026-11-09T18:52:31.901Z"
-    }
-  ],
+  "routines": [],
+  "completions": [],
   "reports": [],
-  "settings": {}
+  "settings": {
+    "usr-alice-carry-test": {
+      "dailySummaryEnabled": true,
+      "dailySummaryTime": "22:00",
+      "streakThreshold": 80,
+      "streakResetAt": "2026-11-09T18:59:36.865Z",
+      "updatedAt": "2026-11-09T18:59:36.865Z"
+    }
+  }
 }

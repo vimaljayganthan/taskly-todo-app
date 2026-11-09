@@ -779,6 +779,9 @@ describe('Part 10: Build 10 Current Version History & What\'s New Integration Su
   beforeEach(() => {
     mockStorage.clear();
     domCache.clear();
+    updateMgr.state.manifest = null;
+    updateMgr.state.latestVersionCode = null;
+    updateMgr.state.latestVersionName = null;
     updateMgr.setCachedManifest(PROD_MANIFEST);
     updateMgr.state.installedVersionName = '2.1.0';
     updateMgr.state.installedVersionCode = 12;
