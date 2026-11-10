@@ -119,9 +119,9 @@ const app = require('../public/app');
 // =============================================================================
 describe('Part 1: Static Architecture and Gradle Configuration', () => {
 
-  test('1. android/app/build.gradle is configured for v2.1.1 Build 12.1', () => {
-    assert.match(BUILD_GRADLE, /versionCode\s+(?:10|11|12|121)/);
-    assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1)["']/);
+  test('1. android/app/build.gradle is configured for v2.2.0 Build 14 (or v2.1.1 Build 12.1)', () => {
+    assert.match(BUILD_GRADLE, /versionCode\s+(?:10|11|12|121|140)/);
+    assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1|2\.2\.0)["']/);
     assert.match(BUILD_GRADLE, /applicationId\s+["']com\.taskly\.app["']/);
   });
 
@@ -797,9 +797,9 @@ describe('Part 10: Build 10 Current Version History & What\'s New Integration Su
     assert.deepStrictEqual(PROD_MANIFEST, PUBLIC_MANIFEST);
   });
 
-  test('2. android/app/build.gradle configures versionName 2.1.1 and versionCode 121', () => {
-    assert.ok(/versionCode\s+121\b/.test(BUILD_GRADLE), 'build.gradle defines versionCode 121');
-    assert.ok(/versionName\s+["']2\.1\.1["']/.test(BUILD_GRADLE), 'build.gradle defines versionName "2.1.1"');
+  test('2. android/app/build.gradle configures versionName 2.2.0 (or 2.1.1) and versionCode 140 (or 121)', () => {
+    assert.ok(/versionCode\s+(?:121|140)\b/.test(BUILD_GRADLE), 'build.gradle defines versionCode 140 or 121');
+    assert.ok(/versionName\s+["'](?:2\.1\.1|2\.2\.0)["']/.test(BUILD_GRADLE), 'build.gradle defines versionName');
   });
 
   test('3. Decoupling: getApprovedReleaseHistory() strictly returns approved releases from manifest (11 releases, top is v2.1.1)', () => {

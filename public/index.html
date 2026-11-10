@@ -893,6 +893,38 @@
                   <span class="menu-chevron">›</span>
                 </button>
 
+                <!-- Customer Support (Taskly v2.2.0 Build 14) -->
+                <button type="button" class="profile-menu-item profile-menu-support" id="menu-support" aria-label="Customer Support">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box menu-icon-support" style="background: rgba(43, 114, 186, 0.12); color: #2B72BA;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                    </div>
+                    <span class="menu-item-label">Customer Support</span>
+                  </div>
+                  <div class="menu-item-right-wrap">
+                    <span class="menu-item-val" id="profile-support-badge">Help Desk</span>
+                    <span class="menu-chevron">›</span>
+                  </div>
+                </button>
+
+                <!-- Developer Support Dashboard (Taskly v2.2.0 Build 14 - Elevated Admin) -->
+                <button type="button" class="profile-menu-item profile-menu-developer" id="menu-developer-dashboard" aria-label="Developer Dashboard" style="display: none;">
+                  <div class="menu-item-left">
+                    <div class="menu-icon-box menu-icon-developer" style="background: rgba(147, 51, 234, 0.12); color: #9333EA;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                      </svg>
+                    </div>
+                    <span class="menu-item-label">Developer Dashboard</span>
+                  </div>
+                  <div class="menu-item-right-wrap">
+                    <span class="menu-item-val" style="color: #9333EA; font-weight: 700;">Admin</span>
+                    <span class="menu-chevron">›</span>
+                  </div>
+                </button>
+
                 <!-- Change Password -->
                 <button type="button" class="profile-menu-item" id="menu-change-password">
                   <div class="menu-item-left">
@@ -3081,6 +3113,350 @@
               <button type="submit" class="btn-smart-save" id="btn-save-edit-tomorrow">Save Changes</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Modal: Customer Support Hub (Taskly v2.2.0 Build 14) -->
+      <!-- Modal: Customer Support Hub (Taskly v2.2.0 Build 14 - Premium Pet-Themed Redesign) -->
+      <div id="modal-support-hub" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-support-title">
+        <div class="modal-card modal-card-support">
+          <!-- Support Header -->
+          <div class="modal-head support-modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box support-head-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                </svg>
+              </div>
+              <div class="support-head-text">
+                <h3 class="modal-title" id="modal-support-title">Customer Support</h3>
+                <p class="modal-subtitle-text">Fast, friendly assistance from the Taskly team</p>
+              </div>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-support-modal" aria-label="Close Support">×</button>
+          </div>
+
+          <!-- Support Hub Segmented Navigation -->
+          <div class="support-tab-bar" id="support-tab-bar">
+            <button type="button" class="support-tab-btn active" id="tab-btn-support-tickets" data-subtab="tickets">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <line x1="6" y1="8" x2="18" y2="8"></line>
+                <line x1="6" y1="12" x2="14" y2="12"></line>
+              </svg>
+              <span>My Tickets</span>
+              <span class="support-badge-count" id="support-my-tickets-count">0</span>
+            </button>
+            <button type="button" class="support-tab-btn" id="tab-btn-support-create" data-subtab="create">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>New Ticket</span>
+            </button>
+          </div>
+
+          <div class="modal-body support-modal-body">
+            <!-- 1. Customer Tickets List Sub-View -->
+            <div id="support-subview-tickets" class="support-subview active">
+              <!-- Status Filter Pills -->
+              <div class="support-filter-bar">
+                <button type="button" class="support-filter-pill active" data-filter="all">All</button>
+                <button type="button" class="support-filter-pill" data-filter="open">Open</button>
+                <button type="button" class="support-filter-pill" data-filter="waiting_customer">Waiting on You</button>
+                <button type="button" class="support-filter-pill" data-filter="resolved">Resolved</button>
+                <button type="button" class="support-filter-pill" data-filter="closed">Closed</button>
+              </div>
+
+              <!-- Loading State -->
+              <div id="support-tickets-loading" class="support-state-box support-loading-state" style="display: none;">
+                <div class="support-spinner"></div>
+                <p class="support-loading-text">Connecting to Taskly Support...</p>
+              </div>
+
+              <!-- Empty State (When API succeeds and user has no tickets) -->
+              <div id="support-tickets-empty" class="support-state-box support-empty-card" style="display: none;">
+                <div class="support-empty-mascot-wrap">
+                  <div class="support-empty-mascot">💬</div>
+                </div>
+                <h4 class="support-empty-title">No Support Tickets Yet</h4>
+                <p class="support-empty-desc">Everything running smoothly! Need help with an issue or have feedback to share? Our team is right here.</p>
+                <button type="button" class="btn-primary-compact support-cta-btn" id="btn-empty-create-ticket">
+                  <span>+ Create Your First Ticket</span>
+                </button>
+              </div>
+
+              <!-- Connection Error State (When API is unreachable / offline) -->
+              <div id="support-tickets-error" class="support-state-box support-error-card" style="display: none;">
+                <div class="support-error-icon-box">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                    <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                  </svg>
+                </div>
+                <h4 class="support-error-title">Unable to Connect</h4>
+                <p id="support-tickets-error-text" class="support-error-desc">We couldn't reach the Taskly support service. Please check your internet connection and try again.</p>
+                <div class="support-error-actions">
+                  <button type="button" class="btn-primary-compact support-retry-btn" id="btn-retry-load-tickets">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="23 4 23 10 17 10"></polyline>
+                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    <span>Try Again</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Tickets Container -->
+              <div id="support-tickets-list" class="support-tickets-list"></div>
+            </div>
+
+            <!-- 2. Create Ticket Sub-View (Polished Mobile-First Experience) -->
+            <div id="support-subview-create" class="support-subview" style="display: none;">
+              <form id="form-create-ticket" class="support-create-form">
+                <div id="create-ticket-error-banner" class="support-error-banner" style="display: none;" role="alert"></div>
+
+                <div class="support-card-group">
+                  <label for="input-ticket-subject" class="support-input-label">Subject</label>
+                  <input type="text" id="input-ticket-subject" class="support-field-input" placeholder="e.g. Cannot sync reminders on Android" maxlength="255" required>
+                </div>
+
+                <!-- Category Selection Chips -->
+                <div class="support-card-group">
+                  <label class="support-input-label">Category</label>
+                  <div class="support-chip-grid" id="support-category-chips">
+                    <button type="button" class="support-chip active" data-cat="general">💬 General</button>
+                    <button type="button" class="support-chip" data-cat="bug">🐛 Bug Report</button>
+                    <button type="button" class="support-chip" data-cat="feedback">💡 Feedback</button>
+                    <button type="button" class="support-chip" data-cat="account">👤 Account</button>
+                    <button type="button" class="support-chip" data-cat="billing">💳 Billing</button>
+                  </div>
+                  <!-- Hidden native select for form & automated test compatibility -->
+                  <select id="select-ticket-category" class="support-field-select support-sr-only">
+                    <option value="general" selected>General</option>
+                    <option value="bug">Bug Report</option>
+                    <option value="feedback">Feedback</option>
+                    <option value="account">Account</option>
+                    <option value="billing">Billing</option>
+                  </select>
+                </div>
+
+                <!-- Priority Selection Pills -->
+                <div class="support-card-group">
+                  <label class="support-input-label">Priority</label>
+                  <div class="support-priority-grid" id="support-priority-chips">
+                    <button type="button" class="support-prio-pill opt-prio-low" data-prio="low">Low</button>
+                    <button type="button" class="support-prio-pill opt-prio-normal active" data-prio="normal">Normal</button>
+                    <button type="button" class="support-prio-pill opt-prio-high" data-prio="high">High</button>
+                    <button type="button" class="support-prio-pill opt-prio-urgent" data-prio="urgent">Urgent</button>
+                  </div>
+                  <!-- Hidden native select for form & automated test compatibility -->
+                  <select id="select-ticket-priority" class="support-field-select support-sr-only">
+                    <option value="low">Low</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+
+                <!-- Description & Details -->
+                <div class="support-card-group">
+                  <div class="support-label-row">
+                    <label for="textarea-ticket-body" class="support-input-label">Description & Details</label>
+                    <span id="ticket-desc-char-count" class="support-char-count">0 / 10,000</span>
+                  </div>
+                  <textarea id="textarea-ticket-body" class="support-field-textarea" rows="4" placeholder="Please describe what happened, steps to reproduce, or any questions you have..." maxlength="10000" required></textarea>
+                </div>
+
+                <div class="support-form-actions">
+                  <button type="button" class="btn-modal-cancel" id="btn-cancel-create-ticket">Cancel</button>
+                  <button type="submit" class="btn-primary-compact support-submit-btn" id="btn-submit-ticket">
+                    <span>Submit Ticket</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <!-- 3. Ticket Conversation View Sub-View -->
+            <div id="support-subview-details" class="support-subview" style="display: none;">
+              <!-- Details Header Card -->
+              <div class="support-details-header">
+                <button type="button" class="btn-back-support" id="btn-back-to-tickets">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                  <span>Back to My Tickets</span>
+                </button>
+                <div class="support-details-card">
+                  <div class="support-details-title-row">
+                    <span class="support-ticket-code" id="details-ticket-code">TK-00000000</span>
+                    <span class="support-status-badge" id="details-ticket-status">Open</span>
+                  </div>
+                  <h4 class="support-details-subject" id="details-ticket-subject">Subject</h4>
+                  <div class="support-details-meta" id="details-ticket-meta">
+                    <span id="details-ticket-category">Category: General</span> • 
+                    <span id="details-ticket-priority">Priority: Normal</span> • 
+                    <span id="details-ticket-date">Created: Date</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Conversation Thread -->
+              <div class="support-messages-container" id="support-messages-container"></div>
+
+              <!-- Customer Follow-Up Form -->
+              <div class="support-reply-box" id="support-reply-box">
+                <div id="reply-ticket-error-banner" class="support-error-banner" style="display: none;" role="alert"></div>
+                <form id="form-ticket-reply" class="support-reply-form">
+                  <textarea id="textarea-ticket-reply" class="support-reply-textarea" rows="2" placeholder="Reply to the Taskly support team..." maxlength="10000" required></textarea>
+                  <div class="support-reply-actions">
+                    <button type="submit" class="btn-primary-compact support-send-btn" id="btn-send-ticket-reply">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                      <span>Send Reply</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Ticket Closed Notice Banner -->
+              <div id="ticket-closed-notice" class="ticket-closed-notice" style="display: none;">
+                🔒 This ticket is resolved or closed. If you need further help, please create a new ticket above.
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: Developer Support Dashboard (Taskly v2.2.0 Build 14) -->
+      <div id="modal-developer-dashboard" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-dev-dashboard-title">
+        <div class="modal-card modal-card-developer-dashboard">
+          <div class="modal-head">
+            <div class="modal-head-title-wrap">
+              <div class="modal-head-icon-box dev-head-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="modal-title" id="modal-dev-dashboard-title">Developer Support Dashboard</h3>
+                <span class="dev-verified-pill">Developer Mode • Elevated Access</span>
+              </div>
+            </div>
+            <button type="button" class="btn-close-modal" id="btn-close-dev-dashboard" aria-label="Close Dashboard">×</button>
+          </div>
+
+          <!-- Metrics Row -->
+          <div class="dev-metrics-bar" id="dev-metrics-bar">
+            <div class="dev-metric-card">
+              <span class="dev-metric-val" id="dev-metric-total">0</span>
+              <span class="dev-metric-label">Total</span>
+            </div>
+            <div class="dev-metric-card metric-open">
+              <span class="dev-metric-val" id="dev-metric-open">0</span>
+              <span class="dev-metric-label">Open</span>
+            </div>
+            <div class="dev-metric-card metric-waiting">
+              <span class="dev-metric-val" id="dev-metric-waiting">0</span>
+              <span class="dev-metric-label">Waiting</span>
+            </div>
+            <div class="dev-metric-card metric-resolved">
+              <span class="dev-metric-val" id="dev-metric-resolved">0</span>
+              <span class="dev-metric-label">Resolved</span>
+            </div>
+          </div>
+
+          <!-- Search & Filter Controls -->
+          <div class="dev-controls-bar">
+            <div class="dev-search-wrap">
+              <input type="text" id="dev-ticket-search-input" class="dev-search-input" placeholder="Search tickets by user, code, or subject...">
+              <button type="button" id="btn-dev-search-clear" style="display: none;">×</button>
+            </div>
+            <div class="dev-status-pills">
+              <button type="button" class="dev-filter-pill active" data-dev-filter="all">All</button>
+              <button type="button" class="dev-filter-pill" data-dev-filter="open">Open</button>
+              <button type="button" class="dev-filter-pill" data-dev-filter="waiting_customer">Waiting</button>
+              <button type="button" class="dev-filter-pill" data-dev-filter="resolved">Resolved</button>
+              <button type="button" class="dev-filter-pill" data-dev-filter="closed">Closed</button>
+            </div>
+          </div>
+
+          <div class="modal-body dev-modal-body">
+            <!-- Split Pane: Ticket List & Inspector -->
+            <div class="dev-split-container">
+              <!-- Left Pane: Tickets Master List -->
+              <div class="dev-tickets-column" id="dev-tickets-column">
+                <div id="dev-tickets-loading" class="dev-loading-state" style="display: none;">
+                  <div class="support-spinner"></div>
+                  <p>Loading customer tickets...</p>
+                </div>
+                <div id="dev-tickets-empty" class="dev-empty-state" style="display: none;">
+                  <p>No tickets match the selected filter.</p>
+                </div>
+                <div id="dev-tickets-list" class="dev-tickets-list"></div>
+              </div>
+
+              <!-- Right Pane: Ticket Detail & Response Workspace -->
+              <div class="dev-inspector-column" id="dev-inspector-column">
+                <div id="dev-no-ticket-selected" class="dev-placeholder-pane">
+                  <p>Select a ticket from the left panel to review conversation and respond.</p>
+                </div>
+
+                <div id="dev-ticket-workspace" class="dev-workspace-pane" style="display: none;">
+                  <div class="dev-workspace-header">
+                    <div class="dev-ws-title-row">
+                      <span class="dev-ws-ticket-code" id="dev-ws-ticket-code">TK-00000000</span>
+                      <div class="dev-status-control-wrap">
+                        <label for="select-dev-ticket-status">Status:</label>
+                        <select id="select-dev-ticket-status" class="dev-status-select">
+                          <option value="open">Open</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="waiting_customer">Waiting on Customer</option>
+                          <option value="resolved">Resolved</option>
+                          <option value="closed">Closed</option>
+                        </select>
+                      </div>
+                    </div>
+                    <h4 class="dev-ws-subject" id="dev-ws-subject">Subject</h4>
+                    <div class="dev-ws-customer-info">
+                      <span id="dev-ws-customer-email">customer@taskly.app</span> • 
+                      <span id="dev-ws-category">Category</span> • 
+                      <span id="dev-ws-priority">Priority</span>
+                    </div>
+                  </div>
+
+                  <!-- Messages stream -->
+                  <div class="dev-messages-thread" id="dev-messages-thread"></div>
+
+                  <!-- Developer Reply Box -->
+                  <div class="dev-reply-composer">
+                    <div id="dev-reply-error-banner" class="support-error-banner" style="display: none;" role="alert"></div>
+                    <form id="form-dev-reply">
+                      <textarea id="textarea-dev-reply" class="dev-reply-input" rows="3" placeholder="Type official response to customer..." required></textarea>
+                      <div class="dev-composer-footer">
+                        <div class="dev-quick-status-selector">
+                          <span>Set status after reply:</span>
+                          <label><input type="radio" name="dev-reply-next-status" value="waiting_customer" checked> Waiting</label>
+                          <label><input type="radio" name="dev-reply-next-status" value="resolved"> Resolved</label>
+                          <label><input type="radio" name="dev-reply-next-status" value="open"> Keep Open</label>
+                        </div>
+                        <button type="submit" class="btn-primary-compact" id="btn-submit-dev-reply">Send Reply</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

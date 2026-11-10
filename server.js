@@ -17,6 +17,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { initializeStorage, getStorage, getScopedStorage } = require('./storage/taskStore');
 const SmartListStore = require('./storage/smartListStore');
+const SupportStore = require('./storage/supportStore');
 const HabitStreakService = require('./services/habitStreakService');
 
 const app = express();
@@ -39,7 +40,7 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Idempotency-Key');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
@@ -60,8 +61,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware: JSON Body Parser with strict 20kb payload limit
-app.use(express.json({ limit: '20kb' }));
+// Middleware: JSON Body Parser with strict 20kb payload limit and rawBody capture for cryptographic signature verification
+app.use(express.json({
+  limit: '20kb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
 
 // Static Assets: Serve public directory with caching headers in production
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -1089,6 +1095,394 @@ app.get('/api/analytics/productivity', async (req, res, next) => {
   }
 });
 
+// ==========================================================================
+// Customer Support & Ticket Management API Routes (Stage 1 Foundation)
+// ==========================================================================
+
+// Enforce authentication on all /api/support/tickets routes
+app.use('/api/support/tickets', authenticateUser);
+
+// POST /api/support/tickets - Create a new support ticket
+app.post('/api/support/tickets', async (req, res, next) => {
+  try {
+    const { subject, description, body, priority, category } = req.body || {};
+    const idempotencyKey = (
+      req.headers['idempotency-key'] ||
+      (req.body && (req.body.idempotency_key || req.body.idempotencyKey)) ||
+      null
+    );
+
+    // Validate subject (1..255 characters)
+    if (!subject || typeof subject !== 'string' || !subject.trim()) {
+      return res.status(400).json({ error: 'Subject is required and must not be empty' });
+    }
+    const trimmedSubject = subject.trim();
+    if (trimmedSubject.length > 255) {
+      return res.status(400).json({ error: 'Subject must not exceed 255 characters' });
+    }
+
+    // Validate description / body (1..10000 characters)
+    const rawBody = description !== undefined ? description : body;
+    if (!rawBody || typeof rawBody !== 'string' || !rawBody.trim()) {
+      return res.status(400).json({ error: 'Description/body is required and must not be empty' });
+    }
+    const trimmedBody = rawBody.trim();
+    if (trimmedBody.length > 10000) {
+      return res.status(400).json({ error: 'Description/body must not exceed 10000 characters' });
+    }
+
+    // Validate priority (optional, default 'normal')
+    let parsedPriority = 'normal';
+    if (priority !== undefined && priority !== null) {
+      if (typeof priority !== 'string' || !SupportStore.VALID_PRIORITIES.includes(priority.trim().toLowerCase())) {
+        return res.status(400).json({
+          error: `Invalid priority. Must be one of: ${SupportStore.VALID_PRIORITIES.join(', ')}`
+        });
+      }
+      parsedPriority = priority.trim().toLowerCase();
+    }
+
+    // Validate category (optional, default 'general')
+    let parsedCategory = 'general';
+    if (category !== undefined && category !== null) {
+      if (typeof category !== 'string' || !SupportStore.VALID_CATEGORIES.includes(category.trim().toLowerCase())) {
+        return res.status(400).json({
+          error: `Invalid category. Must be one of: ${SupportStore.VALID_CATEGORIES.join(', ')}`
+        });
+      }
+      parsedCategory = category.trim().toLowerCase();
+    }
+
+    // Validate idempotencyKey length if provided
+    let cleanIdempotencyKey = null;
+    if (idempotencyKey) {
+      if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.trim().length > 255) {
+        return res.status(400).json({ error: 'Idempotency key must be a non-empty string up to 255 characters' });
+      }
+      cleanIdempotencyKey = idempotencyKey.trim();
+    }
+
+    // Identity is strictly bound to verified JWT - ignore client spoofing
+    const userId = req.user.id;
+    const userEmail = req.user.email || 'customer@taskly.app';
+
+    const storage = SupportStore.getScopedStorage(req);
+    const ticket = await storage.createTicket({
+      userId,
+      userEmail,
+      subject: trimmedSubject,
+      description: trimmedBody,
+      priority: parsedPriority,
+      category: parsedCategory,
+      idempotencyKey: cleanIdempotencyKey
+    });
+
+    if (ticket.is_replay) {
+      return res.status(200).json(ticket);
+    }
+    return res.status(201).json(ticket);
+  } catch (err) {
+    if (err.statusCode === 409) {
+      return res.status(409).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// GET /api/support/tickets - List authenticated user's tickets
+app.get('/api/support/tickets', async (req, res, next) => {
+  try {
+    const { status, limit, offset } = req.query;
+
+    let cleanStatus = null;
+    if (status) {
+      cleanStatus = SupportStore.normalizeStatus(status);
+      if (!SupportStore.VALID_STATUSES.includes(cleanStatus)) {
+        return res.status(400).json({
+          error: `Invalid status filter. Must be one of: ${SupportStore.VALID_STATUSES.join(', ')}`
+        });
+      }
+    }
+
+    const storage = SupportStore.getScopedStorage(req);
+    const tickets = await storage.listTickets(req.user.id, {
+      status: cleanStatus,
+      limit,
+      offset
+    });
+
+    res.json(tickets);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/support/tickets/:id - View single ticket with conversation messages
+app.get('/api/support/tickets/:id', async (req, res, next) => {
+  try {
+    const storage = SupportStore.getScopedStorage(req);
+    const ticket = await storage.getTicket(req.params.id, req.user.id);
+
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    res.json(ticket);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/support/tickets/:id/messages - Add customer message to own ticket
+app.post('/api/support/tickets/:id/messages', async (req, res, next) => {
+  try {
+    const { body } = req.body || {};
+    const idempotencyKey = (
+      req.headers['idempotency-key'] ||
+      (req.body && (req.body.idempotency_key || req.body.idempotencyKey)) ||
+      null
+    );
+
+    if (!body || typeof body !== 'string' || !body.trim()) {
+      return res.status(400).json({ error: 'Message body is required and must not be empty' });
+    }
+    const trimmedBody = body.trim();
+    if (trimmedBody.length > 10000) {
+      return res.status(400).json({ error: 'Message body must not exceed 10000 characters' });
+    }
+
+    let cleanIdempotencyKey = null;
+    if (idempotencyKey) {
+      if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || idempotencyKey.trim().length > 255) {
+        return res.status(400).json({ error: 'Idempotency key must be a non-empty string up to 255 characters' });
+      }
+      cleanIdempotencyKey = idempotencyKey.trim();
+    }
+
+    const storage = SupportStore.getScopedStorage(req);
+    const message = await storage.addMessage({
+      ticketId: req.params.id,
+      userId: req.user.id,
+      userEmail: req.user.email || 'customer@taskly.app',
+      body: trimmedBody,
+      idempotencyKey: cleanIdempotencyKey
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    if (message.is_replay) {
+      return res.status(200).json(message);
+    }
+    return res.status(201).json(message);
+  } catch (err) {
+    if (err.statusCode === 400 || err.statusCode === 409) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
+// GET /api/support/tickets/:id/messages - List messages for a ticket
+app.get('/api/support/tickets/:id/messages', async (req, res, next) => {
+  try {
+    const storage = SupportStore.getScopedStorage(req);
+    const messages = await storage.getMessages(req.params.id, req.user.id);
+
+    if (!messages) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    res.json(messages);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// Developer Support Operations & Dashboard Endpoints (Stage 4)
+// ==========================================================================
+function requireDeveloperAuth(req, res, next) {
+  if (!req.user || !req.user.email) {
+    return res.status(401).json({ error: 'Unauthorized: login required' });
+  }
+
+  const authorizedDevEmail = (process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com').toLowerCase().trim();
+  const userEmail = (req.user.email || '').toLowerCase().trim();
+  const userRole = (req.user.role || '').toLowerCase().trim();
+
+  // Allow if email matches developer email OR user has role 'developer' or 'service_role'
+  if (userEmail === authorizedDevEmail || userRole === 'developer' || userRole === 'service_role') {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Forbidden: developer access required' });
+}
+
+app.use('/api/support/developer', authenticateUser, requireDeveloperAuth);
+
+// GET /api/support/developer/tickets - List all customer tickets across system
+app.get('/api/support/developer/tickets', async (req, res, next) => {
+  try {
+    const { status, search, limit, offset } = req.query;
+    const storage = SupportStore.getServiceStorage();
+    const result = await storage.developerListTickets({ status, search, limit, offset });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/support/developer/stats - High-level metrics for dashboard
+app.get('/api/support/developer/stats', async (req, res, next) => {
+  try {
+    const storage = SupportStore.getServiceStorage();
+    const stats = await storage.developerGetStats();
+    res.json({ success: true, stats });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/support/developer/tickets/:id - View any ticket with full conversation history
+app.get('/api/support/developer/tickets/:id', async (req, res, next) => {
+  try {
+    const storage = SupportStore.getServiceStorage();
+    const ticket = await storage.developerGetTicket(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+    res.json(ticket);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/support/developer/tickets/:id/messages - Post developer response
+app.post('/api/support/developer/tickets/:id/messages', async (req, res, next) => {
+  try {
+    const { body, status } = req.body || {};
+    if (!body || typeof body !== 'string' || !body.trim()) {
+      return res.status(400).json({ error: 'Message body is required and must not be empty' });
+    }
+    const cleanBody = body.trim();
+    if (cleanBody.length > 10000) {
+      return res.status(400).json({ error: 'Message body must not exceed 10000 characters' });
+    }
+
+    const storage = SupportStore.getServiceStorage();
+    const message = await storage.developerAddMessage({
+      ticketId: req.params.id,
+      developerId: req.user.id,
+      developerEmail: req.user.email,
+      body: cleanBody,
+      status: status || null
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    res.status(201).json(message);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/support/developer/tickets/:id/status - Update ticket status
+app.patch('/api/support/developer/tickets/:id/status', async (req, res, next) => {
+  try {
+    const { status } = req.body || {};
+    if (!status || typeof status !== 'string') {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    const cleanStatus = SupportStore.normalizeStatus(status);
+    if (!cleanStatus || !SupportStore.VALID_STATUSES.includes(cleanStatus)) {
+      return res.status(400).json({
+        error: `Invalid status. Must be one of: ${SupportStore.VALID_STATUSES.join(', ')}`
+      });
+    }
+
+    const storage = SupportStore.getServiceStorage();
+    const updated = await storage.developerUpdateStatus(req.params.id, cleanStatus, req.user.id);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// Internal Outbox Operations & Health Monitoring Endpoints
+// ==========================================================================
+function requireInternalCronAuth(req, res, next) {
+  const cronSecret = process.env.CRON_SECRET;
+  const providedAuth = req.headers['authorization'] || req.headers['x-cron-secret'];
+  
+  if (!cronSecret && process.env.NODE_ENV !== 'production') {
+    return next(); // Allow in non-production local development
+  }
+
+  if (!providedAuth) {
+    return res.status(401).json({ error: 'Unauthorized: missing cron secret header' });
+  }
+
+  const expectedBearer = cronSecret ? `Bearer ${cronSecret}` : null;
+  if (providedAuth === expectedBearer || providedAuth === cronSecret) {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Forbidden: invalid cron secret' });
+}
+
+// ==========================================================================
+// Inbound Webhook Operations (Stage 3 Resend Managed Inbound)
+// ==========================================================================
+const { handleInboundWebhook } = require('./services/inboundWebhookService');
+app.post('/api/support/resend-inbound', handleInboundWebhook);
+
+// POST /api/internal/support/outbox/process - Process batch of pending outbox emails
+app.post('/api/internal/support/outbox/process', requireInternalCronAuth, async (req, res, next) => {
+  try {
+    const { OutboxWorker } = require('./services/outboxWorker');
+    const worker = new OutboxWorker();
+    const result = await worker.processBatch();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/internal/support/outbox/sweep - Sweep expired ambiguous delivery timeouts
+app.post('/api/internal/support/outbox/sweep', requireInternalCronAuth, async (req, res, next) => {
+  try {
+    const { OutboxWorker } = require('./services/outboxWorker');
+    const worker = new OutboxWorker();
+    const swept = await worker.sweepTimeouts();
+    res.json({ success: true, sweptTimeouts: swept });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/internal/support/outbox/metrics - Operational queue health & metrics
+app.get('/api/internal/support/outbox/metrics', requireInternalCronAuth, async (req, res, next) => {
+  try {
+    const { getOutboxStore } = require('./services/outboxStore');
+    const store = getOutboxStore();
+    const metrics = await store.getMetrics();
+    res.json({ success: true, queue: metrics });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // 404 Handler for unmatched API routes
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
@@ -1097,8 +1491,9 @@ app.use('/api', (req, res) => {
 // Centralized Production Error Handling Middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled application error:', err);
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+  const status = err.statusCode || err.status || 500;
+  res.status(status).json({
+    error: (process.env.NODE_ENV === 'production' && status === 500) ? 'Internal server error' : err.message
   });
 });
 

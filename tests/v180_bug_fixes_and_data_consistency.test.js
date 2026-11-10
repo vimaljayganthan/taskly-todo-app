@@ -449,8 +449,8 @@ describe('Taskly v1.8.0 Build 9 - Critical Bug Fixes and Data Consistency Suite'
   describe('Part 5: Production-Ready Android Build Preparation Configuration', () => {
 
     test('1. android/app/build.gradle specifies versionCode 9 or higher and valid production candidate versionName', () => {
-      assert.match(BUILD_GRADLE, /versionCode\s+(?:9|10|11|12|121)/);
-      assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.8\.0|1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1)["']/);
+      assert.match(BUILD_GRADLE, /versionCode\s+(?:9|10|11|12|121|140)/);
+      assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.8\.0|1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1|2\.2\.0)["']/);
     });
 
     test('2. public/styles.css includes .workload-custom for Yellow #FACC15 calendar day styling', () => {

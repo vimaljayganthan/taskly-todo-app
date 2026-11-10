@@ -9,6 +9,15 @@ function getApiBaseUrl() {
     return window.TASKLY_API_URL.replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined') {
+    // 1. Check for runtime custom API override (useful for developer testing or custom staging)
+    try {
+      const customUrl = localStorage.getItem('taskly_custom_api_url') || localStorage.getItem('taskly_api_url');
+      if (customUrl && typeof customUrl === 'string' && customUrl.trim()) {
+        return customUrl.trim().replace(/\/+$/, '');
+      }
+    } catch (_) {}
+
+    // 2. Capacitor native mobile platform detection (Android & iOS)
     const isCapacitor = Boolean(
       window.Capacitor?.isNativePlatform?.() ||
       window.Capacitor?.getPlatform?.() === 'android' ||
@@ -18,9 +27,11 @@ function getApiBaseUrl() {
       (window.location.hostname === 'localhost' && window.location.port === '' && !window.location.origin.includes(':3000'))
     );
     if (isCapacitor) {
-      return 'https://taskly-todo-app-git-feature-mu-aaec2c-vimaljayganthans-projects.vercel.app';
+      // Production Canonical Vercel HTTPS Deployment URL
+      return 'https://taskly-todo-app-4z1c.vercel.app';
     }
   }
+  // Standard web browser deployment (relative URLs)
   return '';
 }
 
@@ -28,10 +39,68 @@ const API_BASE_URL = getApiBaseUrl();
 
 function getAuthHeaders() {
   const headers = {};
-  if (typeof state !== 'undefined' && state.userToken) {
-    headers['Authorization'] = `Bearer ${state.userToken}`;
+  const token = (typeof state !== 'undefined' && state.userToken) ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('taskly_user_token')) ||
+    null;
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
+}
+
+/**
+ * Robust Support API client with auth injection, connection failure detection,
+ * and user-friendly error translations.
+ */
+async function supportApiFetch(endpoint, options = {}) {
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}${endpoint}`;
+
+  const headers = Object.assign({
+    'Content-Type': 'application/json',
+    ...getAuthHeaders()
+  }, options.headers || {});
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers
+    });
+
+    if (!res.ok) {
+      let errMessage = null;
+      try {
+        const errData = await res.json();
+        errMessage = errData.error || errData.message;
+      } catch (_) {}
+
+      if (res.status === 404) {
+        throw new Error(errMessage || 'Support service is temporarily updating or unavailable. Please retry in a moment.');
+      }
+      if (res.status === 401) {
+        throw new Error(errMessage || 'Please sign in to access support tickets.');
+      }
+      if (res.status === 403) {
+        throw new Error(errMessage || 'Access restricted.');
+      }
+      if (res.status === 429) {
+        throw new Error(errMessage || 'Support rate limit reached. Please wait a moment before trying again.');
+      }
+      if (res.status >= 500) {
+        throw new Error(errMessage || 'Support server encountered a temporary error. Please retry shortly.');
+      }
+      throw new Error(errMessage || `Support request failed (HTTP ${res.status}).`);
+    }
+
+    return await res.json();
+  } catch (err) {
+    if (err.name === 'TypeError' || err.message === 'Failed to fetch' || err.message.includes('NetworkError') || err.message.includes('fetch failed')) {
+      const connErr = new Error('Cannot connect to Taskly support service. Please check your internet connection.');
+      connErr.isConnectionError = true;
+      throw connErr;
+    }
+    throw err;
+  }
 }
 
 // Application State
@@ -73,6 +142,24 @@ const state = {
   todos: [],
   todosLoaded: false,
   dashboardFilter: 'all', // 'all' | 'today' | 'pending' | 'completed'
+
+  // Customer & Developer Support (Taskly v2.2.0 Build 14)
+  support: {
+    tickets: [],
+    activeTicket: null,
+    filter: 'all',
+    isLoading: false,
+    error: null
+  },
+  developerSupport: {
+    tickets: [],
+    activeTicket: null,
+    filter: 'all',
+    searchQuery: '',
+    isLoading: false,
+    error: null,
+    stats: null
+  },
 
   // Server Configuration Cache
   config: null
@@ -5963,6 +6050,8 @@ function renderProfile() {
   if (profileAvatarCircle) {
     profileAvatarCircle.innerHTML = `<span style="font-weight: 800; font-size: 1.5rem;">${currentName.charAt(0).toUpperCase()}</span>`;
   }
+
+  updateDeveloperDashboardVisibility();
 }
 
 // ==========================================================================
@@ -12277,6 +12366,9 @@ function setupEventListeners() {
   if (typeof TasklyNotifications !== 'undefined' && typeof TasklyNotifications.initNotificationSettingsUI === 'function') {
     TasklyNotifications.initNotificationSettingsUI();
   }
+
+  // Initialize Customer Support & Developer Dashboard event listeners
+  setupSupportEventListeners();
 }
 
 // ==========================================================================
@@ -12520,6 +12612,822 @@ async function handleConfirmLogout() {
   }
 }
 
+// ==========================================================================
+// Customer Support & Developer Dashboard Operations (Stage 4)
+// ==========================================================================
+
+function isDeveloperUser() {
+  if (!state.user || !state.user.email) return false;
+  const devEmail = 'tasklypets@gmail.com';
+  return state.user.email.toLowerCase().trim() === devEmail;
+}
+
+function updateDeveloperDashboardVisibility() {
+  const menuDev = document.getElementById('menu-developer-dashboard');
+  if (menuDev) {
+    menuDev.style.display = isDeveloperUser() ? 'flex' : 'none';
+  }
+}
+
+// Format status label for customer vs developer
+function formatStatusLabel(status, isDev = false) {
+  switch (status) {
+    case 'open': return 'Open';
+    case 'in_progress': return 'In Progress';
+    case 'waiting_customer': return isDev ? 'Waiting on Customer' : 'Waiting on You';
+    case 'resolved': return 'Resolved';
+    case 'closed': return 'Closed';
+    default: return status || 'Open';
+  }
+}
+
+// 1. Customer Support Hub Modal Operations
+function openSupportModal() {
+  const modal = document.getElementById('modal-support-hub');
+  if (modal) {
+    modal.classList.add('active');
+    switchSupportSubview('tickets');
+    loadCustomerTickets();
+  }
+}
+
+function closeSupportModal() {
+  const modal = document.getElementById('modal-support-hub');
+  if (modal) modal.classList.remove('active');
+}
+
+function switchSupportSubview(subview) {
+  const subviewTickets = document.getElementById('support-subview-tickets');
+  const subviewCreate = document.getElementById('support-subview-create');
+  const subviewDetails = document.getElementById('support-subview-details');
+  const tabBtnTickets = document.getElementById('tab-btn-support-tickets');
+  const tabBtnCreate = document.getElementById('tab-btn-support-create');
+
+  if (subviewTickets) {
+    subviewTickets.style.display = subview === 'tickets' ? 'block' : 'none';
+    if (subview === 'tickets') subviewTickets.classList.add('active');
+    else subviewTickets.classList.remove('active');
+  }
+  if (subviewCreate) {
+    subviewCreate.style.display = subview === 'create' ? 'block' : 'none';
+    if (subview === 'create') subviewCreate.classList.add('active');
+    else subviewCreate.classList.remove('active');
+  }
+  if (subviewDetails) {
+    subviewDetails.style.display = subview === 'details' ? 'block' : 'none';
+    if (subview === 'details') subviewDetails.classList.add('active');
+    else subviewDetails.classList.remove('active');
+  }
+
+  if (tabBtnTickets) {
+    if (subview === 'tickets') tabBtnTickets.classList.add('active');
+    else tabBtnTickets.classList.remove('active');
+  }
+  if (tabBtnCreate) {
+    if (subview === 'create') tabBtnCreate.classList.add('active');
+    else tabBtnCreate.classList.remove('active');
+  }
+
+  if (subview === 'create') {
+    const selectCat = document.getElementById('select-ticket-category');
+    if (selectCat) {
+      const activeCat = selectCat.value || 'general';
+      document.querySelectorAll('#support-category-chips .support-chip').forEach(c => {
+        c.classList.toggle('active', c.getAttribute('data-category') === activeCat);
+      });
+    }
+    const selectPrio = document.getElementById('select-ticket-priority');
+    if (selectPrio) {
+      const activePrio = selectPrio.value || 'normal';
+      document.querySelectorAll('#support-priority-chips .support-prio-pill').forEach(p => {
+        p.classList.toggle('active', p.getAttribute('data-priority') === activePrio);
+      });
+    }
+    const bodyTa = document.getElementById('textarea-ticket-body');
+    const charCounter = document.getElementById('ticket-desc-char-count');
+    if (bodyTa && charCounter) {
+      charCounter.textContent = `${bodyTa.value.length.toLocaleString()} / 10,000`;
+    }
+  }
+}
+
+async function loadCustomerTickets() {
+  const loadingEl = document.getElementById('support-tickets-loading');
+  const listEl = document.getElementById('support-tickets-list');
+  const emptyEl = document.getElementById('support-tickets-empty');
+  const errorEl = document.getElementById('support-tickets-error');
+  const errorTextEl = document.getElementById('support-tickets-error-text');
+
+  if (loadingEl) loadingEl.style.display = 'block';
+  if (listEl) listEl.style.display = 'none';
+  if (emptyEl) emptyEl.style.display = 'none';
+  if (errorEl) errorEl.style.display = 'none';
+
+  state.support.isLoading = true;
+
+  try {
+    const tickets = await supportApiFetch('/api/support/tickets', { method: 'GET' });
+    state.support.tickets = Array.isArray(tickets) ? tickets : [];
+    state.support.error = null;
+
+    const countBadge = document.getElementById('support-my-tickets-count');
+    if (countBadge) countBadge.textContent = state.support.tickets.length;
+
+    renderCustomerTicketsList();
+  } catch (err) {
+    state.support.error = err.message;
+    if (errorTextEl) {
+      errorTextEl.textContent = err.message || 'Unable to connect to Taskly support service.';
+    }
+    if (errorEl) errorEl.style.display = 'block';
+    if (listEl) listEl.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = 'none';
+  } finally {
+    state.support.isLoading = false;
+    if (loadingEl) loadingEl.style.display = 'none';
+  }
+}
+
+function renderCustomerTicketsList() {
+  const listEl = document.getElementById('support-tickets-list');
+  const emptyEl = document.getElementById('support-tickets-empty');
+  if (!listEl) return;
+
+  const currentFilter = state.support.filter || 'all';
+  let filtered = state.support.tickets || [];
+  if (currentFilter !== 'all') {
+    filtered = filtered.filter(t => t.status === currentFilter);
+  }
+
+  if (filtered.length === 0) {
+    listEl.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+  listEl.style.display = 'block';
+
+  const catIcons = {
+    general: '💬',
+    bug: '🐛',
+    feedback: '💡',
+    account: '👤',
+    billing: '💳'
+  };
+
+  listEl.innerHTML = filtered.map(t => {
+    const statusClass = `status-${t.status || 'open'}`;
+    const statusLabel = formatStatusLabel(t.status, false);
+    const timeStr = formatTimeAgo(t.last_message_at || t.created_at);
+    const rawCat = (t.category || 'general').toLowerCase();
+    const catIcon = catIcons[rawCat] || '💬';
+    const categoryBadge = `${catIcon} ${rawCat.charAt(0).toUpperCase() + rawCat.slice(1)}`;
+    const prioLabel = (t.priority || 'normal').charAt(0).toUpperCase() + (t.priority || 'normal').slice(1);
+
+    return `
+      <div class="support-ticket-card" data-ticket-id="${escapeHtml(t.id)}" onclick="openCustomerTicketDetails('${escapeHtml(t.id)}')">
+        <div class="ticket-card-header">
+          <span class="ticket-card-code">${escapeHtml(t.ticket_code)}</span>
+          <span class="support-status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+        </div>
+        <h4 class="ticket-card-subject">${escapeHtml(t.subject)}</h4>
+        <div class="ticket-card-meta">
+          <span>${escapeHtml(categoryBadge)}</span> • 
+          <span>${escapeHtml(prioLabel)}</span> • 
+          <span>${escapeHtml(timeStr)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function openCustomerTicketDetails(ticketId) {
+  if (!ticketId) return;
+  switchSupportSubview('details');
+
+  const container = document.getElementById('support-messages-container');
+  if (container) {
+    container.innerHTML = '<div class="support-spinner"></div><p class="support-loading-text" style="text-align:center;">Loading conversation...</p>';
+  }
+
+  try {
+    const ticket = await supportApiFetch(`/api/support/tickets/${encodeURIComponent(ticketId)}`, { method: 'GET' });
+    state.support.activeTicket = ticket;
+
+    // Header info
+    const codeEl = document.getElementById('details-ticket-code');
+    const statusEl = document.getElementById('details-ticket-status');
+    const subjectEl = document.getElementById('details-ticket-subject');
+    const metaEl = document.getElementById('details-ticket-meta');
+
+    if (codeEl) codeEl.textContent = ticket.ticket_code;
+    if (statusEl) {
+      statusEl.className = `support-status-badge status-${ticket.status}`;
+      statusEl.textContent = formatStatusLabel(ticket.status, false);
+    }
+    if (subjectEl) subjectEl.textContent = ticket.subject;
+    if (metaEl) {
+      const cat = (ticket.category || 'general').charAt(0).toUpperCase() + (ticket.category || 'general').slice(1);
+      const prio = (ticket.priority || 'normal').charAt(0).toUpperCase() + (ticket.priority || 'normal').slice(1);
+      const createdFriendly = formatDateTimeFriendly(ticket.created_at);
+      metaEl.textContent = `Category: ${cat} • Priority: ${prio} • Created: ${createdFriendly}`;
+    }
+
+    // Render conversation messages
+    renderCustomerConversation(ticket.messages || []);
+
+    // Reply Box state vs Closed notice
+    const replyBox = document.getElementById('support-reply-box');
+    const closedNotice = document.getElementById('ticket-closed-notice');
+    const isClosed = ticket.status === 'closed' || ticket.status === 'resolved';
+
+    if (isClosed) {
+      if (replyBox) replyBox.style.display = 'none';
+      if (closedNotice) closedNotice.style.display = 'block';
+    } else {
+      if (replyBox) replyBox.style.display = 'block';
+      if (closedNotice) closedNotice.style.display = 'none';
+    }
+
+  } catch (err) {
+    if (container) {
+      container.innerHTML = `<div class="support-error-banner" style="text-align:center;margin:20px;">${escapeHtml(err.message)}</div>`;
+    }
+  }
+}
+
+function renderCustomerConversation(messages) {
+  const container = document.getElementById('support-messages-container');
+  if (!container) return;
+
+  if (!messages || messages.length === 0) {
+    container.innerHTML = '<p class="support-empty-desc" style="text-align:center;padding:20px;">No messages in this ticket yet.</p>';
+    return;
+  }
+
+  container.innerHTML = messages.map(m => {
+    const isDeveloper = m.sender_type === 'developer';
+    const bubbleClass = isDeveloper ? 'msg-developer' : 'msg-customer';
+    const senderTitle = isDeveloper ? 'Taskly Support' : 'You';
+    const timeStr = formatTimeAgo(m.created_at);
+    const channelTag = m.channel === 'email' ? '<span class="msg-channel-tag">✉ Email Reply</span>' : '';
+
+    return `
+      <div class="support-message-bubble ${bubbleClass}">
+        <div style="font-size:0.75rem;font-weight:700;margin-bottom:4px;display:flex;align-items:center;">
+          ${channelTag}<span>${escapeHtml(senderTitle)}</span>
+        </div>
+        <div style="white-space:pre-wrap;font-size:0.92rem;">${escapeHtml(m.body)}</div>
+        <div class="msg-bubble-footer">
+          <span>${escapeHtml(timeStr)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.scrollTop = container.scrollHeight;
+}
+
+async function submitCustomerTicket(event) {
+  if (event) event.preventDefault();
+
+  const subjectInput = document.getElementById('input-ticket-subject');
+  const categorySelect = document.getElementById('select-ticket-category');
+  const prioritySelect = document.getElementById('select-ticket-priority');
+  const bodyTextarea = document.getElementById('textarea-ticket-body');
+  const errorBanner = document.getElementById('create-ticket-error-banner');
+  const submitBtn = document.getElementById('btn-submit-ticket');
+
+  if (errorBanner) {
+    errorBanner.style.display = 'none';
+    errorBanner.textContent = '';
+  }
+
+  const subject = subjectInput ? subjectInput.value.trim() : '';
+  const category = categorySelect ? categorySelect.value : 'general';
+  const priority = prioritySelect ? prioritySelect.value : 'normal';
+  const description = bodyTextarea ? bodyTextarea.value.trim() : '';
+
+  if (!subject) {
+    if (errorBanner) { errorBanner.textContent = 'Please enter a ticket subject.'; errorBanner.style.display = 'block'; }
+    return;
+  }
+  if (!description) {
+    if (errorBanner) { errorBanner.textContent = 'Please enter a description of your issue.'; errorBanner.style.display = 'block'; }
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Submitting...</span>';
+  }
+
+  try {
+    const idempotencyKey = `cust_tkt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const data = await supportApiFetch('/api/support/tickets', {
+      method: 'POST',
+      headers: {
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify({
+        subject,
+        category,
+        priority,
+        description
+      })
+    });
+
+    // Reset inputs
+    if (subjectInput) subjectInput.value = '';
+    if (bodyTextarea) bodyTextarea.value = '';
+    if (categorySelect) categorySelect.value = 'general';
+    if (prioritySelect) prioritySelect.value = 'normal';
+    document.querySelectorAll('#support-category-chips .support-chip').forEach(c => {
+      c.classList.toggle('active', c.getAttribute('data-category') === 'general');
+    });
+    document.querySelectorAll('#support-priority-chips .support-prio-pill').forEach(p => {
+      p.classList.toggle('active', p.getAttribute('data-priority') === 'normal');
+    });
+    const charCounter = document.getElementById('ticket-desc-char-count');
+    if (charCounter) charCounter.textContent = '0 / 10,000';
+
+    // Switch to details of created ticket or back to tickets
+    await loadCustomerTickets();
+    if (data.id) {
+      openCustomerTicketDetails(data.id);
+    } else {
+      switchSupportSubview('tickets');
+    }
+  } catch (err) {
+    if (errorBanner) {
+      errorBanner.textContent = err.message || 'An error occurred while submitting your ticket.';
+      errorBanner.style.display = 'block';
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>Submit Ticket</span>';
+    }
+  }
+}
+
+async function submitCustomerTicketReply(event) {
+  if (event) event.preventDefault();
+
+  const activeTicket = state.support.activeTicket;
+  if (!activeTicket || !activeTicket.id) return;
+
+  const replyTextarea = document.getElementById('textarea-ticket-reply');
+  const errorBanner = document.getElementById('reply-ticket-error-banner');
+  const sendBtn = document.getElementById('btn-send-ticket-reply');
+
+  if (errorBanner) {
+    errorBanner.style.display = 'none';
+    errorBanner.textContent = '';
+  }
+
+  const body = replyTextarea ? replyTextarea.value.trim() : '';
+  if (!body) return;
+
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span>Sending...</span>';
+  }
+
+  try {
+    const idempotencyKey = `cust_msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    await supportApiFetch(`/api/support/tickets/${encodeURIComponent(activeTicket.id)}/messages`, {
+      method: 'POST',
+      headers: {
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify({ body })
+    });
+
+    if (replyTextarea) replyTextarea.value = '';
+    // Reload ticket details to show updated conversation and timestamps
+    await openCustomerTicketDetails(activeTicket.id);
+  } catch (err) {
+    if (errorBanner) {
+      errorBanner.textContent = err.message || 'Failed to send message.';
+      errorBanner.style.display = 'block';
+    }
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+        <span>Send Reply</span>
+      `;
+    }
+  }
+}
+
+// 2. Developer Support Dashboard Operations
+function openDeveloperDashboard() {
+  if (!isDeveloperUser()) {
+    alert('Developer access required. Only authorized Taskly administrators can access this view.');
+    return;
+  }
+
+  const modal = document.getElementById('modal-developer-dashboard');
+  if (modal) {
+    modal.classList.add('active');
+    loadDeveloperDashboardStats();
+    loadDeveloperTickets();
+  }
+}
+
+function closeDeveloperDashboard() {
+  const modal = document.getElementById('modal-developer-dashboard');
+  if (modal) modal.classList.remove('active');
+}
+
+async function loadDeveloperDashboardStats() {
+  try {
+    const data = await supportApiFetch('/api/support/developer/stats');
+    const stats = data ? data.stats : null;
+    if (stats) {
+      state.developerSupport.stats = stats;
+      const totalEl = document.getElementById('dev-metric-total');
+      const openEl = document.getElementById('dev-metric-open');
+      const waitingEl = document.getElementById('dev-metric-waiting');
+      const resolvedEl = document.getElementById('dev-metric-resolved');
+
+      if (totalEl) totalEl.textContent = stats.total || 0;
+      if (openEl) openEl.textContent = (stats.open || 0) + (stats.in_progress || 0);
+      if (waitingEl) waitingEl.textContent = stats.waiting_customer || 0;
+      if (resolvedEl) resolvedEl.textContent = stats.resolved || 0;
+    }
+  } catch (err) {
+    console.warn('[DeveloperDashboard] Error loading stats:', err);
+  }
+}
+
+async function loadDeveloperTickets() {
+  const loadingEl = document.getElementById('dev-tickets-loading');
+  const listEl = document.getElementById('dev-tickets-list');
+  const emptyEl = document.getElementById('dev-tickets-empty');
+
+  if (loadingEl) loadingEl.style.display = 'block';
+  if (listEl) listEl.style.display = 'none';
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  state.developerSupport.isLoading = true;
+
+  try {
+    const params = new URLSearchParams();
+    if (state.developerSupport.filter && state.developerSupport.filter !== 'all') {
+      params.append('status', state.developerSupport.filter);
+    }
+    if (state.developerSupport.searchQuery && state.developerSupport.searchQuery.trim()) {
+      params.append('search', state.developerSupport.searchQuery.trim());
+    }
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const data = await supportApiFetch(`/api/support/developer/tickets${queryString}`);
+    state.developerSupport.tickets = Array.isArray(data.tickets) ? data.tickets : [];
+    renderDeveloperTicketsList();
+  } catch (err) {
+    console.error('[DeveloperDashboard] Error loading tickets:', err);
+    if (emptyEl) {
+      emptyEl.textContent = err.message || 'Error loading tickets.';
+      emptyEl.style.display = 'block';
+    }
+  } finally {
+    state.developerSupport.isLoading = false;
+    if (loadingEl) loadingEl.style.display = 'none';
+  }
+}
+
+function renderDeveloperTicketsList() {
+  const listEl = document.getElementById('dev-tickets-list');
+  const emptyEl = document.getElementById('dev-tickets-empty');
+  if (!listEl) return;
+
+  const tickets = state.developerSupport.tickets || [];
+  if (tickets.length === 0) {
+    listEl.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+  listEl.style.display = 'block';
+
+  const activeId = state.developerSupport.activeTicket ? state.developerSupport.activeTicket.id : null;
+
+  listEl.innerHTML = tickets.map(t => {
+    const isActive = t.id === activeId ? 'active' : '';
+    const statusClass = `status-${t.status || 'open'}`;
+    const statusLabel = formatStatusLabel(t.status, true);
+    const timeStr = formatTimeAgo(t.last_message_at || t.created_at);
+
+    return `
+      <div class="dev-ticket-item ${isActive}" data-ticket-id="${escapeHtml(t.id)}" onclick="openDeveloperTicketWorkspace('${escapeHtml(t.id)}')">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-family:monospace;font-weight:700;color:#9333EA;font-size:0.8rem;">${escapeHtml(t.ticket_code)}</span>
+          <span class="support-status-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+        </div>
+        <div style="font-weight:700;font-size:0.88rem;color:#1E293B;margin-bottom:4px;line-height:1.25;">
+          ${escapeHtml(t.subject)}
+        </div>
+        <div style="font-size:0.75rem;color:#64748B;display:flex;justify-content:space-between;">
+          <span>${escapeHtml(t.user_email || 'Customer')}</span>
+          <span>${escapeHtml(timeStr)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function openDeveloperTicketWorkspace(ticketId) {
+  if (!ticketId) return;
+
+  const noTicketPane = document.getElementById('dev-no-ticket-selected');
+  const workspacePane = document.getElementById('dev-ticket-workspace');
+  const threadContainer = document.getElementById('dev-messages-thread');
+
+  if (noTicketPane) noTicketPane.style.display = 'none';
+  if (workspacePane) workspacePane.style.display = 'flex';
+  if (threadContainer) {
+    threadContainer.innerHTML = '<div class="support-spinner"></div><p style="text-align:center;font-size:0.85rem;color:#64748B;">Loading ticket history...</p>';
+  }
+
+  try {
+    const ticket = await supportApiFetch(`/api/support/developer/tickets/${encodeURIComponent(ticketId)}`);
+    state.developerSupport.activeTicket = ticket;
+
+    // Header info
+    const codeEl = document.getElementById('dev-ws-ticket-code');
+    const statusSelect = document.getElementById('select-dev-ticket-status');
+    const subjectEl = document.getElementById('dev-ws-subject');
+    const customerEmailEl = document.getElementById('dev-ws-customer-email');
+    const categoryEl = document.getElementById('dev-ws-category');
+    const priorityEl = document.getElementById('dev-ws-priority');
+
+    if (codeEl) codeEl.textContent = ticket.ticket_code;
+    if (statusSelect) statusSelect.value = ticket.status;
+    if (subjectEl) subjectEl.textContent = ticket.subject;
+    if (customerEmailEl) customerEmailEl.textContent = `User: ${ticket.user_email || 'Unknown'}`;
+    if (categoryEl) categoryEl.textContent = `Category: ${ticket.category || 'general'}`;
+    if (priorityEl) priorityEl.textContent = `Priority: ${ticket.priority || 'normal'}`;
+
+    // Render conversation
+    renderDeveloperConversation(ticket.messages || []);
+
+    // Re-render tickets list to highlight selected
+    renderDeveloperTicketsList();
+  } catch (err) {
+    if (threadContainer) {
+      threadContainer.innerHTML = `<p style="color:#DC2626;text-align:center;padding:20px;">${escapeHtml(err.message)}</p>`;
+    }
+  }
+}
+
+function renderDeveloperConversation(messages) {
+  const container = document.getElementById('dev-messages-thread');
+  if (!container) return;
+
+  if (!messages || messages.length === 0) {
+    container.innerHTML = '<p style="text-align:center;color:#64748B;padding:20px;">No messages in this ticket.</p>';
+    return;
+  }
+
+  container.innerHTML = messages.map(m => {
+    const isDeveloper = m.sender_type === 'developer';
+    const bubbleClass = isDeveloper ? 'msg-developer' : 'msg-customer';
+    const senderTitle = isDeveloper ? `Developer (${m.sender_email || 'Support'})` : `Customer (${m.sender_email || 'User'})`;
+    const timeStr = formatDateTimeFriendly(m.created_at);
+    const channelTag = m.channel === 'email' ? '<span class="msg-channel-tag">✉ Email Reply</span>' : '<span class="msg-channel-tag">App</span>';
+
+    return `
+      <div class="support-message-bubble ${bubbleClass}">
+        <div style="font-size:0.75rem;font-weight:700;margin-bottom:3px;opacity:0.85;">
+          ${channelTag}<span>${escapeHtml(senderTitle)}</span>
+        </div>
+        <div style="white-space:pre-wrap;">${escapeHtml(m.body)}</div>
+        <div class="msg-bubble-footer">
+          <span>${escapeHtml(timeStr)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.scrollTop = container.scrollHeight;
+}
+
+async function submitDeveloperReply(event) {
+  if (event) event.preventDefault();
+
+  const activeTicket = state.developerSupport.activeTicket;
+  if (!activeTicket || !activeTicket.id) return;
+
+  const replyTextarea = document.getElementById('textarea-dev-reply');
+  const errorBanner = document.getElementById('dev-reply-error-banner');
+  const submitBtn = document.getElementById('btn-submit-dev-reply');
+  const nextStatusRadios = document.getElementsByName('dev-reply-next-status');
+
+  let selectedStatus = 'waiting_customer';
+  for (const r of nextStatusRadios) {
+    if (r.checked) {
+      selectedStatus = r.value;
+      break;
+    }
+  }
+
+  if (errorBanner) {
+    errorBanner.style.display = 'none';
+    errorBanner.textContent = '';
+  }
+
+  const body = replyTextarea ? replyTextarea.value.trim() : '';
+  if (!body) return;
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+  }
+
+  try {
+    const data = await supportApiFetch(`/api/support/developer/tickets/${encodeURIComponent(activeTicket.id)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        body,
+        status: selectedStatus
+      })
+    });
+
+    if (replyTextarea) replyTextarea.value = '';
+    await openDeveloperTicketWorkspace(activeTicket.id);
+    await loadDeveloperDashboardStats();
+    await loadDeveloperTickets();
+  } catch (err) {
+    if (errorBanner) {
+      errorBanner.textContent = err.message || 'Failed to submit response.';
+      errorBanner.style.display = 'block';
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send Reply';
+    }
+  }
+}
+
+async function updateDeveloperTicketStatusDirectly(newStatus) {
+  const activeTicket = state.developerSupport.activeTicket;
+  if (!activeTicket || !activeTicket.id || !newStatus) return;
+
+  try {
+    await supportApiFetch(`/api/support/developer/tickets/${encodeURIComponent(activeTicket.id)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: newStatus })
+    });
+
+    await openDeveloperTicketWorkspace(activeTicket.id);
+    await loadDeveloperDashboardStats();
+    await loadDeveloperTickets();
+  } catch (err) {
+    alert(err.message || 'Failed to update ticket status');
+  }
+}
+
+function setupSupportEventListeners() {
+  // Customer Support Hub triggers
+  const menuSupport = document.getElementById('menu-support');
+  const btnCloseSupport = document.getElementById('btn-close-support-modal');
+  const modalSupport = document.getElementById('modal-support-hub');
+
+  if (menuSupport) menuSupport.addEventListener('click', openSupportModal);
+  if (btnCloseSupport) btnCloseSupport.addEventListener('click', closeSupportModal);
+  if (modalSupport) {
+    modalSupport.addEventListener('click', (e) => {
+      if (e.target === modalSupport) closeSupportModal();
+    });
+  }
+
+  // Support Tab Buttons
+  const tabBtnTickets = document.getElementById('tab-btn-support-tickets');
+  const tabBtnCreate = document.getElementById('tab-btn-support-create');
+  const btnCancelCreate = document.getElementById('btn-cancel-create-ticket');
+  const btnEmptyCreate = document.getElementById('btn-empty-create-ticket');
+  const btnBackToTickets = document.getElementById('btn-back-to-tickets');
+  const btnRetryTickets = document.getElementById('btn-retry-load-tickets');
+
+  if (tabBtnTickets) tabBtnTickets.addEventListener('click', () => switchSupportSubview('tickets'));
+  if (tabBtnCreate) tabBtnCreate.addEventListener('click', () => switchSupportSubview('create'));
+  if (btnCancelCreate) btnCancelCreate.addEventListener('click', () => switchSupportSubview('tickets'));
+  if (btnEmptyCreate) btnEmptyCreate.addEventListener('click', () => switchSupportSubview('create'));
+  if (btnBackToTickets) btnBackToTickets.addEventListener('click', () => switchSupportSubview('tickets'));
+  if (btnRetryTickets) btnRetryTickets.addEventListener('click', loadCustomerTickets);
+
+  // Status Filter Pills (Customer)
+  document.querySelectorAll('.support-filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.support-filter-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      state.support.filter = pill.getAttribute('data-filter') || 'all';
+      renderCustomerTicketsList();
+    });
+  });
+
+  // Customer Forms
+  const formCreateTicket = document.getElementById('form-create-ticket');
+  if (formCreateTicket) formCreateTicket.addEventListener('submit', submitCustomerTicket);
+
+  const formTicketReply = document.getElementById('form-ticket-reply');
+  if (formTicketReply) formTicketReply.addEventListener('submit', submitCustomerTicketReply);
+
+  // Category Chips (Customer Create Ticket)
+  const categoryChips = document.querySelectorAll('#support-category-chips .support-chip');
+  const selectCategory = document.getElementById('select-ticket-category');
+  categoryChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      categoryChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      if (selectCategory) {
+        selectCategory.value = chip.getAttribute('data-category') || 'general';
+      }
+    });
+  });
+
+  // Priority Pills (Customer Create Ticket)
+  const priorityPills = document.querySelectorAll('#support-priority-chips .support-prio-pill');
+  const selectPriority = document.getElementById('select-ticket-priority');
+  priorityPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      priorityPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      if (selectPriority) {
+        selectPriority.value = pill.getAttribute('data-priority') || 'normal';
+      }
+    });
+  });
+
+  // Character Counter (Customer Create Ticket Body)
+  const bodyTextarea = document.getElementById('textarea-ticket-body');
+  const charCounter = document.getElementById('ticket-desc-char-count');
+  if (bodyTextarea && charCounter) {
+    bodyTextarea.addEventListener('input', () => {
+      const len = bodyTextarea.value.length;
+      charCounter.textContent = `${len.toLocaleString()} / 10,000`;
+    });
+  }
+
+  // Developer Dashboard triggers
+  const menuDev = document.getElementById('menu-developer-dashboard');
+  const btnCloseDev = document.getElementById('btn-close-dev-dashboard');
+  const modalDev = document.getElementById('modal-developer-dashboard');
+
+  if (menuDev) menuDev.addEventListener('click', openDeveloperDashboard);
+  if (btnCloseDev) btnCloseDev.addEventListener('click', closeDeveloperDashboard);
+  if (modalDev) {
+    modalDev.addEventListener('click', (e) => {
+      if (e.target === modalDev) closeDeveloperDashboard();
+    });
+  }
+
+  // Developer Status Filters
+  document.querySelectorAll('.dev-filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.dev-filter-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      state.developerSupport.filter = pill.getAttribute('data-dev-filter') || 'all';
+      loadDeveloperTickets();
+    });
+  });
+
+  // Developer Search Input
+  const devSearchInput = document.getElementById('dev-ticket-search-input');
+  if (devSearchInput) {
+    let debounceTimer;
+    devSearchInput.addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        state.developerSupport.searchQuery = e.target.value;
+        loadDeveloperTickets();
+      }, 250);
+    });
+  }
+
+  // Developer Direct Status Changer Dropdown
+  const devStatusSelect = document.getElementById('select-dev-ticket-status');
+  if (devStatusSelect) {
+    devStatusSelect.addEventListener('change', (e) => {
+      updateDeveloperTicketStatusDirectly(e.target.value);
+    });
+  }
+
+  // Developer Reply Form
+  const formDevReply = document.getElementById('form-dev-reply');
+  if (formDevReply) formDevReply.addEventListener('submit', submitDeveloperReply);
+}
+
 // Utility: Escape HTML
 function escapeHtml(str) {
   if (!str) return '';
@@ -12624,6 +13532,27 @@ if (typeof module !== 'undefined' && module.exports) {
     wirePasswordToggle,
     TasklyUpdateManager,
     SmartListsManager,
+    openSupportModal,
+    closeSupportModal,
+    switchSupportSubview,
+    loadCustomerTickets,
+    renderCustomerTicketsList,
+    openCustomerTicketDetails,
+    renderCustomerConversation,
+    submitCustomerTicket,
+    submitCustomerTicketReply,
+    isDeveloperUser,
+    updateDeveloperDashboardVisibility,
+    openDeveloperDashboard,
+    closeDeveloperDashboard,
+    loadDeveloperDashboardStats,
+    loadDeveloperTickets,
+    renderDeveloperTicketsList,
+    openDeveloperTicketWorkspace,
+    renderDeveloperConversation,
+    submitDeveloperReply,
+    updateDeveloperTicketStatusDirectly,
+    setupSupportEventListeners,
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };
