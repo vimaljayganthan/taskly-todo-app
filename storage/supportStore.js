@@ -259,9 +259,16 @@ class FileSupportStorageAdapter {
       created_at: now
     });
 
-    const receivingDomain = process.env.RESEND_RECEIVING_DOMAIN || 'd893f1.resend.app';
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+    const isInboundEnabled = isProduction
+      ? process.env.SUPPORT_INBOUND_EMAIL_ENABLED === 'true'
+      : process.env.SUPPORT_INBOUND_EMAIL_ENABLED !== 'false';
+    const receivingDomain = isInboundEnabled ? (process.env.RESEND_RECEIVING_DOMAIN || (isProduction ? null : 'd893f1.resend.app')) : null;
     const devEmail = process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com';
-    const replyTo = `reply+tk_${ticketCode.toLowerCase().replace(/[^a-z0-9]/g, '')}_${routingToken}@${receivingDomain}`;
+    const replyTo = receivingDomain
+      ? `reply+tk_${ticketCode.toLowerCase().replace(/[^a-z0-9]/g, '')}_${routingToken}@${receivingDomain}`
+      : (process.env.RESEND_SENDER_EMAIL || devEmail);
     
     data.outbox.push({
       id: crypto.randomUUID(),
@@ -430,9 +437,16 @@ class FileSupportStorageAdapter {
         data.routing.push({ ticket_id: ticketId, routing_token: routingToken, created_at: now });
       }
 
-      const receivingDomain = process.env.RESEND_RECEIVING_DOMAIN || 'd893f1.resend.app';
+      const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+      const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+      const isInboundEnabled = isProduction
+        ? process.env.SUPPORT_INBOUND_EMAIL_ENABLED === 'true'
+        : process.env.SUPPORT_INBOUND_EMAIL_ENABLED !== 'false';
+      const receivingDomain = isInboundEnabled ? (process.env.RESEND_RECEIVING_DOMAIN || (isProduction ? null : 'd893f1.resend.app')) : null;
       const devEmail = process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com';
-      const replyTo = `reply+tk_${ticket.ticket_code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${routingToken}@${receivingDomain}`;
+      const replyTo = receivingDomain
+        ? `reply+tk_${ticket.ticket_code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${routingToken}@${receivingDomain}`
+        : (process.env.RESEND_SENDER_EMAIL || devEmail);
 
       data.outbox.push({
         id: crypto.randomUUID(),

@@ -7,7 +7,11 @@
  */
 
 function getOutboxConfig() {
-  const isProd = process.env.NODE_ENV === 'production';
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProd = process.env.NODE_ENV === 'production' || isVercel;
+  const inboundEmailEnabled = isProd
+    ? process.env.SUPPORT_INBOUND_EMAIL_ENABLED === 'true'
+    : process.env.SUPPORT_INBOUND_EMAIL_ENABLED !== 'false';
 
   return {
     // Resend API Credentials
@@ -16,8 +20,9 @@ function getOutboxConfig() {
     
     // Email Routing & Addresses
     senderEmail: process.env.RESEND_SENDER_EMAIL || (isProd ? 'Taskly Support <support@taskly.app>' : 'Taskly Support <onboarding@resend.dev>'),
-    receivingDomain: process.env.RESEND_RECEIVING_DOMAIN || 'd893f1.resend.app',
+    receivingDomain: process.env.RESEND_RECEIVING_DOMAIN || (isProd ? null : 'd893f1.resend.app'),
     developerEmail: process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com',
+    inboundEmailEnabled,
 
     // Worker Polling & Concurrency
     pollIntervalMs: Math.max(500, parseInt(process.env.OUTBOX_POLL_INTERVAL_MS, 10) || 5000),
@@ -35,6 +40,7 @@ function getOutboxConfig() {
 
     // Environment Flags
     isProduction: isProd,
+    isVercel,
     isTest: process.env.NODE_ENV === 'test'
   };
 }
@@ -44,16 +50,26 @@ function getOutboxConfig() {
  */
 function validateOutboxConfig(cfg = getOutboxConfig()) {
   const errors = [];
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const DISPLAY_EMAIL_REGEX = /^[^<>\r\n]+<[^\s@]+@[^\s@]+\.[^\s@]+>$/;
 
   if (cfg.isProduction) {
-    if (!cfg.resendApiKey || cfg.resendApiKey.startsWith('re_mock_')) {
+    if (!cfg.resendApiKey || cfg.resendApiKey.startsWith('re_mock_') || cfg.resendApiKey === 'mock' || cfg.resendApiKey.startsWith('mock_')) {
       errors.push('RESEND_API_KEY is required in production and must not be a mock key.');
     }
-    if (!cfg.senderEmail || !cfg.senderEmail.includes('@')) {
-      errors.push('RESEND_SENDER_EMAIL must be a valid email address.');
+    if (!cfg.senderEmail || (!EMAIL_REGEX.test(cfg.senderEmail.trim()) && !DISPLAY_EMAIL_REGEX.test(cfg.senderEmail.trim()))) {
+      errors.push('RESEND_SENDER_EMAIL must be a valid email address (e.g. support@taskly.app or Taskly Support <support@taskly.app>).');
+    } else if (cfg.senderEmail.includes('onboarding@resend.dev')) {
+      errors.push('RESEND_SENDER_EMAIL cannot use onboarding@resend.dev in production.');
     }
-    if (!cfg.receivingDomain || cfg.receivingDomain.length < 4) {
-      errors.push('RESEND_RECEIVING_DOMAIN is required in production.');
+    if (cfg.inboundEmailEnabled) {
+      if (!cfg.receivingDomain || typeof cfg.receivingDomain !== 'string' || cfg.receivingDomain.trim().length < 4 || !cfg.receivingDomain.includes('.')) {
+        errors.push('RESEND_RECEIVING_DOMAIN is required and must be a valid domain when inbound email is enabled in production.');
+      }
+    }
+  } else {
+    if (cfg.senderEmail && (!EMAIL_REGEX.test(cfg.senderEmail.trim()) && !DISPLAY_EMAIL_REGEX.test(cfg.senderEmail.trim()))) {
+      errors.push('RESEND_SENDER_EMAIL must be a valid email address format.');
     }
   }
 
@@ -82,6 +98,7 @@ function getMaskedConfig(cfg = getOutboxConfig()) {
     senderEmail: cfg.senderEmail,
     receivingDomain: cfg.receivingDomain,
     developerEmail: cfg.developerEmail,
+    inboundEmailEnabled: cfg.inboundEmailEnabled,
     pollIntervalMs: cfg.pollIntervalMs,
     batchSize: cfg.batchSize,
     leaseSeconds: cfg.leaseSeconds,
@@ -90,6 +107,7 @@ function getMaskedConfig(cfg = getOutboxConfig()) {
     maxDelaySeconds: cfg.maxDelaySeconds,
     idempotencyCutoffMinutes: cfg.idempotencyCutoffMinutes,
     isProduction: cfg.isProduction,
+    isVercel: cfg.isVercel,
     isTest: cfg.isTest
   };
 }

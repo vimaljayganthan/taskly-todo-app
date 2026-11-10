@@ -118,6 +118,7 @@ class OutboxWorker {
     } catch (err) {
       this.metrics.lastError = err.message;
       this.logger.error('Unexpected error during outbox batch execution', { error: err.message, stack: err.stack });
+      throw err;
     } finally {
       this.isProcessing = false;
     }
@@ -274,7 +275,7 @@ class OutboxWorker {
       return count;
     } catch (err) {
       this.logger.error('Error sweeping outbox ambiguous timeouts', { error: err.message });
-      return 0;
+      throw err;
     }
   }
 

@@ -42,11 +42,22 @@ class ResendEmailProvider extends EmailProvider {
     fetchFn = null
   } = {}) {
     super();
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
     const config = getOutboxConfig();
     this.apiKey = apiKey || config.resendApiKey;
     this.apiUrl = apiUrl || config.resendApiUrl;
     this.timeoutMs = timeoutMs;
     this.fetch = fetchFn || (typeof fetch === 'function' ? fetch : null);
+
+    if (isProduction) {
+      if (!this.apiKey) {
+        throw new Error('Missing Resend API key in production (RESEND_API_KEY is required).');
+      }
+      if (this.apiKey.startsWith('re_mock_') || this.apiKey === 'mock' || this.apiKey.startsWith('mock_')) {
+        throw new Error('Mock Resend API key is prohibited in production.');
+      }
+    }
 
     if (!this.fetch) {
       throw new Error('Global fetch is not available in the current Node.js runtime.');
@@ -63,8 +74,11 @@ class ResendEmailProvider extends EmailProvider {
     headers = {},
     idempotencyKey = null
   }) {
-    if (!this.apiKey) {
-      const err = new Error('Resend API key is missing. Set RESEND_API_KEY in environment.');
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+    if (!this.apiKey || (isProduction && (this.apiKey.startsWith('re_mock_') || this.apiKey === 'mock' || this.apiKey.startsWith('mock_')))) {
+      const err = new Error('Resend API key is missing or invalid. Set a valid RESEND_API_KEY in environment.');
       err.statusCode = 401;
       err.isRetryable = false;
       throw err;
@@ -189,6 +203,11 @@ class ResendEmailProvider extends EmailProvider {
 class MockEmailProvider extends EmailProvider {
   constructor() {
     super();
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+    if (isProduction) {
+      throw new Error('MockEmailProvider cannot be used in production or Vercel deployments.');
+    }
     this.sentEmails = [];
     this.mockErrorQueue = [];
     this.delayMs = 0;
@@ -249,6 +268,34 @@ class MockEmailProvider extends EmailProvider {
 let activeProvider = null;
 
 function getEmailProvider(options = {}) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+  if (isProduction) {
+    if (options.forceMock) {
+      throw new Error('forceMock is strictly prohibited in production.');
+    }
+    if (activeProvider) {
+      if (activeProvider instanceof MockEmailProvider) {
+        throw new Error('MockEmailProvider is strictly prohibited in production.');
+      }
+      return activeProvider;
+    }
+
+    const config = getOutboxConfig();
+    const apiKey = options.apiKey || config.resendApiKey;
+
+    if (!apiKey) {
+      throw new Error('Missing Resend API key in production (RESEND_API_KEY is required).');
+    }
+    if (apiKey.startsWith('re_mock_') || apiKey === 'mock' || apiKey.startsWith('mock_')) {
+      throw new Error('Mock Resend API key is prohibited in production.');
+    }
+
+    return new ResendEmailProvider(options);
+  }
+
+  // Development and test environments:
   if (activeProvider) {
     return activeProvider;
   }

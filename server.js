@@ -1422,10 +1422,12 @@ app.patch('/api/support/developer/tickets/:id/status', async (req, res, next) =>
 // Internal Outbox Operations & Health Monitoring Endpoints
 // ==========================================================================
 function requireInternalCronAuth(req, res, next) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
   const cronSecret = process.env.CRON_SECRET;
   const providedAuth = req.headers['authorization'] || req.headers['x-cron-secret'];
   
-  if (!cronSecret && process.env.NODE_ENV !== 'production') {
+  if (!cronSecret && !isProduction) {
     return next(); // Allow in non-production local development
   }
 
@@ -1455,7 +1457,11 @@ app.post('/api/internal/support/outbox/process', requireInternalCronAuth, async 
     const result = await worker.processBatch();
     res.json({ success: true, ...result });
   } catch (err) {
-    next(err);
+    console.error('[OutboxProcess] Error processing outbox batch:', err);
+    res.status(err.statusCode || err.status || 500).json({
+      success: false,
+      error: err.message || 'Failed to process outbox batch'
+    });
   }
 });
 
@@ -1467,7 +1473,11 @@ app.post('/api/internal/support/outbox/sweep', requireInternalCronAuth, async (r
     const swept = await worker.sweepTimeouts();
     res.json({ success: true, sweptTimeouts: swept });
   } catch (err) {
-    next(err);
+    console.error('[OutboxSweep] Error sweeping outbox timeouts:', err);
+    res.status(err.statusCode || err.status || 500).json({
+      success: false,
+      error: err.message || 'Failed to sweep outbox timeouts'
+    });
   }
 });
 
@@ -1479,7 +1489,11 @@ app.get('/api/internal/support/outbox/metrics', requireInternalCronAuth, async (
     const metrics = await store.getMetrics();
     res.json({ success: true, queue: metrics });
   } catch (err) {
-    next(err);
+    console.error('[OutboxMetrics] Error fetching outbox metrics:', err);
+    res.status(err.statusCode || err.status || 500).json({
+      success: false,
+      error: err.message || 'Failed to fetch outbox metrics'
+    });
   }
 });
 

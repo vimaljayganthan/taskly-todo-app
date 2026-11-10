@@ -24,6 +24,11 @@ function getDataFile() {
 // ==============================================================================
 class FileOutboxStore {
   constructor(filePath) {
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+    if (isProduction) {
+      throw new Error('FileOutboxStore cannot be used in production or Vercel deployments.');
+    }
     this.filePath = filePath || getDataFile();
     this._lock = Promise.resolve();
     this.init();
@@ -619,15 +624,47 @@ class SupabaseOutboxStore {
 let activeOutboxStore = null;
 
 function getOutboxStore() {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+  // In production or Vercel deployments:
+  if (isProduction) {
+    if (activeOutboxStore) {
+      if (activeOutboxStore instanceof FileOutboxStore) {
+        throw new Error('FileOutboxStore is strictly prohibited in production.');
+      }
+      return activeOutboxStore;
+    }
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl && !serviceKey) {
+      throw new Error('Missing Supabase configuration in production (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required).');
+    }
+    if (!supabaseUrl) {
+      throw new Error('Missing Supabase configuration in production (SUPABASE_URL is required).');
+    }
+    if (!serviceKey) {
+      throw new Error('Missing Supabase configuration in production (SUPABASE_SERVICE_ROLE_KEY is required).');
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const serviceClient = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false }
+    });
+    return new SupabaseOutboxStore(serviceClient);
+  }
+
+  // Development and test environments:
   if (activeOutboxStore) {
     return activeOutboxStore;
   }
 
-  const isProduction = process.env.NODE_ENV === 'production';
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (isProduction && supabaseUrl && serviceKey) {
+  if (supabaseUrl && serviceKey && !serviceKey.startsWith('mock-')) {
     const { createClient } = require('@supabase/supabase-js');
     const serviceClient = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false }

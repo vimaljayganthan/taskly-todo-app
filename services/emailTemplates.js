@@ -20,10 +20,15 @@ function escapeHtml(str) {
  * Builds the unguessable reply-to address using the ticket code and routing token
  * Format: reply+tk_<cleancode>_<routingtoken>@<receivingdomain>
  */
-function buildReplyToAddress(ticketCode, routingToken, receivingDomain = 'd893f1.resend.app') {
+function buildReplyToAddress(ticketCode, routingToken, receivingDomain = null) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+  const domain = String(receivingDomain || process.env.RESEND_RECEIVING_DOMAIN || (isProduction ? '' : 'd893f1.resend.app')).trim();
+  if (!domain) {
+    throw new Error('Missing RESEND_RECEIVING_DOMAIN for generating reply-to address.');
+  }
   const cleanCode = String(ticketCode || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const cleanToken = String(routingToken || '').toLowerCase().trim();
-  const domain = String(receivingDomain || 'd893f1.resend.app').trim();
   return `reply+tk_${cleanCode}_${cleanToken}@${domain}`;
 }
 
@@ -34,7 +39,7 @@ function formatNewTicketNotification({
   ticket,
   initialMessage,
   routingToken,
-  receivingDomain = 'd893f1.resend.app'
+  receivingDomain = null
 }) {
   const replyTo = buildReplyToAddress(ticket.ticket_code, routingToken, receivingDomain);
   const subject = `[Ticket #${ticket.ticket_code}] ${ticket.subject}`;
@@ -106,7 +111,7 @@ function formatNewMessageNotification({
   ticket,
   message,
   routingToken,
-  receivingDomain = 'd893f1.resend.app'
+  receivingDomain = null
 }) {
   const replyTo = buildReplyToAddress(ticket.ticket_code, routingToken, receivingDomain);
   const subject = `Re: [Ticket #${ticket.ticket_code}] ${ticket.subject}`;

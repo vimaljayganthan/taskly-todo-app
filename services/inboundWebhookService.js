@@ -53,6 +53,20 @@ function checkAuthHeaders(headers = {}) {
  */
 async function handleInboundWebhook(req, res, next) {
   try {
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+    const isInboundEnabled = isProduction
+      ? process.env.SUPPORT_INBOUND_EMAIL_ENABLED === 'true'
+      : process.env.SUPPORT_INBOUND_EMAIL_ENABLED !== 'false';
+
+    if (!isInboundEnabled) {
+      return res.status(503).json({
+        error: 'Inbound email processing is disabled',
+        code: 'INBOUND_EMAIL_DISABLED',
+        disabled: true
+      });
+    }
+
     // 1. Verify Svix cryptographic signature using raw body
     const rawBody = req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
     const svixResult = verifySvixHeaders({
