@@ -1,6 +1,6 @@
 name: Taskly Customer Support - Zero-Cost Outbox Worker
 
-on:
+'on':
   schedule:
     # Trigger every 30 minutes (well within GitHub Actions free runner quota)
     - cron: '*/30 * * * *'
@@ -23,33 +23,58 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Trigger Outbox Processing Endpoint
+      - name: Execute Outbox Operation
         env:
           APP_URL: ${{ secrets.APP_URL || 'https://taskly-todo-app-4z1c.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ACTION: ${{ github.event.inputs.action || 'process' }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "::warning ::CRON_SECRET is not configured in repository secrets. Skipping outbox run."
-            exit 0
-          fi
-
-          ENDPOINT="/api/internal/support/outbox/$ACTION"
-          echo "Triggering $APP_URL$ENDPOINT..."
-          
-          HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
-            -X POST "$APP_URL$ENDPOINT" \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json")
-
-          echo "HTTP Status Code: $HTTP_STATUS"
-          cat /tmp/response.json
-          echo ""
-
-          if [ "$HTTP_STATUS" -ne 200 ]; then
-            echo "::error ::Failed to trigger outbox worker: HTTP $HTTP_STATUS"
+            echo "::error ::CRON_SECRET is not configured in repository secrets. Outbox operation aborted."
             exit 1
           fi
 
-          echo "Outbox worker triggered successfully."
+          case "$ACTION" in
+            process)
+              ENDPOINT="/api/internal/support/outbox/process"
+              HTTP_METHOD="POST"
+              ;;
+            sweep)
+              ENDPOINT="/api/internal/support/outbox/sweep"
+              HTTP_METHOD="POST"
+              ;;
+            metrics)
+              ENDPOINT="/api/internal/support/outbox/metrics"
+              HTTP_METHOD="GET"
+              ;;
+            *)
+              echo "::error ::Unsupported action: $ACTION"
+              exit 1
+              ;;
+          esac
 
+          echo "Executing $HTTP_METHOD on $APP_URL$ENDPOINT..."
+
+          if [ "$HTTP_METHOD" = "POST" ]; then
+            HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+              -X POST "$APP_URL$ENDPOINT" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              -H "Content-Type: application/json")
+          else
+            HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+              -X GET "$APP_URL$ENDPOINT" \
+              -H "Authorization: Bearer $CRON_SECRET")
+          fi
+
+          echo "HTTP Status Code: $HTTP_STATUS"
+          if [ -f /tmp/response.json ]; then
+            cat /tmp/response.json
+            echo ""
+          fi
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "::error ::Operation '$ACTION' failed with HTTP status $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "Operation '$ACTION' completed successfully (HTTP $HTTP_STATUS)."
