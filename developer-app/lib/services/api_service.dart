@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -574,6 +575,53 @@ class ApiService {
       return TicketMessage.fromJson(noteData);
     }
     throw _mapError(response, 'Failed to add internal note');
+  }
+
+  /// Register developer FCM device token on production backend
+  Future<void> registerDeviceToken({
+    required String fcmToken,
+    String appType = 'developer',
+    String devicePlatform = 'android',
+  }) async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return;
+    final baseUrl = await getServerUrl();
+    final url = Uri.parse('$baseUrl/api/notifications/tokens');
+
+    final response = await _safePost(
+      url,
+      headers: _headers(token),
+      body: json.encode({
+        'fcm_token': fcmToken,
+        'app_type': appType,
+        'device_platform': devicePlatform,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      debugPrint('[ApiService] registerDeviceToken returned ${response.statusCode}: ${response.body}');
+    }
+  }
+
+  /// Deactivate developer FCM device token on logout
+  Future<void> deactivateDeviceToken(String fcmToken) async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return;
+    final baseUrl = await getServerUrl();
+    final url = Uri.parse('$baseUrl/api/notifications/tokens');
+
+    try {
+      final response = await httpClient.delete(
+        url,
+        headers: _headers(token),
+        body: json.encode({'fcm_token': fcmToken}),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        debugPrint('[ApiService] deactivateDeviceToken returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[ApiService] deactivateDeviceToken warning: $e');
+    }
   }
 
   // --- Network Helpers ---

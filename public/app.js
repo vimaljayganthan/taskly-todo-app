@@ -3058,46 +3058,106 @@ const TasklyPushNotifications = {
     const token = tokenOverride || this.cachedToken;
     if (!token) return;
 
-    if (!supabaseClient || !state.user || !state.user.id || !state.userToken) {
+    if (!state.user || !state.user.id || !state.userToken) {
       return;
     }
 
-    try {
-      const { error } = await supabaseClient
-        .from('user_device_tokens')
-        .upsert({
-          user_id: state.user.id,
-          device_token: token,
-          app_type: 'customer',
-          platform: 'android',
-          is_active: true,
-          last_seen_at: new Date().toISOString()
-        }, {
-          onConflict: 'device_token'
-        });
+    const userEmail = (state.user.email || '').toLowerCase().trim();
+    const authToken = state.userToken;
 
-      if (error) {
-        console.warn('[PushNotifications] Supabase token sync error:', error.message);
+    // 1. Prefer authenticated backend token-registration endpoint
+    try {
+      const apiUrl = getApiBaseUrl();
+      const res = await fetch(`${apiUrl}/api/notifications/tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          fcm_token: token,
+          app_type: 'customer',
+          device_platform: 'android'
+        })
+      });
+      if (res.ok) {
+        console.log('[PushNotifications] Customer FCM token registered via backend API');
       } else {
-        console.log('[PushNotifications] Customer FCM token synced to Supabase user_device_tokens');
+        console.warn('[PushNotifications] Backend API token registration status:', res.status);
       }
-    } catch (err) {
-      console.warn('[PushNotifications] Failed to sync device token:', err?.message);
+    } catch (apiErr) {
+      console.warn('[PushNotifications] Backend API token registration error:', apiErr?.message);
+    }
+
+    // 2. Direct Supabase sync using canonical schema as redundancy
+    if (supabaseClient && userEmail) {
+      try {
+        const { error } = await supabaseClient
+          .from('user_device_tokens')
+          .upsert({
+            user_id: state.user.id,
+            user_email: userEmail,
+            fcm_token: token,
+            app_type: 'customer',
+            device_platform: 'android',
+            is_active: true,
+            last_seen_at: new Date().toISOString()
+          }, {
+            onConflict: 'fcm_token'
+          });
+
+        if (error) {
+          console.warn('[PushNotifications] Supabase token sync error:', error.message);
+        } else {
+          console.log('[PushNotifications] Customer FCM token synced to Supabase user_device_tokens');
+        }
+      } catch (err) {
+        console.warn('[PushNotifications] Failed to sync device token to Supabase:', err?.message);
+      }
     }
   },
 
   async deactivateToken() {
     const token = this.cachedToken;
-    if (!token || !supabaseClient || !state.user?.id) return;
-    try {
-      await supabaseClient
-        .from('user_device_tokens')
-        .update({ is_active: false, last_seen_at: new Date().toISOString() })
-        .eq('device_token', token)
-        .eq('user_id', state.user.id);
-      console.log('[PushNotifications] Customer FCM token deactivated on sign-out');
-    } catch (err) {
-      console.warn('[PushNotifications] Failed to deactivate token:', err?.message);
+    const authToken = (typeof state !== 'undefined' && state.userToken) ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('taskly_user_token')) ||
+      null;
+    const userId = (typeof state !== 'undefined' && state.user?.id) || null;
+
+    if (!token) return;
+
+    // 1. Deactivate via backend API
+    if (authToken) {
+      try {
+        const apiUrl = getApiBaseUrl();
+        await fetch(`${apiUrl}/api/notifications/tokens`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            fcm_token: token
+          })
+        });
+        console.log('[PushNotifications] Customer FCM token deactivated via backend API');
+      } catch (apiErr) {
+        console.warn('[PushNotifications] Backend API token deactivation warning:', apiErr?.message);
+      }
+    }
+
+    // 2. Deactivate in Supabase directly
+    if (supabaseClient && userId) {
+      try {
+        await supabaseClient
+          .from('user_device_tokens')
+          .update({ is_active: false, last_seen_at: new Date().toISOString() })
+          .eq('fcm_token', token)
+          .eq('user_id', userId);
+        console.log('[PushNotifications] Customer FCM token deactivated on sign-out in Supabase');
+      } catch (err) {
+        console.warn('[PushNotifications] Failed to deactivate token in Supabase:', err?.message);
+      }
     }
   }
 };

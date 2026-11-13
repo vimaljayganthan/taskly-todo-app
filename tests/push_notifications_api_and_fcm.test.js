@@ -139,6 +139,86 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
       const json = await res.json();
       assert.ok(json.error.includes("app_type must be either 'customer' or 'developer'"));
     });
+
+    it('1.6 Rejects invalid or empty canonical fcm_token with 400 Bad Request', async () => {
+      const res = await fetch(`${baseUrl}/api/notifications/tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${customerToken}`
+        },
+        body: JSON.stringify({
+          fcm_token: '   ',
+          device_platform: 'android',
+          app_type: 'customer'
+        })
+      });
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.ok(json.error.includes('fcm_token'));
+    });
+
+    it('1.7 Rejects fcm_token exceeding maximum length with 400 Bad Request', async () => {
+      const res = await fetch(`${baseUrl}/api/notifications/tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${customerToken}`
+        },
+        body: JSON.stringify({
+          fcm_token: 'a'.repeat(501),
+          device_platform: 'android',
+          app_type: 'customer'
+        })
+      });
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.ok(json.error.includes('exceeds maximum length of 500 characters'));
+    });
+
+    it('1.8 Strictly isolates user identity: ignores spoofed user_email in body and rejects developer registration (403)', async () => {
+      const res = await fetch(`${baseUrl}/api/notifications/tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${customerToken}`
+        },
+        body: JSON.stringify({
+          fcm_token: 'fcm-spoof-attempt-token',
+          user_email: 'tasklypets@gmail.com', // Client attempts to pass developer email in body
+          app_type: 'developer',
+          device_platform: 'android'
+        })
+      });
+      assert.strictEqual(res.status, 403);
+      const json = await res.json();
+      assert.ok(json.error.includes('Forbidden: only authorized developer account may register developer device tokens'));
+    });
+
+    it('1.9 Rejects unauthenticated DELETE /api/notifications/tokens with 401', async () => {
+      const res = await fetch(`${baseUrl}/api/notifications/tokens`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fcm_token: 'tok-to-delete' })
+      });
+      assert.strictEqual(res.status, 401);
+      const json = await res.json();
+      assert.ok(json.error.includes('Unauthorized'));
+    });
+
+    it('1.10 Rejects DELETE /api/notifications/tokens with missing fcm_token with 400 Bad Request', async () => {
+      const res = await fetch(`${baseUrl}/api/notifications/tokens`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${customerToken}`
+        },
+        body: JSON.stringify({ fcm_token: '   ' })
+      });
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.ok(json.error.includes('fcm_token / device_token is required'));
+    });
   });
 
   describe('2. Internal Outbox Processing Security (CRON_SECRET Protection)', () => {

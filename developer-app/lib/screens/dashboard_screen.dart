@@ -4,6 +4,7 @@ import '../constants.dart';
 import '../models/dashboard_stats.dart';
 import '../models/ticket.dart';
 import '../services/api_service.dart';
+import '../services/push_notification_service.dart';
 import 'login_screen.dart';
 import 'ticket_detail_screen.dart';
 
@@ -107,6 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (confirm == true) {
+      await DeveloperPushNotificationService().deactivateToken();
       await ApiService().signOut();
       if (!mounted) return;
       setState(() {

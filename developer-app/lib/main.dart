@@ -35,6 +35,7 @@ class TasklyDeveloperApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: developerNavigatorKey,
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

@@ -1630,13 +1630,14 @@ function getServiceSupabaseClient() {
 // POST /api/notifications/tokens - Register or refresh device push token
 app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) => {
   try {
-    const { device_token, app_type, platform } = req.body || {};
-    if (!device_token || typeof device_token !== 'string' || !device_token.trim()) {
-      return res.status(400).json({ error: 'device_token is required and must not be empty' });
+    const { device_token, token, fcm_token, app_type, platform, device_platform, device_model, app_version } = req.body || {};
+    const rawToken = fcm_token || device_token || token;
+    if (!rawToken || typeof rawToken !== 'string' || !rawToken.trim()) {
+      return res.status(400).json({ error: 'fcm_token / device_token is required and must not be empty' });
     }
-    const cleanToken = device_token.trim();
+    const cleanToken = rawToken.trim();
     if (cleanToken.length > 500) {
-      return res.status(400).json({ error: 'device_token exceeds maximum length of 500 characters' });
+      return res.status(400).json({ error: 'fcm_token exceeds maximum length of 500 characters' });
     }
 
     const cleanAppType = (app_type || 'customer').trim().toLowerCase();
@@ -1644,11 +1645,15 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       return res.status(400).json({ error: "app_type must be either 'customer' or 'developer'" });
     }
 
+    const userEmail = (req.user?.email || '').toLowerCase().trim();
+    if (!userEmail) {
+      return res.status(400).json({ error: 'User email is required from authenticated session' });
+    }
+
     // Strict App Type & Role Isolation:
     // Only authorized single-admin (tasklypets@gmail.com) may register developer device tokens
     if (cleanAppType === 'developer') {
       const authorizedAdminEmail = (process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com').toLowerCase().trim();
-      const userEmail = (req.user?.email || '').toLowerCase().trim();
       if (userEmail !== authorizedAdminEmail) {
         return res.status(403).json({
           error: 'Forbidden: only authorized developer account may register developer device tokens'
@@ -1656,8 +1661,8 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       }
     }
 
-    const cleanPlatform = ['android', 'ios', 'web'].includes((platform || '').toLowerCase().trim())
-      ? (platform || '').toLowerCase().trim()
+    const cleanPlatform = ['android', 'ios', 'web'].includes((device_platform || platform || '').toLowerCase().trim())
+      ? (device_platform || platform || '').toLowerCase().trim()
       : 'android';
 
     const client = getServiceSupabaseClient();
@@ -1665,15 +1670,18 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       .from('user_device_tokens')
       .upsert({
         user_id: req.user.id,
-        device_token: cleanToken,
+        user_email: userEmail,
+        fcm_token: cleanToken,
         app_type: cleanAppType,
-        platform: cleanPlatform,
+        device_platform: cleanPlatform,
+        device_model: (device_model && typeof device_model === 'string') ? device_model.trim().slice(0, 128) : null,
+        app_version: (app_version && typeof app_version === 'string') ? app_version.trim().slice(0, 32) : null,
         is_active: true,
         last_seen_at: new Date().toISOString()
       }, {
-        onConflict: 'device_token'
+        onConflict: 'fcm_token'
       })
-      .select('id, user_id, device_token, app_type, platform, is_active, last_seen_at')
+      .select('id, user_id, user_email, fcm_token, app_type, device_platform, is_active, last_seen_at')
       .single();
 
     if (error) {
@@ -1681,7 +1689,14 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       return res.status(500).json({ error: 'Failed to register device token' });
     }
 
-    res.status(200).json({ success: true, token: data });
+    res.status(200).json({
+      success: true,
+      token: {
+        ...data,
+        device_token: data.fcm_token,
+        platform: data.device_platform
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -1690,9 +1705,10 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
 // DELETE /api/notifications/tokens - Deactivate device token on sign out
 app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next) => {
   try {
-    const { device_token } = req.body || {};
-    if (!device_token || typeof device_token !== 'string') {
-      return res.status(400).json({ error: 'device_token is required' });
+    const { device_token, token, fcm_token } = req.body || {};
+    const rawToken = fcm_token || device_token || token;
+    if (!rawToken || typeof rawToken !== 'string' || !rawToken.trim()) {
+      return res.status(400).json({ error: 'fcm_token / device_token is required' });
     }
 
     const client = getServiceSupabaseClient();
@@ -1702,7 +1718,7 @@ app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next)
         is_active: false,
         last_seen_at: new Date().toISOString()
       })
-      .eq('device_token', device_token.trim())
+      .eq('fcm_token', rawToken.trim())
       .eq('user_id', req.user.id);
 
     if (error) {
