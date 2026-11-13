@@ -763,12 +763,18 @@ function syncAuthSession(session) {
   updatePreviewUI();
   renderProfile();
   fetchTodos();
+  if (typeof TasklyPushNotifications !== 'undefined' && typeof TasklyPushNotifications.syncTokenToSupabase === 'function') {
+    TasklyPushNotifications.syncTokenToSupabase();
+  }
   if (typeof SmartListsManager !== 'undefined') {
     SmartListsManager.syncAll().catch(err => console.warn('[SmartLists] Session sync error:', err));
   }
 }
 
 function syncAuthSignOut() {
+  if (typeof TasklyPushNotifications !== 'undefined' && typeof TasklyPushNotifications.deactivateToken === 'function') {
+    TasklyPushNotifications.deactivateToken();
+  }
   state.userToken = null;
   state.isPreviewSession = false;
   state.todos = [];
@@ -834,6 +840,9 @@ if (typeof document !== 'undefined') {
     initialRouteFastSync();
 
     await TasklyNotifications.init();
+    if (typeof TasklyPushNotifications !== 'undefined' && typeof TasklyPushNotifications.init === 'function') {
+      await TasklyPushNotifications.init();
+    }
     await TasklyUpdateManager.init();
     renderQuickNotes();
     await initSupabaseAuth();
@@ -2937,6 +2946,159 @@ const TasklyNotifications = {
     if (typeof document === 'undefined') return;
     const modal = document.getElementById('modal-notifications');
     if (modal) modal.classList.remove('active');
+  }
+};
+
+// ==========================================================================
+// Taskly Push Notifications (Capacitor FCM & Support Tickets Channel)
+// ==========================================================================
+const TasklyPushNotifications = {
+  SUPPORT_CHANNEL_ID: 'taskly-support-tickets-v1',
+  NOTIFICATION_SOUND: 'taskly_meow.wav',
+  cachedToken: null,
+
+  isNative() {
+    return Boolean(
+      typeof window !== 'undefined' &&
+      (window.Capacitor?.isNativePlatform?.() ||
+       window.Capacitor?.getPlatform?.() === 'android' ||
+       window.Capacitor?.getPlatform?.() === 'ios') &&
+      window.Capacitor?.Plugins?.PushNotifications
+    );
+  },
+
+  getPlugin() {
+    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.PushNotifications) {
+      return window.Capacitor.Plugins.PushNotifications;
+    }
+    return null;
+  },
+
+  async init() {
+    const plugin = this.getPlugin();
+    if (!plugin) return;
+
+    try {
+      // 1. Create dedicated channel for support tickets and announcements
+      if (typeof plugin.createChannel === 'function') {
+        await plugin.createChannel({
+          id: this.SUPPORT_CHANNEL_ID,
+          name: 'Taskly Support & Updates',
+          description: 'Support ticket replies, status updates, and announcement notifications',
+          importance: 5,
+          visibility: 1,
+          sound: this.NOTIFICATION_SOUND,
+          vibration: true,
+          lights: true,
+          lightColor: '#2563EB'
+        }).catch(err => console.warn('[PushNotifications] createChannel warning:', err));
+      }
+
+      // 2. Request permissions on Android 13+
+      let permStatus = await plugin.checkPermissions().catch(() => ({ receive: 'prompt' }));
+      if (permStatus.receive !== 'granted') {
+        permStatus = await plugin.requestPermissions().catch(err => {
+          console.warn('[PushNotifications] requestPermissions warning:', err);
+          return { receive: 'denied' };
+        });
+      }
+
+      if (permStatus.receive === 'granted') {
+        // 3. Register device with FCM
+        await plugin.register().catch(err => console.warn('[PushNotifications] register warning:', err));
+      }
+
+      // 4. Registration listener
+      plugin.addListener('registration', async (token) => {
+        if (!token || !token.value) return;
+        this.cachedToken = token.value;
+        console.log('[PushNotifications] Device registered with FCM token');
+        await this.syncTokenToSupabase(token.value);
+      });
+
+      // 5. Error listener
+      plugin.addListener('registrationError', (error) => {
+        console.warn('[PushNotifications] FCM registration error:', error);
+      });
+
+      // 6. Push notification received in foreground
+      plugin.addListener('pushNotificationReceived', (notification) => {
+        console.log('[PushNotifications] Foreground push received:', notification);
+        if (typeof TasklyNotifications !== 'undefined' && typeof TasklyNotifications.addInAppNotification === 'function') {
+          TasklyNotifications.addInAppNotification({
+            title: notification.title || 'Taskly Support Update',
+            headline: notification.title || 'Taskly Support Update',
+            description: notification.body || '',
+            type: notification.data?.notification_type || 'task_deadline',
+            largeIcon: 'notif_cat_created',
+            sourceId: notification.data?.ticket_id || 'push',
+            sourceType: 'support_ticket',
+            playSound: false
+          });
+        }
+      });
+
+      // 7. Push notification action performed (tap)
+      plugin.addListener('pushNotificationActionPerformed', (action) => {
+        console.log('[PushNotifications] Notification action performed:', action);
+        const data = action.notification?.data || {};
+        const ticketId = data.ticket_id || data.ticketId;
+        if (ticketId && typeof handleOpenSupportTicketDetails === 'function') {
+          handleOpenSupportTicketDetails(ticketId);
+        } else if (typeof TasklyNotifications !== 'undefined' && typeof TasklyNotifications.openModal === 'function') {
+          TasklyNotifications.openModal();
+        }
+      });
+    } catch (err) {
+      console.warn('[PushNotifications] Initialization error:', err);
+    }
+  },
+
+  async syncTokenToSupabase(tokenOverride) {
+    const token = tokenOverride || this.cachedToken;
+    if (!token) return;
+
+    if (!supabaseClient || !state.user || !state.user.id || !state.userToken) {
+      return;
+    }
+
+    try {
+      const { error } = await supabaseClient
+        .from('user_device_tokens')
+        .upsert({
+          user_id: state.user.id,
+          device_token: token,
+          app_type: 'customer',
+          platform: 'android',
+          is_active: true,
+          last_seen_at: new Date().toISOString()
+        }, {
+          onConflict: 'device_token'
+        });
+
+      if (error) {
+        console.warn('[PushNotifications] Supabase token sync error:', error.message);
+      } else {
+        console.log('[PushNotifications] Customer FCM token synced to Supabase user_device_tokens');
+      }
+    } catch (err) {
+      console.warn('[PushNotifications] Failed to sync device token:', err?.message);
+    }
+  },
+
+  async deactivateToken() {
+    const token = this.cachedToken;
+    if (!token || !supabaseClient || !state.user?.id) return;
+    try {
+      await supabaseClient
+        .from('user_device_tokens')
+        .update({ is_active: false, last_seen_at: new Date().toISOString() })
+        .eq('device_token', token)
+        .eq('user_id', state.user.id);
+      console.log('[PushNotifications] Customer FCM token deactivated on sign-out');
+    } catch (err) {
+      console.warn('[PushNotifications] Failed to deactivate token:', err?.message);
+    }
   }
 };
 
@@ -6267,8 +6429,12 @@ const TasklyUpdateManager = {
   config: {
     primaryManifestUrl: 'https://raw.githubusercontent.com/vimaljayganthan/taskly-todo-app/main/releases/version-manifest.json',
     localFallbackUrl: '/version-manifest.json',
+    previewManifestUrl: '/preview-manifest.json',
+    productionHost: 'taskly-todo-app-4z1c.vercel.app',
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
+    previewVersionName: '2.2.0',
+    previewVersionCode: 140,
     expectedPackageName: 'com.taskly.app',
     autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
     storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
@@ -6277,8 +6443,11 @@ const TasklyUpdateManager = {
   state: {
     installedVersionName: '1.5.0',
     installedVersionCode: 6,
+    previewVersionName: '2.2.0',
+    previewVersionCode: 140,
     isNative: false,
     platform: 'web',
+    deploymentEnvironment: 'production_web',
     latestVersionName: null,
     latestVersionCode: null,
     updateStatus: 'idle', // 'idle' | 'checking' | 'up_to_date' | 'update_available' | 'downloading' | 'installing' | 'error'
@@ -6534,11 +6703,47 @@ const TasklyUpdateManager = {
     isLocalInstalled: true
   },
 
+  // Locally bundled preview release entry for Taskly v2.2.0 Build 14
+  localPreviewRelease: {
+    version: '2.2.0',
+    versionName: '2.2.0',
+    versionCode: 140,
+    displayBuild: '14',
+    buildLabel: 'Build 14',
+    releaseDate: '2026-11-10',
+    releaseStage: 'preview',
+    title: 'Taskly v2.2.0 (Build 14) – Customer Support System',
+    summary: 'In-app Customer Support Hub, Developer Dashboard, transactional outbox processing, and Svix-verified inbound email replies.',
+    features: [
+      'In-app Customer Support Hub in Profile with ticket creation, categories, and conversation history',
+      'Developer Support Dashboard for authorized accounts (tasklypets@gmail.com) with search and status management',
+      'Transactional PostgreSQL outbox for reliable background email delivery',
+      'Cryptographic Svix webhook signature verification for inbound email replies',
+      'Strict Row-Level Security isolation across all 10 customer support tables'
+    ],
+    improvements: [
+      'Updated profile menu entry points for support access',
+      'Idempotency keys on ticket and message submissions to prevent duplicate writes'
+    ],
+    performance: [],
+    fixes: [],
+    security: [
+      'Anti-spoofing user token binding on all support API endpoints',
+      'Timing-safe HMAC-SHA256 signature verification guarding inbound webhooks'
+    ],
+    apkDownloadUrl: null,
+    fileSize: null,
+    fileSizeBytes: null,
+    sha256: null,
+    isLocalPreview: true
+  },
+
   formatBuildNumber(code, rel) {
     if (rel && (rel.displayBuild || rel.buildLabel)) {
       return rel.displayBuild || rel.buildLabel.replace(/^Build\s+/i, '');
     }
     const num = parseInt(code, 10);
+    if (num === 140) return '14';
     if (num === 121) return '12.1';
     return String(code != null ? code : '');
   },
@@ -6567,35 +6772,127 @@ const TasklyUpdateManager = {
     this.updateProfileBadge();
   },
 
+  detectDeploymentEnvironment() {
+    if (typeof window === 'undefined' || !window.location || !window.location.hostname) {
+      if (global.__TEST_FORCE_ENV__) return global.__TEST_FORCE_ENV__;
+      return 'node_test';
+    }
+
+    // 1. Native Android Mobile Application (Capacitor)
+    const isNative = Boolean(
+      window.Capacitor?.isNativePlatform?.() ||
+      window.Capacitor?.getPlatform?.() === 'android' ||
+      window.location?.protocol === 'capacitor:' ||
+      window.location?.protocol === 'ionic:'
+    );
+    if (isNative) return 'native_android';
+
+    if (window.__TASKLY_FORCE_ENV__) return window.__TASKLY_FORCE_ENV__;
+
+    const hostname = (window.location.hostname || '').toLowerCase();
+
+    // 2. Local Development (localhost / 127.0.0.1)
+    const isLocal = Boolean(
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]' ||
+      hostname.endsWith('.local')
+    );
+    if (isLocal) return 'local_dev';
+
+    // 3. Canonical Production Web Deployment (Explicitly Whitelisted)
+    const CANONICAL_PROD_HOST = 'taskly-todo-app-4z1c.vercel.app';
+    const prodHost = (this.config.productionHost || CANONICAL_PROD_HOST).toLowerCase();
+    const TRUSTED_PROD_HOSTS = [
+      CANONICAL_PROD_HOST,
+      prodHost,
+      'app.taskly.com',
+      'taskly.app'
+    ];
+    if (TRUSTED_PROD_HOSTS.includes(hostname)) {
+      return 'production_web';
+    }
+
+    // 4. Recognized Non-Production Vercel Preview Deployments (*.vercel.app)
+    if (hostname.endsWith('.vercel.app') || window.__TASKLY_PREVIEW_MODE__ === true) {
+      return 'vercel_preview';
+    }
+
+    // 5. Unknown / Unfamiliar Custom Domains (Fail-closed: strictly untrusted_web, never production_web)
+    return 'untrusted_web';
+  },
+
   async loadInitialManifest() {
-    // 1. Check cached manifest in localStorage
-    if (typeof localStorage !== 'undefined') {
+    const env = this.detectDeploymentEnvironment();
+
+    // 0. For Untrusted / Unknown Web Domains: strictly do NOT fetch manifests
+    if (env === 'untrusted_web') {
+      this.state.manifest = null;
+      this.state.latestVersionName = null;
+      this.state.latestVersionCode = null;
+      return;
+    }
+
+    // 1. For Vercel Preview: strictly load preview-manifest.json locally
+    if (env === 'vercel_preview') {
       try {
-        const cachedRaw = localStorage.getItem('taskly_cached_manifest');
-        if (cachedRaw) {
-          const cached = JSON.parse(cachedRaw);
-          if (cached && cached.versionCode != null && Array.isArray(cached.history) && cached.history.length > 0) {
-            // Anti-stale: if cached manifest is older than fallback baseline, discard it
-            if (parseInt(cached.versionCode, 10) >= this.config.fallbackVersionCode) {
-              this.state.manifest = cached;
-              this.state.latestVersionName = String(cached.latestVersion);
-              this.state.latestVersionCode = parseInt(cached.versionCode, 10);
-            } else {
-              localStorage.removeItem('taskly_cached_manifest');
-            }
+        const resp = await fetch(`/preview-manifest.json?_cb=${Date.now()}`, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.versionCode != null) {
+            this.setCachedManifest(data);
+            return;
+          }
+        }
+      } catch (_) {}
+      this.state.manifest = this.localPreviewRelease;
+      return;
+    }
+
+    // 2. For Production Web: load version-manifest.json locally (production manifest)
+    if (env === 'production_web') {
+      try {
+        const resp = await fetch(`/version-manifest.json?_cb=${Date.now()}`, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.versionCode != null) {
+            this.setCachedManifest(data);
+            return;
           }
         }
       } catch (_) {}
     }
 
-    // 2. Fetch authoritative manifest from local or remote endpoints
-    try {
-      const base = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') ||
-                   (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '');
+    // 3. For Native Android: Check cached manifest in localStorage, then candidates
+    if (env === 'native_android') {
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const cachedRaw = localStorage.getItem('taskly_cached_manifest');
+          if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            if (cached && cached.versionCode != null && Array.isArray(cached.history) && cached.history.length > 0) {
+              if (parseInt(cached.versionCode, 10) >= this.config.fallbackVersionCode) {
+                this.state.manifest = cached;
+                this.state.latestVersionName = String(cached.latestVersion);
+                this.state.latestVersionCode = parseInt(cached.versionCode, 10);
+              } else {
+                localStorage.removeItem('taskly_cached_manifest');
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       const candidates = [
-        `${base}/version-manifest.json`,
-        `${base}/releases/version-manifest.json`,
-        this.config.primaryManifestUrl
+        this.config.primaryManifestUrl,
+        '/version-manifest.json',
+        '/releases/version-manifest.json'
       ];
 
       for (const url of candidates) {
@@ -6614,10 +6911,24 @@ const TasklyUpdateManager = {
           }
         } catch (_) {}
       }
-    } catch (_) {}
+    }
 
-    // 3. Fallback defaults if still null
-    if (!this.state.manifest) {
+    // 4. Local dev / test environments:
+    if (env === 'local_dev' || env === 'node_test') {
+      try {
+        const resp = await fetch(`/version-manifest.json?_cb=${Date.now()}`, { cache: 'no-store' });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.versionCode != null) {
+            this.setCachedManifest(data);
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Fallback defaults if still null (except untrusted_web)
+    if (!this.state.manifest && env !== 'untrusted_web') {
       this.state.latestVersionName = this.config.fallbackVersionName;
       this.state.latestVersionCode = this.config.fallbackVersionCode;
     }
@@ -6643,49 +6954,79 @@ const TasklyUpdateManager = {
   },
 
   async detectInstalledVersion() {
-    const isCapacitor = Boolean(
-      (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) ||
-      (typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'android') ||
-      (typeof window !== 'undefined' && window.location?.protocol === 'capacitor:')
-    );
+    const env = this.detectDeploymentEnvironment();
+    this.state.deploymentEnvironment = env;
+    this.state.isNative = (env === 'native_android');
+    this.state.platform = this.state.isNative ? 'android' : 'web';
 
-    this.state.isNative = isCapacitor;
-    this.state.platform = isCapacitor ? 'android' : 'web';
-
-    // 1. Query custom native ApkInstaller plugin if available
-    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.ApkInstaller) {
-      try {
-        const info = await window.Capacitor.Plugins.ApkInstaller.getAppInfo();
-        if (info && (info.versionName || info.versionCode != null)) {
-          this.state.installedVersionName = String(info.versionName || this.config.fallbackVersionName);
-          this.state.installedVersionCode = parseInt(info.versionCode, 10) || this.config.fallbackVersionCode;
-          this.state.platform = 'android';
-          this.updateProfileBadge();
-          return;
+    // 1. Native Android: Query custom native ApkInstaller plugin or standard Capacitor App plugin
+    if (this.state.isNative) {
+      if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.ApkInstaller) {
+        try {
+          const info = await window.Capacitor.Plugins.ApkInstaller.getAppInfo();
+          if (info && (info.versionName || info.versionCode != null)) {
+            this.state.installedVersionName = String(info.versionName || this.config.fallbackVersionName);
+            this.state.installedVersionCode = parseInt(info.versionCode, 10) || this.config.fallbackVersionCode;
+            this.state.platform = 'android';
+            this.updateProfileBadge();
+            return;
+          }
+        } catch (err) {
+          console.warn('[TasklyUpdateManager] Native ApkInstaller.getAppInfo failed, falling back:', err);
         }
-      } catch (err) {
-        console.warn('[TasklyUpdateManager] Native ApkInstaller.getAppInfo failed, falling back:', err);
       }
+
+      if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
+        try {
+          const appInfo = await window.Capacitor.Plugins.App.getInfo();
+          if (appInfo && appInfo.version) {
+            this.state.installedVersionName = String(appInfo.version);
+            this.state.installedVersionCode = parseInt(appInfo.build, 10) || this.config.fallbackVersionCode;
+            this.updateProfileBadge();
+            return;
+          }
+        } catch (err) {
+          console.warn('[TasklyUpdateManager] App.getInfo failed, falling back to defaults:', err);
+        }
+      }
+
+      this.state.installedVersionName = this.config.fallbackVersionName;
+      this.state.installedVersionCode = this.config.fallbackVersionCode;
+      this.updateProfileBadge();
+      return;
     }
 
-    // 2. Query standard Capacitor App plugin
-    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
-      try {
-        const appInfo = await window.Capacitor.Plugins.App.getInfo();
-        if (appInfo && appInfo.version) {
-          this.state.installedVersionName = String(appInfo.version);
-          this.state.installedVersionCode = parseInt(appInfo.build, 10) || this.config.fallbackVersionCode;
-          this.updateProfileBadge();
-          return;
-        }
-      } catch (err) {
-        console.warn('[TasklyUpdateManager] App.getInfo failed, falling back to defaults:', err);
+    // 2. Non-native / Browser environments:
+    // Do NOT expose browser preview build as an installed Android version.
+    if (env === 'vercel_preview') {
+      this.state.previewVersionName = '2.2.0';
+      this.state.previewVersionCode = 140;
+      this.state.installedVersionName = null;
+      this.state.installedVersionCode = null;
+    } else if (env === 'local_dev') {
+      this.state.previewVersionName = '2.2.0-dev';
+      this.state.previewVersionCode = 140;
+      this.state.installedVersionName = null;
+      this.state.installedVersionCode = null;
+    } else if (env === 'production_web') {
+      this.state.webVersionName = '2.1.1';
+      this.state.webVersionCode = 121;
+      if (!this.state.installedVersionName) {
+        this.state.installedVersionName = null;
+        this.state.installedVersionCode = null;
       }
+    } else if (env === 'untrusted_web') {
+      this.state.previewVersionName = null;
+      this.state.previewVersionCode = null;
+      this.state.webVersionName = null;
+      this.state.webVersionCode = null;
+      this.state.installedVersionName = null;
+      this.state.installedVersionCode = null;
+    } else {
+      this.state.installedVersionName = null;
+      this.state.installedVersionCode = null;
     }
 
-    // 3. Fallback for browser preview
-    this.state.installedVersionName = this.config.fallbackVersionName;
-    this.state.installedVersionCode = this.config.fallbackVersionCode;
     this.updateProfileBadge();
   },
 
@@ -6693,7 +7034,26 @@ const TasklyUpdateManager = {
     if (typeof document === 'undefined') return;
     const badge = document.getElementById('profile-version-badge');
     if (badge) {
-      badge.textContent = `v${this.state.installedVersionName}`;
+      const env = this.detectDeploymentEnvironment();
+      if (env === 'vercel_preview') {
+        badge.textContent = `v${this.state.previewVersionName || '2.2.0'} (Preview)`;
+        badge.title = 'Web Browser Preview (Build 14)';
+      } else if (env === 'local_dev') {
+        badge.textContent = 'v2.2.0 (Dev)';
+        badge.title = 'Local Development Build';
+      } else if (env === 'native_android') {
+        badge.textContent = `v${this.state.installedVersionName || '2.1.1'}`;
+        badge.title = 'Android Native Application';
+      } else if (env === 'production_web') {
+        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : 'v2.1.1';
+        badge.title = 'Taskly Production Web';
+      } else if (env === 'untrusted_web') {
+        badge.textContent = 'Untrusted';
+        badge.title = 'Unrecognized / Unsupported Domain';
+      } else {
+        badge.textContent = 'v2.1.1';
+        badge.title = 'Taskly Web';
+      }
     }
   },
 
@@ -6756,6 +7116,9 @@ const TasklyUpdateManager = {
 
   getLatestApprovedRelease() {
     const approved = this.getApprovedReleaseHistory();
+    // Exclude pre-release / preview entries so latest approved production remains strictly v2.1.1 (Build 12.1)
+    const prodApproved = approved.find(r => r.releaseStage !== 'preview' && (r.versionCode == null || parseInt(r.versionCode, 10) <= 121));
+    if (prodApproved) return prodApproved;
     if (approved.length > 0) return approved[0];
     return {
       version: this.state.latestVersionName || this.config.fallbackVersionName,
@@ -7087,53 +7450,108 @@ const TasklyUpdateManager = {
     this.state.errorMessage = null;
     this.renderUI();
 
+    const env = this.detectDeploymentEnvironment();
     let manifest = null;
     let fetchError = null;
-
     const cacheBuster = `?_cb=${Date.now()}`;
 
-    // 1. Try remote centralized HTTPS manifest
-    try {
-      const resp = await fetch(this.config.primaryManifestUrl + cacheBuster, {
-        headers: { 'Accept': 'application/json' },
-        cache: 'no-store'
-      });
-      if (resp.ok) {
-        manifest = await resp.json();
-      } else {
-        throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-      }
-    } catch (err) {
-      console.warn('[TasklyUpdateManager] Remote manifest fetch failed, falling back to local endpoint:', err);
-      fetchError = err;
+    // 0. Untrusted web domains: strictly block update checks and manifest queries
+    if (env === 'untrusted_web') {
+      this.state.updateStatus = 'error';
+      this.state.errorMessage = 'Updates and release manifests are disabled on unrecognized or untrusted domains.';
+      this.renderUI();
+      return;
     }
 
-    // 2. If remote unreachable, try local fallback endpoint
-    if (!manifest) {
+    // 1. Vercel Preview Deployments: Load local preview manifest exclusively
+    if (env === 'vercel_preview') {
       try {
-        const base = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') ||
-                     (typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost:3000');
-        const fallbackUrl = this.config.localFallbackUrl.startsWith('http')
-          ? this.config.localFallbackUrl
-          : `${base.replace(/\/+$/, '')}${this.config.localFallbackUrl}`;
+        const resp = await fetch(`/preview-manifest.json${cacheBuster}`, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (resp.ok) {
+          manifest = await resp.json();
+        } else {
+          throw new Error(`Preview manifest HTTP ${resp.status}`);
+        }
+      } catch (err) {
+        console.warn('[TasklyUpdateManager] Preview manifest fetch failed, falling back to local release:', err);
+        fetchError = err;
+        manifest = this.localPreviewRelease;
+      }
+    }
 
-        const localResp = await fetch(fallbackUrl + cacheBuster, {
+    // 2. Production Web Deployments: Load local production manifest exclusively
+    else if (env === 'production_web') {
+      try {
+        const resp = await fetch(`/version-manifest.json${cacheBuster}`, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (resp.ok) {
+          manifest = await resp.json();
+        } else {
+          throw new Error(`Production manifest HTTP ${resp.status}`);
+        }
+      } catch (err) {
+        console.warn('[TasklyUpdateManager] Production web manifest fetch failed:', err);
+        fetchError = err;
+      }
+    }
+
+    // 3. Native Android: Query primary centralized HTTPS manifest with local fallback
+    else if (env === 'native_android') {
+      try {
+        const resp = await fetch(this.config.primaryManifestUrl + cacheBuster, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+        if (resp.ok) {
+          manifest = await resp.json();
+        } else {
+          throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+        }
+      } catch (err) {
+        console.warn('[TasklyUpdateManager] Remote manifest fetch failed, falling back to local endpoint:', err);
+        fetchError = err;
+      }
+
+      if (!manifest) {
+        try {
+          const fallbackUrl = '/version-manifest.json';
+          const localResp = await fetch(fallbackUrl + cacheBuster, {
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-store'
+          });
+          if (localResp.ok) {
+            manifest = await localResp.json();
+            fetchError = null;
+          }
+        } catch (localErr) {
+          if (!fetchError) fetchError = localErr;
+        }
+      }
+    }
+
+    // 4. Local Development / Test:
+    else {
+      try {
+        const localResp = await fetch(`/version-manifest.json${cacheBuster}`, {
           headers: { 'Accept': 'application/json' },
           cache: 'no-store'
         });
         if (localResp.ok) {
           manifest = await localResp.json();
-          fetchError = null;
         } else {
-          throw new Error(`Local fallback HTTP ${localResp.status}`);
+          manifest = this.state.manifest || this.localInstalledRelease;
         }
-      } catch (localErr) {
-        console.warn('[TasklyUpdateManager] Local fallback manifest fetch failed:', localErr);
-        if (!fetchError) fetchError = localErr;
+      } catch (_) {
+        manifest = this.state.manifest || this.localInstalledRelease;
       }
     }
 
-    // 3. Strict failure handling: Never claim "up to date" if check failed
+    // Strict failure handling: Never claim "up to date" if check failed
     if (!manifest) {
       this.state.updateStatus = 'error';
       this.state.errorMessage = (fetchError && fetchError.message)
@@ -7143,7 +7561,7 @@ const TasklyUpdateManager = {
       return;
     }
 
-    // 4. Validate manifest fields
+    // Validate manifest fields
     if (!manifest.latestVersion || manifest.versionCode == null) {
       this.state.updateStatus = 'error';
       this.state.errorMessage = 'Invalid or malformed update manifest received from server.';
@@ -7160,7 +7578,7 @@ const TasklyUpdateManager = {
       } catch (_) {}
     }
 
-    // 5. Compare versionCode numerically
+    // Compare versionCode numerically
     const hasUpdate = this.isUpdateAvailable(this.state.installedVersionCode, this.state.latestVersionCode);
     if (hasUpdate) {
       this.state.updateStatus = 'update_available';
@@ -7172,6 +7590,24 @@ const TasklyUpdateManager = {
   },
 
   async startUpdate() {
+    const env = this.detectDeploymentEnvironment();
+
+    // STRICT SAFEGUARD: Browser environments are strictly blocked from downloading or installing APKs
+    if (env !== 'native_android') {
+      let msg;
+      if (env === 'untrusted_web') {
+        msg = 'Taskly Notice:\n\nThis domain is not a recognized Taskly host.\nUpdates and downloads are permanently disabled on untrusted domains.';
+      } else if (env === 'vercel_preview') {
+        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.2.0 Build 14).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
+      } else {
+        msg = 'Taskly Web Notice:\n\nIn-app APK installation is available exclusively on Android native devices.\nWeb applications update automatically through deployment.';
+      }
+      if (typeof alert === 'function') {
+        alert(msg);
+      }
+      return;
+    }
+
     if (this.state.updateStatus !== 'update_available' || !this.state.manifest) {
       return;
     }
@@ -7234,18 +7670,6 @@ const TasklyUpdateManager = {
       }
       return;
     }
-
-    // B. Web Browser Fallback (Opens direct APK link)
-    if (manifest.apkDownloadUrl) {
-      const shouldDownload = (typeof confirm === 'function')
-        ? confirm(
-            `Download Taskly v${manifest.latestVersion} APK (${manifest.fileSize || '18 MB'})?\n\nNote: On Android devices, Taskly downloads and updates directly in-app. In web browsers, this downloads the APK file to your device.`
-          )
-        : true;
-      if (shouldDownload && typeof window !== 'undefined') {
-        window.open(manifest.apkDownloadUrl, '_blank');
-      }
-    }
   },
 
   async cancelDownload() {
@@ -7278,27 +7702,54 @@ const TasklyUpdateManager = {
   renderUI() {
     if (typeof document === 'undefined') return;
 
+    const env = this.detectDeploymentEnvironment();
+
     // Platform indicator
     const platformLabel = document.getElementById('version-platform-label');
     if (platformLabel) {
-      platformLabel.textContent = this.state.isNative ? 'Android Native Application' : 'Web Browser Preview';
+      if (env === 'vercel_preview') platformLabel.textContent = 'Web Browser Preview';
+      else if (env === 'production_web') platformLabel.textContent = 'Web Application';
+      else if (env === 'local_dev') platformLabel.textContent = 'Local Development Server';
+      else if (env === 'untrusted_web') platformLabel.textContent = 'Untrusted Domain';
+      else platformLabel.textContent = 'Android Native Application';
     }
 
-    // Installed version
+    // Installed / Preview version label and value
+    const labelInstalled = document.getElementById('label-installed-version');
     const valInstalled = document.getElementById('val-installed-version');
-    if (valInstalled) {
-      const instBuild = this.formatBuildNumber(this.state.installedVersionCode);
-      valInstalled.textContent = `v${this.state.installedVersionName} (Build ${instBuild})`;
+
+    if (env === 'vercel_preview') {
+      if (labelInstalled) labelInstalled.textContent = 'Preview Build';
+      if (valInstalled) valInstalled.textContent = 'v2.2.0 (Build 14)';
+    } else if (env === 'production_web') {
+      if (labelInstalled) labelInstalled.textContent = 'Web Version';
+      if (valInstalled) valInstalled.textContent = 'v2.1.1 (Build 12.1)';
+    } else if (env === 'local_dev') {
+      if (labelInstalled) labelInstalled.textContent = 'Local Build';
+      if (valInstalled) valInstalled.textContent = 'v2.2.0-dev (Build 14)';
+    } else if (env === 'untrusted_web') {
+      if (labelInstalled) labelInstalled.textContent = 'Environment';
+      if (valInstalled) valInstalled.textContent = 'Untrusted / Unverified';
+    } else {
+      if (labelInstalled) labelInstalled.textContent = 'Installed Version';
+      if (valInstalled) {
+        const instBuild = this.formatBuildNumber(this.state.installedVersionCode);
+        valInstalled.textContent = `v${this.state.installedVersionName} (Build ${instBuild})`;
+      }
     }
 
     // Latest approved version
     const valLatest = document.getElementById('val-latest-version');
     if (valLatest) {
-      const latestApproved = this.getLatestApprovedRelease();
-      const latestName = (latestApproved && (latestApproved.versionName || latestApproved.version)) || this.state.latestVersionName || this.config.fallbackVersionName;
-      const latestCode = (latestApproved && latestApproved.versionCode) || this.state.latestVersionCode || this.config.fallbackVersionCode;
-      const latestBuild = this.formatBuildNumber(latestCode, latestApproved);
-      valLatest.textContent = `v${latestName} (Build ${latestBuild})`;
+      if (env === 'untrusted_web') {
+        valLatest.textContent = 'Unavailable (Untrusted Domain)';
+      } else {
+        const latestApproved = this.getLatestApprovedRelease();
+        const latestName = (latestApproved && (latestApproved.versionName || latestApproved.version)) || this.state.latestVersionName || this.config.fallbackVersionName;
+        const latestCode = (latestApproved && latestApproved.versionCode) || this.state.latestVersionCode || this.config.fallbackVersionCode;
+        const latestBuild = this.formatBuildNumber(latestCode, latestApproved);
+        valLatest.textContent = `v${latestName} (Build ${latestBuild})`;
+      }
     }
 
     // Last checked timestamp
@@ -7314,45 +7765,60 @@ const TasklyUpdateManager = {
 
     if (badge && statusIcon && statusText) {
       badge.className = 'version-status-badge';
-      switch (this.state.updateStatus) {
-        case 'checking':
-          badge.classList.add('status-checking');
-          statusIcon.textContent = '⏳';
-          statusText.textContent = 'Checking for updates...';
-          break;
-        case 'update_available':
-          badge.classList.add('status-update-available');
-          statusIcon.textContent = '📥';
-          statusText.textContent = 'Update Available';
-          break;
-        case 'downloading':
-          badge.classList.add('status-downloading');
-          statusIcon.textContent = '⬇️';
-          statusText.textContent = `Downloading (${this.state.downloadProgress.percent}%)`;
-          break;
-        case 'installing':
-          badge.classList.add('status-up-to-date');
-          statusIcon.textContent = '⚙️';
-          statusText.textContent = 'Installing...';
-          break;
-        case 'error':
-          badge.classList.add('status-error');
-          statusIcon.textContent = '⚠️';
-          statusText.textContent = 'Check Failed';
-          break;
-        case 'up_to_date':
-        default:
-          badge.classList.add('status-up-to-date');
-          statusIcon.textContent = '✓';
-          statusText.textContent = "You're up to date";
-          break;
+      if (env === 'vercel_preview') {
+        badge.classList.add('status-up-to-date');
+        statusIcon.textContent = '✓';
+        statusText.textContent = 'Previewing v2.2.0 (Build 14)';
+      } else if (env === 'local_dev') {
+        badge.classList.add('status-up-to-date');
+        statusIcon.textContent = '✓';
+        statusText.textContent = 'Local Dev Active (Build 14)';
+      } else if (env === 'untrusted_web') {
+        badge.classList.add('status-error');
+        statusIcon.textContent = '⚠️';
+        statusText.textContent = 'Untrusted Domain';
+      } else {
+        switch (this.state.updateStatus) {
+          case 'checking':
+            badge.classList.add('status-checking');
+            statusIcon.textContent = '⏳';
+            statusText.textContent = 'Checking for updates...';
+            break;
+          case 'update_available':
+            badge.classList.add('status-update-available');
+            statusIcon.textContent = '📥';
+            statusText.textContent = 'Update Available';
+            break;
+          case 'downloading':
+            badge.classList.add('status-downloading');
+            statusIcon.textContent = '⬇️';
+            statusText.textContent = `Downloading (${this.state.downloadProgress.percent}%)`;
+            break;
+          case 'installing':
+            badge.classList.add('status-up-to-date');
+            statusIcon.textContent = '⚙️';
+            statusText.textContent = 'Installing...';
+            break;
+          case 'error':
+            badge.classList.add('status-error');
+            statusIcon.textContent = '⚠️';
+            statusText.textContent = 'Check Failed';
+            break;
+          case 'up_to_date':
+          default:
+            badge.classList.add('status-up-to-date');
+            statusIcon.textContent = '✓';
+            statusText.textContent = "You're up to date";
+            break;
+        }
       }
     }
 
-    // Update Details Card
+    // Update Details Card (ONLY on native Android when update is available)
     const cardUpdate = document.getElementById('version-update-details-card');
     if (cardUpdate) {
-      if (this.state.updateStatus === 'update_available' && this.state.manifest) {
+      const isNative = (env === 'native_android');
+      if (this.state.updateStatus === 'update_available' && this.state.manifest && isNative) {
         cardUpdate.style.display = 'flex';
         const meta = document.getElementById('version-update-meta');
         if (meta) {
@@ -7412,7 +7878,11 @@ const TasklyUpdateManager = {
     // Error Banner
     const bannerError = document.getElementById('version-error-banner');
     if (bannerError) {
-      if (this.state.updateStatus === 'error' && this.state.errorMessage) {
+      if (env === 'untrusted_web') {
+        bannerError.style.display = 'flex';
+        const msg = document.getElementById('version-error-msg');
+        if (msg) msg.textContent = 'This application is running on an unrecognized domain. Release updates and manifests are disabled.';
+      } else if (this.state.updateStatus === 'error' && this.state.errorMessage) {
         bannerError.style.display = 'flex';
         const msg = document.getElementById('version-error-msg');
         if (msg) msg.textContent = this.state.errorMessage;
@@ -7424,24 +7894,44 @@ const TasklyUpdateManager = {
     // Action Buttons
     const btnUpdate = document.getElementById('btn-update-now');
     if (btnUpdate) {
-      btnUpdate.style.display = this.state.updateStatus === 'update_available' ? 'inline-flex' : 'none';
+      btnUpdate.style.display = (this.state.updateStatus === 'update_available' && env !== 'untrusted_web') ? 'inline-flex' : 'none';
     }
     const labelCheck = document.getElementById('label-check-updates');
     if (labelCheck) {
-      labelCheck.textContent = this.state.updateStatus === 'checking'
-        ? 'Checking...'
-        : (this.state.updateStatus === 'error' ? 'Retry Check' : 'Check for Updates');
+      if (env === 'untrusted_web') {
+        labelCheck.textContent = 'Updates Disabled';
+      } else {
+        labelCheck.textContent = this.state.updateStatus === 'checking'
+          ? 'Checking...'
+          : (this.state.updateStatus === 'error' ? 'Retry Check' : 'Check for Updates');
+      }
+    }
+    const btnCheck = document.getElementById('btn-check-updates');
+    if (btnCheck) {
+      if (env === 'untrusted_web') {
+        btnCheck.disabled = true;
+        btnCheck.style.opacity = '0.6';
+        btnCheck.style.cursor = 'not-allowed';
+      } else {
+        btnCheck.disabled = false;
+        btnCheck.style.opacity = '1';
+        btnCheck.style.cursor = 'pointer';
+      }
     }
 
     // Update What's New banner subtitle in Version Modal
     const whatsNewBannerSub = document.getElementById('whats-new-banner-subtitle');
     if (whatsNewBannerSub) {
-      const installedRel = this.getReleaseByVersion(this.state.installedVersionCode);
-      const latestRel = this.getLatestApprovedRelease();
-      const displayRel = installedRel || latestRel;
-      whatsNewBannerSub.textContent = displayRel
-        ? `v${displayRel.versionName || displayRel.version} • ${displayRel.title || 'Latest features & updates'}`
-        : 'Explore everything introduced in recent updates.';
+      if (env === 'untrusted_web') {
+        whatsNewBannerSub.textContent = 'Updates and release details are unavailable on untrusted domains.';
+      } else {
+        const installedRel = this.getReleaseByVersion(this.state.installedVersionCode);
+        const latestRel = this.getLatestApprovedRelease();
+        const displayRel = installedRel || latestRel;
+        whatsNewBannerSub.textContent = displayRel
+          ? `v${displayRel.versionName || displayRel.version} • ${displayRel.title || 'Latest features & updates'}`
+          : 'Explore everything introduced in recent updates.';
+      }
     }
 
     // Render History Timeline
@@ -7460,9 +7950,12 @@ const TasklyUpdateManager = {
     const latestApprovedCode = parseInt(latestApproved.versionCode, 10);
     const installedCode = parseInt(this.state.installedVersionCode, 10);
 
-    if (historyList && history.length > 0) {
-      historyList.innerHTML = '';
-      history.forEach((rel) => {
+    if (historyList) {
+      if (env === 'untrusted_web') {
+        historyList.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--text-secondary, #6B7280); font-size: 13px;">Release history is disabled on unrecognized or untrusted domains.</div>';
+      } else if (history.length > 0) {
+        historyList.innerHTML = '';
+        history.forEach((rel) => {
         const relCode = parseInt(rel.versionCode, 10);
         const isCurrentInstalled = (relCode === installedCode && relCode > latestApprovedCode);
         const isApprovedLatest = (relCode === latestApprovedCode);
@@ -7560,6 +8053,7 @@ const TasklyUpdateManager = {
         historyList.appendChild(item);
       });
     }
+  }
   },
 
   showUpdateAnnouncement(release = null, isPreview = false) {
@@ -13300,10 +13794,12 @@ async function updateDeveloperTicketStatusDirectly(newStatus) {
 function setupSupportEventListeners() {
   // Customer Support Hub triggers
   const menuSupport = document.getElementById('menu-support');
+  const btnOpenSupport = document.getElementById('btn-open-support');
   const btnCloseSupport = document.getElementById('btn-close-support-modal');
   const modalSupport = document.getElementById('modal-support-hub');
 
   if (menuSupport) menuSupport.addEventListener('click', openSupportModal);
+  if (btnOpenSupport) btnOpenSupport.addEventListener('click', openSupportModal);
   if (btnCloseSupport) btnCloseSupport.addEventListener('click', closeSupportModal);
   if (modalSupport) {
     modalSupport.addEventListener('click', (e) => {

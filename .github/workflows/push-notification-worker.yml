@@ -1,0 +1,101 @@
+name: Taskly Push Notifications - Outbox Worker
+
+on:
+  schedule:
+    # Trigger every 5 minutes (standard cron cadence)
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Outbox operation to perform (process or metrics)'
+        required: true
+        default: 'process'
+        type: choice
+        options:
+          - process
+          - metrics
+
+# Prevent overlapping runs from causing duplicate notification processing
+concurrency:
+  group: push-notification-outbox-worker
+  cancel-in-progress: false
+
+jobs:
+  outbox-worker:
+    name: Process Push Notification Outbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    steps:
+      - name: Dispatch Outbox Operation
+        env:
+          BACKEND_URL: ${{ vars.TASKLY_BACKEND_URL || secrets.TASKLY_BACKEND_URL || 'https://taskly-developer-backend.vercel.app' }}
+          CRON_SECRET: ${{ secrets.TASKLY_CRON_SECRET }}
+          ACTION: ${{ github.event.inputs.action || 'process' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error ::TASKLY_CRON_SECRET is not configured in GitHub repository secrets. Outbox processing aborted."
+            echo "Please navigate to GitHub Repo -> Settings -> Secrets and variables -> Actions and add 'TASKLY_CRON_SECRET'."
+            exit 1
+          fi
+
+          # Ensure the secret is masked in all console outputs
+          echo "::add-mask::$CRON_SECRET"
+
+          case "$ACTION" in
+            process)
+              ENDPOINT="/api/internal/notifications/outbox/process"
+              HTTP_METHOD="POST"
+              ;;
+            metrics)
+              ENDPOINT="/api/internal/notifications/outbox/metrics"
+              HTTP_METHOD="GET"
+              ;;
+            *)
+              echo "::error ::Unsupported action: $ACTION"
+              exit 1
+              ;;
+          esac
+
+          TARGET_URL="${BACKEND_URL%/}${ENDPOINT}"
+          echo "=========================================================="
+          echo "Taskly Push Notification Outbox Worker"
+          echo "Operation : $ACTION"
+          echo "Method    : $HTTP_METHOD"
+          echo "Target    : $TARGET_URL"
+          echo "Timestamp : $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "=========================================================="
+
+          # Execute HTTP request with timeout protection
+          if [ "$HTTP_METHOD" = "POST" ]; then
+            HTTP_STATUS=$(curl -s -o /tmp/outbox_response.json -w "%{http_code}" \
+              --max-time 45 \
+              --connect-timeout 10 \
+              -X POST "$TARGET_URL" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              -H "Content-Type: application/json" \
+              -d '{"batchSize": 25, "leaseSeconds": 90}')
+          else
+            HTTP_STATUS=$(curl -s -o /tmp/outbox_response.json -w "%{http_code}" \
+              --max-time 30 \
+              --connect-timeout 10 \
+              -X GET "$TARGET_URL" \
+              -H "Authorization: Bearer $CRON_SECRET")
+          fi
+
+          echo "Response HTTP Status: $HTTP_STATUS"
+          echo "Response Body:"
+          if [ -f /tmp/outbox_response.json ]; then
+            cat /tmp/outbox_response.json
+            echo ""
+          else
+            echo "[Empty Response Body]"
+          fi
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "::error ::Outbox operation '$ACTION' failed with HTTP status $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "Outbox operation '$ACTION' completed successfully (HTTP $HTTP_STATUS)."
+

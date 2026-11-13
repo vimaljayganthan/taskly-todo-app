@@ -68,4 +68,8 @@ scratch/
 android/app/release/
 ios/App/build/
 ios/App/*.xcworkspace/xcuserdata/
+google-services.json
+*taskly-notifications*.json
 
+.vercel
+.env*

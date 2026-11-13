@@ -87,9 +87,11 @@ app.get(['/auth/confirmed', '/auth/confirmed.html'], (req, res) => {
 // ==========================================================================
 // Health Check Endpoints (Required for Google Cloud Run / Load Balancers)
 // ==========================================================================
-app.get(['/healthz', '/api/health'], (req, res) => {
+app.get(['/', '/healthz', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'UP',
+    service: 'taskly-backend',
+    version: '2.2.0',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     environment: process.env.NODE_ENV || 'development'
@@ -213,7 +215,7 @@ app.isLocalPreviewAllowed = isLocalPreviewAllowed;
 app.get('/api/config', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.json({
-    supabaseUrl: process.env.SUPABASE_URL || 'https://liucmamlownxfshnaxtc.supabase.co',
+    supabaseUrl: process.env.SUPABASE_URL || '',
     supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
     appUrl: getCanonicalAppUrl(),
     previewModeAllowed: isLocalPreviewAllowed(req)
@@ -1301,26 +1303,39 @@ app.get('/api/support/tickets/:id/messages', async (req, res, next) => {
 });
 
 // ==========================================================================
-// Developer Support Operations & Dashboard Endpoints (Stage 4)
+// Developer Support Operations & Dashboard Endpoints (Single Admin)
 // ==========================================================================
 function requireDeveloperAuth(req, res, next) {
   if (!req.user || !req.user.email) {
     return res.status(401).json({ error: 'Unauthorized: login required' });
   }
 
-  const authorizedDevEmail = (process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com').toLowerCase().trim();
+  const authorizedAdminEmail = (process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com').toLowerCase().trim();
   const userEmail = (req.user.email || '').toLowerCase().trim();
-  const userRole = (req.user.role || '').toLowerCase().trim();
 
-  // Allow if email matches developer email OR user has role 'developer' or 'service_role'
-  if (userEmail === authorizedDevEmail || userRole === 'developer' || userRole === 'service_role') {
-    return next();
+  // STRICT SINGLE-ADMIN SECURITY:
+  // Only the designated administrator (tasklypets@gmail.com) is authorized.
+  // Unconditional role bypasses (such as developer or service_role on non-admin emails) are strictly removed.
+  if (userEmail !== authorizedAdminEmail) {
+    return res.status(403).json({ error: 'Forbidden: developer access required' });
   }
 
-  return res.status(403).json({ error: 'Forbidden: developer access required' });
+  return next();
 }
 
 app.use('/api/support/developer', authenticateUser, requireDeveloperAuth);
+
+// GET /api/support/developer/auth/verify - Validate developer session server-side
+app.get('/api/support/developer/auth/verify', async (req, res) => {
+  res.json({
+    success: true,
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      role: 'admin'
+    }
+  });
+});
 
 // GET /api/support/developer/tickets - List all customer tickets across system
 app.get('/api/support/developer/tickets', async (req, res, next) => {
@@ -1363,6 +1378,14 @@ app.get('/api/support/developer/tickets/:id', async (req, res, next) => {
 app.post('/api/support/developer/tickets/:id/messages', async (req, res, next) => {
   try {
     const { body, status } = req.body || {};
+    const isNote = Boolean(
+      req.body?.isInternalNote === true ||
+      req.body?.is_internal_note === true ||
+      req.body?.type === 'internal_note' ||
+      req.body?.metadata?.is_internal_note === true ||
+      req.body?.metadata?.isInternalNote === true
+    );
+
     if (!body || typeof body !== 'string' || !body.trim()) {
       return res.status(400).json({ error: 'Message body is required and must not be empty' });
     }
@@ -1372,6 +1395,17 @@ app.post('/api/support/developer/tickets/:id/messages', async (req, res, next) =
     }
 
     const storage = SupportStore.getServiceStorage();
+    if (isNote) {
+      const note = await storage.developerAddNote({
+        ticketId: req.params.id,
+        developerId: req.user.id,
+        developerEmail: req.user.email,
+        body: cleanBody
+      });
+      if (!note) return res.status(404).json({ error: 'Ticket not found' });
+      return res.status(201).json(note);
+    }
+
     const message = await storage.developerAddMessage({
       ticketId: req.params.id,
       developerId: req.user.id,
@@ -1385,6 +1419,36 @@ app.post('/api/support/developer/tickets/:id/messages', async (req, res, next) =
     }
 
     res.status(201).json(message);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/support/developer/tickets/:id/notes - Post internal note (isolated from customer)
+app.post('/api/support/developer/tickets/:id/notes', async (req, res, next) => {
+  try {
+    const { body } = req.body || {};
+    if (!body || typeof body !== 'string' || !body.trim()) {
+      return res.status(400).json({ error: 'Note body is required and must not be empty' });
+    }
+    const cleanBody = body.trim();
+    if (cleanBody.length > 10000) {
+      return res.status(400).json({ error: 'Note body must not exceed 10000 characters' });
+    }
+
+    const storage = SupportStore.getServiceStorage();
+    const note = await storage.developerAddNote({
+      ticketId: req.params.id,
+      developerId: req.user.id,
+      developerEmail: req.user.email,
+      body: cleanBody
+    });
+
+    if (!note) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    res.status(201).json(note);
   } catch (err) {
     next(err);
   }
@@ -1407,6 +1471,34 @@ app.patch('/api/support/developer/tickets/:id/status', async (req, res, next) =>
 
     const storage = SupportStore.getServiceStorage();
     const updated = await storage.developerUpdateStatus(req.params.id, cleanStatus, req.user.id);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/support/developer/tickets/:id/priority - Update ticket priority
+app.patch('/api/support/developer/tickets/:id/priority', async (req, res, next) => {
+  try {
+    const { priority } = req.body || {};
+    if (!priority || typeof priority !== 'string') {
+      return res.status(400).json({ error: 'Priority is required' });
+    }
+
+    const cleanPriority = priority.trim().toLowerCase();
+    if (!SupportStore.VALID_PRIORITIES.includes(cleanPriority)) {
+      return res.status(400).json({
+        error: `Invalid priority. Must be one of: ${SupportStore.VALID_PRIORITIES.join(', ')}`
+      });
+    }
+
+    const storage = SupportStore.getServiceStorage();
+    const updated = await storage.developerUpdatePriority(req.params.id, cleanPriority, req.user.id);
 
     if (!updated) {
       return res.status(404).json({ error: 'Ticket not found' });
@@ -1447,10 +1539,29 @@ function requireInternalCronAuth(req, res, next) {
 // Inbound Webhook Operations (Stage 3 Resend Managed Inbound)
 // ==========================================================================
 const { handleInboundWebhook } = require('./services/inboundWebhookService');
-app.post('/api/support/resend-inbound', handleInboundWebhook);
+app.post('/api/support/resend-inbound', (req, res, next) => {
+  const isEmailWorkflowEnabled = process.env.SUPPORT_EMAIL_WORKFLOW_ENABLED !== 'false';
+  if (!isEmailWorkflowEnabled) {
+    return res.status(200).json({
+      status: 'disabled',
+      message: 'Inbound email processing is disabled in favor of Developer APK'
+    });
+  }
+  return handleInboundWebhook(req, res, next);
+});
 
 // POST /api/internal/support/outbox/process - Process batch of pending outbox emails
-app.post('/api/internal/support/outbox/process', requireInternalCronAuth, async (req, res, next) => {
+app.post('/api/internal/support/outbox/process', (req, res, next) => {
+  const isEmailWorkflowEnabled = process.env.SUPPORT_EMAIL_WORKFLOW_ENABLED !== 'false';
+  if (!isEmailWorkflowEnabled) {
+    return res.json({
+      success: true,
+      processed: 0,
+      message: 'Support email outbox processing is disabled (Developer APK active)'
+    });
+  }
+  return requireInternalCronAuth(req, res, next);
+}, async (req, res, next) => {
   try {
     const { OutboxWorker } = require('./services/outboxWorker');
     const worker = new OutboxWorker();
@@ -1497,6 +1608,197 @@ app.get('/api/internal/support/outbox/metrics', requireInternalCronAuth, async (
   }
 });
 
+// ==========================================================================
+// Push Notification Device Token & Outbox Operations
+// ==========================================================================
+
+let cachedServiceSupabase = null;
+function getServiceSupabaseClient() {
+  if (cachedServiceSupabase) return cachedServiceSupabase;
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase service_role credentials not configured');
+  }
+  const { createClient } = require('@supabase/supabase-js');
+  cachedServiceSupabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false }
+  });
+  return cachedServiceSupabase;
+}
+
+// POST /api/notifications/tokens - Register or refresh device push token
+app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) => {
+  try {
+    const { device_token, app_type, platform } = req.body || {};
+    if (!device_token || typeof device_token !== 'string' || !device_token.trim()) {
+      return res.status(400).json({ error: 'device_token is required and must not be empty' });
+    }
+    const cleanToken = device_token.trim();
+    if (cleanToken.length > 500) {
+      return res.status(400).json({ error: 'device_token exceeds maximum length of 500 characters' });
+    }
+
+    const cleanAppType = (app_type || 'customer').trim().toLowerCase();
+    if (!['customer', 'developer'].includes(cleanAppType)) {
+      return res.status(400).json({ error: "app_type must be either 'customer' or 'developer'" });
+    }
+
+    // Strict App Type & Role Isolation:
+    // Only authorized single-admin (tasklypets@gmail.com) may register developer device tokens
+    if (cleanAppType === 'developer') {
+      const authorizedAdminEmail = (process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com').toLowerCase().trim();
+      const userEmail = (req.user?.email || '').toLowerCase().trim();
+      if (userEmail !== authorizedAdminEmail) {
+        return res.status(403).json({
+          error: 'Forbidden: only authorized developer account may register developer device tokens'
+        });
+      }
+    }
+
+    const cleanPlatform = ['android', 'ios', 'web'].includes((platform || '').toLowerCase().trim())
+      ? (platform || '').toLowerCase().trim()
+      : 'android';
+
+    const client = getServiceSupabaseClient();
+    const { data, error } = await client
+      .from('user_device_tokens')
+      .upsert({
+        user_id: req.user.id,
+        device_token: cleanToken,
+        app_type: cleanAppType,
+        platform: cleanPlatform,
+        is_active: true,
+        last_seen_at: new Date().toISOString()
+      }, {
+        onConflict: 'device_token'
+      })
+      .select('id, user_id, device_token, app_type, platform, is_active, last_seen_at')
+      .single();
+
+    if (error) {
+      console.error('[TokenRegister] Supabase error:', error);
+      return res.status(500).json({ error: 'Failed to register device token' });
+    }
+
+    res.status(200).json({ success: true, token: data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/notifications/tokens - Deactivate device token on sign out
+app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next) => {
+  try {
+    const { device_token } = req.body || {};
+    if (!device_token || typeof device_token !== 'string') {
+      return res.status(400).json({ error: 'device_token is required' });
+    }
+
+    const client = getServiceSupabaseClient();
+    const { error } = await client
+      .from('user_device_tokens')
+      .update({
+        is_active: false,
+        last_seen_at: new Date().toISOString()
+      })
+      .eq('device_token', device_token.trim())
+      .eq('user_id', req.user.id);
+
+    if (error) {
+      console.error('[TokenDeactivate] Supabase error:', error);
+      return res.status(500).json({ error: 'Failed to deactivate device token' });
+    }
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/internal/notifications/outbox/process - Process batch of pending push notifications
+app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, async (req, res, next) => {
+  try {
+    const { batchSize, leaseSeconds } = req.body || {};
+    const { NotificationService } = require('./services/notificationService');
+    const { getFirebaseMessaging } = require('./services/firebaseAdmin');
+
+    const messaging = getFirebaseMessaging();
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+    if (isProduction && !messaging) {
+      console.error('[NotificationOutboxProcess] Fatal: Firebase credentials not configured in production');
+      return res.status(500).json({
+        success: false,
+        error: 'Firebase messaging provider not configured in production'
+      });
+    }
+
+    const client = getServiceSupabaseClient();
+    const worker = new NotificationService({
+      supabaseClient: client,
+      messagingProvider: messaging,
+      batchSize: parseInt(batchSize, 10) || 10,
+      leaseSeconds: parseInt(leaseSeconds, 10) || 60,
+      allowMockDelivery: !isProduction && !messaging,
+      workerId: `worker_${process.pid}_${crypto.randomBytes(4).toString('hex')}`
+    });
+
+    const stats = await worker.processBatch();
+    res.json({ success: true, ...stats });
+  } catch (err) {
+    console.error('[NotificationOutboxProcess] Error processing outbox batch:', err);
+    res.status(err.statusCode || err.status || 500).json({
+      success: false,
+      error: err.message || 'Failed to process notification outbox batch'
+    });
+  }
+});
+
+// GET /api/internal/notifications/outbox/metrics - Notification queue health & metrics
+app.get('/api/internal/notifications/outbox/metrics', requireInternalCronAuth, async (req, res, next) => {
+  try {
+    const client = getServiceSupabaseClient();
+    const { count: pendingCount, error: pErr } = await client
+      .from('notification_outbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
+    const { count: processingCount, error: prErr } = await client
+      .from('notification_outbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'processing');
+
+    const { count: completedCount, error: cErr } = await client
+      .from('notification_outbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'completed');
+
+    const { count: deadLetterCount, error: dErr } = await client
+      .from('notification_outbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'dead_letter');
+
+    if (pErr || prErr || cErr || dErr) {
+      throw new Error((pErr || prErr || cErr || dErr).message);
+    }
+
+    res.json({
+      success: true,
+      queue: {
+        pending: pendingCount || 0,
+        processing: processingCount || 0,
+        completed: completedCount || 0,
+        dead_letter: deadLetterCount || 0
+      }
+    });
+  } catch (err) {
+    console.error('[NotificationOutboxMetrics] Error fetching metrics:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 404 Handler for unmatched API routes
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
@@ -1540,7 +1842,7 @@ async function startServer() {
     process.exit(1);
   }
 
-  server = app.listen(PORT, () => {
+  server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`To-Do server is running on http://localhost:${PORT}`);
   });
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
