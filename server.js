@@ -1104,6 +1104,46 @@ app.get('/api/analytics/productivity', async (req, res, next) => {
 // Enforce authentication on all /api/support/tickets routes
 app.use('/api/support/tickets', authenticateUser);
 
+/**
+ * Executes a bounded immediate sweep of pending push notification outbox jobs.
+ * Prevents Vercel serverless freeze while ensuring swift foreground/background delivery.
+ * Falls back safely to GitHub Actions cron worker on timeout or transient network delays.
+ */
+async function dispatchOutboxBatchSafely(batchSize = 10, timeoutMs = 2500) {
+  try {
+    const { NotificationService } = require('./services/notificationService');
+    const { getFirebaseMessaging } = require('./services/firebaseAdmin');
+    const messaging = getFirebaseMessaging();
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+    // In production without messaging configured, defer to worker
+    if (isProduction && !messaging) {
+      return null;
+    }
+
+    const client = getServiceSupabaseClient();
+    const worker = new NotificationService({
+      supabaseClient: client,
+      messagingProvider: messaging,
+      batchSize: batchSize,
+      leaseSeconds: 60,
+      allowMockDelivery: !isProduction && !messaging,
+      workerId: `immediate_${process.pid}_${crypto.randomBytes(4).toString('hex')}`
+    });
+
+    const processPromise = worker.processBatch();
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => resolve({ timedOut: true }), timeoutMs)
+    );
+
+    return await Promise.race([processPromise, timeoutPromise]);
+  } catch (err) {
+    console.warn('[OutboxDispatch] Safe dispatch warning:', err.message);
+    return null;
+  }
+}
+
 // POST /api/support/tickets - Create a new support ticket
 app.post('/api/support/tickets', async (req, res, next) => {
   try {
@@ -1182,6 +1222,10 @@ app.post('/api/support/tickets', async (req, res, next) => {
     if (ticket.is_replay) {
       return res.status(200).json(ticket);
     }
+
+    // Execute immediate bounded sweep of outbox notifications for developer app
+    await dispatchOutboxBatchSafely(10, 2500);
+
     return res.status(201).json(ticket);
   } catch (err) {
     if (err.statusCode === 409) {
@@ -1277,6 +1321,28 @@ app.post('/api/support/tickets/:id/messages', async (req, res, next) => {
     if (message.is_replay) {
       return res.status(200).json(message);
     }
+
+    // Enqueue customer message notification for developer app outbox
+    try {
+      const client = getServiceSupabaseClient();
+      const snippet = trimmedBody.length > 150 ? trimmedBody.substring(0, 150) + '...' : trimmedBody;
+      await client.from('notification_outbox').insert({
+        event_type: 'customer_message',
+        target_audience: 'developer_all',
+        recipient_email: 'tasklypets@gmail.com',
+        title: 'New Customer Message',
+        body: `[${req.user.email || 'customer'}]: ${snippet}`,
+        data: { ticket_id: req.params.id, screen: 'ticket_detail' },
+        priority: 'high',
+        deduplication_key: `customer_msg_${message.id}`
+      });
+    } catch (enqueueErr) {
+      console.warn('[CustomerMessageOutbox] Enqueue warning:', enqueueErr.message);
+    }
+
+    // Execute immediate bounded sweep of outbox notifications for developer app
+    await dispatchOutboxBatchSafely(10, 2500);
+
     return res.status(201).json(message);
   } catch (err) {
     if (err.statusCode === 400 || err.statusCode === 409) {
@@ -1418,6 +1484,9 @@ app.post('/api/support/developer/tickets/:id/messages', async (req, res, next) =
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
+    // Execute immediate bounded sweep of outbox notifications for customer app
+    await dispatchOutboxBatchSafely(10, 2500);
+
     res.status(201).json(message);
   } catch (err) {
     next(err);
@@ -1476,6 +1545,9 @@ app.patch('/api/support/developer/tickets/:id/status', async (req, res, next) =>
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
+    // Execute immediate bounded sweep of outbox notifications for customer app
+    await dispatchOutboxBatchSafely(10, 2500);
+
     res.json(updated);
   } catch (err) {
     next(err);
@@ -1504,7 +1576,279 @@ app.patch('/api/support/developer/tickets/:id/priority', async (req, res, next) 
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
+    // Execute immediate bounded sweep of outbox notifications for customer app
+    await dispatchOutboxBatchSafely(10, 2500);
+
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// Developer Manual Custom Push Notifications & Audience Management
+// ==========================================================================
+
+// POST /api/support/developer/notifications - Manual custom push notification dispatch
+app.post('/api/support/developer/notifications', async (req, res, next) => {
+  try {
+    const { title, body, message, audience, target_type, recipient_email, idempotency_key, priority } = req.body || {};
+
+    // Validate title (1..255)
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'Title is required and must not be empty' });
+    }
+    const cleanTitle = title.trim();
+    if (cleanTitle.length > 255) {
+      return res.status(400).json({ error: 'Title must not exceed 255 characters' });
+    }
+
+    // Validate message / body (1..4000)
+    const rawBody = body !== undefined ? body : message;
+    if (!rawBody || typeof rawBody !== 'string' || !rawBody.trim()) {
+      return res.status(400).json({ error: 'Message body is required and must not be empty' });
+    }
+    const cleanBody = rawBody.trim();
+    if (cleanBody.length > 4000) {
+      return res.status(400).json({ error: 'Message body must not exceed 4000 characters' });
+    }
+
+    // Validate audience / target_type: 'all' | 'broadcast' | 'single' | 'direct'
+    const cleanAudience = String(audience || target_type || '').toLowerCase().trim();
+    if (!['all', 'broadcast', 'single', 'direct'].includes(cleanAudience)) {
+      return res.status(400).json({ error: 'Invalid audience. Must be "all" (broadcast) or "single" (direct)' });
+    }
+
+    const isBroadcast = cleanAudience === 'all' || cleanAudience === 'broadcast';
+    const targetAudience = isBroadcast ? 'customer_all' : 'customer_single';
+    const eventType = isBroadcast ? 'admin_custom_broadcast' : 'admin_custom_direct';
+    let cleanRecipientEmail = null;
+    let recipientUserId = null;
+
+    const serviceClient = getServiceSupabaseClient();
+
+    if (!isBroadcast) {
+      if (!recipient_email || typeof recipient_email !== 'string' || !recipient_email.trim()) {
+        return res.status(400).json({ error: 'Recipient email is required for direct custom notifications' });
+      }
+      cleanRecipientEmail = recipient_email.toLowerCase().trim();
+      const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+      if (!emailRegex.test(cleanRecipientEmail)) {
+        return res.status(400).json({ error: 'Invalid recipient email address format' });
+      }
+
+      if (cleanRecipientEmail === 'tasklypets@gmail.com') {
+        return res.status(400).json({ error: 'Cannot send customer direct notification to admin account' });
+      }
+
+      // Resolve recipient user ID from registered customer device tokens or support tickets
+      const { data: tokenRow } = await serviceClient
+        .from('user_device_tokens')
+        .select('user_id')
+        .eq('user_email', cleanRecipientEmail)
+        .order('last_seen_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (tokenRow && tokenRow.user_id) {
+        recipientUserId = tokenRow.user_id;
+      } else {
+        const { data: ticketRow } = await serviceClient
+          .from('support_tickets')
+          .select('user_id')
+          .eq('user_email', cleanRecipientEmail)
+          .limit(1)
+          .maybeSingle();
+        if (ticketRow && ticketRow.user_id) {
+          recipientUserId = ticketRow.user_id;
+        }
+      }
+    }
+
+    const dedupKey = idempotency_key
+      ? String(idempotency_key).trim()
+      : `admin_custom_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+
+    // Insert atomic outbox job
+    const { data: outboxRow, error: insertErr } = await serviceClient
+      .from('notification_outbox')
+      .insert({
+        event_type: eventType,
+        target_audience: targetAudience,
+        recipient_user_id: recipientUserId,
+        recipient_email: cleanRecipientEmail,
+        title: cleanTitle,
+        body: cleanBody,
+        data: { screen: 'notifications' },
+        priority: priority === 'high' ? 'high' : (isBroadcast ? 'normal' : 'high'),
+        deduplication_key: dedupKey
+      })
+      .select()
+      .single();
+
+    if (insertErr) {
+      console.error('[AdminCustomNotification] Error inserting into outbox:', insertErr);
+      return res.status(500).json({ error: `Failed to enqueue notification: ${insertErr.message}` });
+    }
+
+    // Execute immediate bounded sweep
+    const dispatchResult = await dispatchOutboxBatchSafely(10, 2500);
+
+    // Read updated job status
+    const { data: currentJob } = await serviceClient
+      .from('notification_outbox')
+      .select('id, status, error_message, processed_at')
+      .eq('id', outboxRow.id)
+      .maybeSingle();
+
+    return res.status(201).json({
+      success: true,
+      notification_id: outboxRow.id,
+      job_id: outboxRow.id,
+      status: currentJob?.status || outboxRow.status,
+      title: cleanTitle,
+      audience: isBroadcast ? 'broadcast' : 'direct',
+      recipient_email: cleanRecipientEmail,
+      dispatch_result: dispatchResult,
+      created_at: outboxRow.created_at,
+      processed_at: currentJob?.processed_at || null
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/support/developer/customers - List & search registered customer recipients
+app.get('/api/support/developer/customers', async (req, res, next) => {
+  try {
+    const { search, limit } = req.query;
+    const serviceClient = getServiceSupabaseClient();
+    const maxLimit = Math.min(parseInt(limit, 10) || 50, 100);
+
+    let query = serviceClient
+      .from('user_device_tokens')
+      .select('user_id, user_email, device_platform, is_active, last_seen_at')
+      .eq('app_type', 'customer')
+      .order('last_seen_at', { ascending: false })
+      .limit(maxLimit);
+
+    if (search && typeof search === 'string' && search.trim()) {
+      query = query.ilike('user_email', `%${search.trim()}%`);
+    }
+
+    const { data: tokens, error: tokErr } = await query;
+    if (tokErr) {
+      return res.status(500).json({ error: tokErr.message });
+    }
+
+    const seen = new Set();
+    const customers = [];
+    for (const t of (tokens || [])) {
+      const email = (t.user_email || '').toLowerCase().trim();
+      if (email && !seen.has(email)) {
+        seen.add(email);
+        customers.push({
+          user_id: t.user_id,
+          user_email: email,
+          device_platform: t.device_platform,
+          is_active: t.is_active,
+          last_seen_at: t.last_seen_at
+        });
+      }
+    }
+
+    // Include recent ticket authors if active tokens list has capacity
+    if (customers.length < maxLimit) {
+      let ticketQuery = serviceClient
+        .from('support_tickets')
+        .select('user_id, user_email, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (search && typeof search === 'string' && search.trim()) {
+        ticketQuery = ticketQuery.ilike('user_email', `%${search.trim()}%`);
+      }
+
+      const { data: ticketUsers } = await ticketQuery;
+      for (const tu of (ticketUsers || [])) {
+        const email = (tu.user_email || '').toLowerCase().trim();
+        if (email && !seen.has(email) && email !== 'tasklypets@gmail.com') {
+          seen.add(email);
+          customers.push({
+            user_id: tu.user_id,
+            user_email: email,
+            device_platform: 'customer',
+            is_active: false,
+            last_seen_at: tu.created_at
+          });
+        }
+      }
+    }
+
+    // Also include registered users from auth.users if list has capacity
+    if (customers.length < maxLimit && serviceClient.auth && serviceClient.auth.admin) {
+      try {
+        const { data: authData } = await serviceClient.auth.admin.listUsers({ perPage: 50 });
+        const authUsers = authData?.users || [];
+        for (const u of authUsers) {
+          const email = (u.email || '').toLowerCase().trim();
+          if (email && !seen.has(email) && email !== 'tasklypets@gmail.com') {
+            if (!search || email.includes(search.toLowerCase().trim())) {
+              seen.add(email);
+              customers.push({
+                user_id: u.id,
+                user_email: email,
+                device_platform: 'customer',
+                is_active: false,
+                last_seen_at: u.created_at
+              });
+            }
+          }
+        }
+      } catch (authErr) {
+        console.warn('[CustomersAPI] auth.admin.listUsers notice:', authErr.message);
+      }
+    }
+
+    res.json({ success: true, count: customers.length, customers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/support/developer/notifications/history - Audit log of developer & system notifications
+app.get('/api/support/developer/notifications/history', async (req, res, next) => {
+  try {
+    const { limit, offset } = req.query;
+    const maxLimit = Math.min(parseInt(limit, 10) || 50, 100);
+    const serviceClient = getServiceSupabaseClient();
+
+    const { data: rows, error: histErr } = await serviceClient
+      .from('notification_outbox')
+      .select('id, event_type, target_audience, recipient_user_id, recipient_email, title, body, status, retry_count, last_error, created_at, processed_at')
+      .in('event_type', ['admin_custom_broadcast', 'admin_custom_direct', 'new_ticket', 'ticket_reply', 'status_changed', 'customer_message'])
+      .order('created_at', { ascending: false })
+      .range(parseInt(offset, 10) || 0, (parseInt(offset, 10) || 0) + maxLimit - 1);
+
+    if (histErr) {
+      return res.status(500).json({ error: histErr.message });
+    }
+
+    const notifications = (rows || []).map(r => ({
+      id: r.id,
+      event_type: r.event_type,
+      audience: r.target_audience === 'customer_all' ? 'broadcast' : (r.target_audience === 'developer_all' ? 'developer' : 'direct'),
+      recipient_email: r.recipient_email,
+      title: r.title,
+      body: r.body,
+      status: r.status,
+      retry_count: r.retry_count,
+      last_error: r.last_error,
+      created_at: r.created_at,
+      processed_at: r.processed_at
+    }));
+
+    res.json({ success: true, count: notifications.length, notifications });
   } catch (err) {
     next(err);
   }

@@ -6,6 +6,7 @@ import '../models/ticket.dart';
 import '../services/api_service.dart';
 import '../services/push_notification_service.dart';
 import 'login_screen.dart';
+import 'notifications_screen.dart';
 import 'ticket_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -197,6 +198,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.campaign, color: AppConstants.primaryColor),
+            tooltip: 'Push Notifications',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: AppConstants.textColor),
             tooltip: 'Refresh',

@@ -292,12 +292,31 @@ class NotificationService {
       return existing.id;
     }
 
-    // 2. Insert master notification row idempotently
+    // 2. Insert master notification row idempotently with constraint-safe type mapping
+    const validNotificationTypes = new Set([
+      'new_ticket',
+      'ticket_reply',
+      'status_changed',
+      'priority_changed',
+      'ticket_resolved',
+      'ticket_closed',
+      'ticket_reopened',
+      'admin_custom_broadcast',
+      'admin_custom_direct'
+    ]);
+
+    let safeNotifType = job.event_type;
+    if (!validNotificationTypes.has(safeNotifType)) {
+      if (job.target_audience === 'developer_all') safeNotifType = 'new_ticket';
+      else if (job.target_audience === 'customer_single') safeNotifType = 'ticket_reply';
+      else safeNotifType = 'admin_custom_broadcast';
+    }
+
     const { data: inserted, error: insertErr } = await this.supabase
       .from('notifications')
       .insert({
         idempotency_key: job.deduplication_key,
-        notification_type: job.event_type,
+        notification_type: safeNotifType,
         title: job.title,
         body: job.body,
         data: job.data || {},
@@ -464,14 +483,21 @@ class NotificationService {
     const allTokens = [];
 
     if (job.target_audience === 'customer_single') {
-      if (!job.recipient_user_id) return [];
-      const { data, error } = await this.supabase
+      let query = this.supabase
         .from('user_device_tokens')
         .select('id, user_id, fcm_token, device_platform, app_type')
-        .eq('user_id', job.recipient_user_id)
         .eq('app_type', 'customer')
         .eq('is_active', true);
 
+      if (job.recipient_user_id) {
+        query = query.eq('user_id', job.recipient_user_id);
+      } else if (job.recipient_email) {
+        query = query.eq('user_email', job.recipient_email.toLowerCase().trim());
+      } else {
+        return [];
+      }
+
+      const { data, error } = await query;
       if (error) throw new Error(`Failed to fetch customer tokens: ${error.message}`);
       return data || [];
     }

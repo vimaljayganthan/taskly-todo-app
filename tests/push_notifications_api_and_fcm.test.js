@@ -304,5 +304,195 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
       assert.strictEqual(classified.category, 'transient');
     });
   });
+
+  describe('4. Developer Custom Push Notifications & Recipient APIs', () => {
+    it('4.1 Rejects unauthenticated request to /api/support/developer/notifications with 401', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Unauthenticated Alert',
+          body: 'Should fail',
+          audience: 'all'
+        })
+      });
+      assert.strictEqual(res.status, 401);
+    });
+
+    it('4.2 Customer account receives 403 Forbidden on /api/support/developer/notifications', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${customerToken}`
+        },
+        body: JSON.stringify({
+          title: 'Customer Impersonation Alert',
+          body: 'Should fail with 403',
+          audience: 'all'
+        })
+      });
+      assert.strictEqual(res.status, 403);
+      const json = await res.json();
+      assert.ok(json.error.includes('Forbidden'));
+    });
+
+    it('4.3 Attacker claiming developer access receives 403 Forbidden', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${attackerToken}`
+        },
+        body: JSON.stringify({
+          title: 'Attacker Alert',
+          body: 'Should fail with 403',
+          audience: 'all'
+        })
+      });
+      assert.strictEqual(res.status, 403);
+    });
+
+    it('4.4 Rejects broadcast request with empty title or body (400 Bad Request)', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${developerToken}`
+        },
+        body: JSON.stringify({
+          title: '   ',
+          body: 'Valid body',
+          audience: 'all'
+        })
+      });
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.ok(json.error.includes('Title is required'));
+    });
+
+    it('4.5 Rejects direct custom notification without recipient_email (400 Bad Request)', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${developerToken}`
+        },
+        body: JSON.stringify({
+          title: 'Direct Alert Missing Recipient',
+          body: 'Missing recipient email',
+          audience: 'single'
+        })
+      });
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.ok(json.error.includes('Recipient email is required'));
+    });
+
+    it('4.6 Rejects direct custom notification targeting admin account (400 Bad Request)', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${developerToken}`
+        },
+        body: JSON.stringify({
+          title: 'Direct Alert To Admin',
+          body: 'Cannot send customer notification to admin',
+          audience: 'single',
+          recipient_email: 'tasklypets@gmail.com'
+        })
+      });
+      assert.strictEqual(res.status, 400);
+      const json = await res.json();
+      assert.ok(json.error.includes('Cannot send customer direct notification to admin account'));
+    });
+
+    it('4.7 Authorized admin enqueues broadcast notification (201 Created)', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${developerToken}`
+        },
+        body: JSON.stringify({
+          title: 'Scheduled Maintenance',
+          body: 'Taskly systems will undergo maintenance at midnight.',
+          audience: 'all'
+        })
+      });
+      assert.strictEqual(res.status, 201);
+      const json = await res.json();
+      assert.strictEqual(json.success, true);
+      assert.strictEqual(json.title, 'Scheduled Maintenance');
+      assert.strictEqual(json.audience, 'broadcast');
+      assert.ok(json.notification_id || json.job_id);
+    });
+
+    it('4.8 Authorized admin enqueues direct notification (201 Created)', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${developerToken}`
+        },
+        body: JSON.stringify({
+          title: 'Account Update',
+          body: 'Your ticket has been reviewed by the developer team.',
+          audience: 'single',
+          recipient_email: 'customer@taskly.app'
+        })
+      });
+      assert.strictEqual(res.status, 201);
+      const json = await res.json();
+      assert.strictEqual(json.success, true);
+      assert.strictEqual(json.title, 'Account Update');
+      assert.strictEqual(json.audience, 'direct');
+      assert.strictEqual(json.recipient_email, 'customer@taskly.app');
+    });
+
+    it('4.9 GET /api/support/developer/customers requires admin auth and returns customer list', async () => {
+      // Unauthenticated fails
+      const unauthRes = await fetch(`${baseUrl}/api/support/developer/customers`);
+      assert.strictEqual(unauthRes.status, 401);
+
+      // Customer fails with 403
+      const custRes = await fetch(`${baseUrl}/api/support/developer/customers`, {
+        headers: { 'Authorization': `Bearer ${customerToken}` }
+      });
+      assert.strictEqual(custRes.status, 403);
+
+      // Admin succeeds with 200
+      const adminRes = await fetch(`${baseUrl}/api/support/developer/customers?search=taskly`, {
+        headers: { 'Authorization': `Bearer ${developerToken}` }
+      });
+      assert.strictEqual(adminRes.status, 200);
+      const json = await adminRes.json();
+      assert.strictEqual(json.success, true);
+      assert.ok(Array.isArray(json.customers));
+    });
+
+    it('4.10 GET /api/support/developer/notifications/history returns notification history with status', async () => {
+      // Customer fails with 403
+      const custRes = await fetch(`${baseUrl}/api/support/developer/notifications/history`, {
+        headers: { 'Authorization': `Bearer ${customerToken}` }
+      });
+      assert.strictEqual(custRes.status, 403);
+
+      // Admin succeeds with 200
+      const adminRes = await fetch(`${baseUrl}/api/support/developer/notifications/history?limit=10`, {
+        headers: { 'Authorization': `Bearer ${developerToken}` }
+      });
+      assert.strictEqual(adminRes.status, 200);
+      const json = await adminRes.json();
+      assert.strictEqual(json.success, true);
+      assert.ok(Array.isArray(json.notifications));
+      assert.ok(json.notifications.length > 0);
+      const first = json.notifications[0];
+      assert.ok(first.id);
+      assert.ok(first.title);
+      assert.ok(first.status);
+    });
+  });
 });
 

@@ -28,7 +28,7 @@ function getApiBaseUrl() {
     );
     if (isCapacitor) {
       // Production Canonical Vercel HTTPS Deployment URL
-      return 'https://taskly-todo-app-4z1c.vercel.app';
+      return 'https://taskly-developer-backend.vercel.app';
     }
   }
   // Standard web browser deployment (relative URLs)

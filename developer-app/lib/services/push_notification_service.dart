@@ -67,6 +67,7 @@ class DeveloperPushNotificationService {
       // Foreground message listener
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         debugPrint('[PushForeground] Received notification: ${message.notification?.title} - ${message.notification?.body}');
+        _showForegroundBanner(message);
       });
 
       // Handle message tap when app was in background
@@ -86,6 +87,66 @@ class DeveloperPushNotificationService {
     } catch (e) {
       debugPrint('[PushInit] Warning: Push notification initialization deferred or failed: $e');
     }
+  }
+
+  void _showForegroundBanner(RemoteMessage message) {
+    final title = message.notification?.title ?? message.data['title'] ?? 'Taskly Support Alert';
+    final body = message.notification?.body ?? message.data['body'] ?? '';
+    final ticketId = message.data['ticket_id'] ?? message.data['ticketId'];
+
+    final context = developerNavigatorKey.currentContext;
+    if (context == null) return;
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: const Color(0xFF1E293B),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.notifications_active, color: Color(0xFF6366F1), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            if (body.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                body,
+                style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
+        ),
+        action: (ticketId != null && ticketId.toString().isNotEmpty)
+            ? SnackBarAction(
+                label: 'VIEW',
+                textColor: const Color(0xFF818CF8),
+                onPressed: () {
+                  _handleNotificationTap(message.data);
+                },
+              )
+            : null,
+      ),
+    );
   }
 
   void _handleNotificationTap(Map<String, dynamic> data) {

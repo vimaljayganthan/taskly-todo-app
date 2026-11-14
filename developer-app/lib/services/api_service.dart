@@ -624,6 +624,79 @@ class ApiService {
     }
   }
 
+  /// Send manual custom push notification to all or a specific customer
+  Future<Map<String, dynamic>> sendCustomNotification({
+    required String title,
+    required String body,
+    required String audience,
+    String? recipientEmail,
+    String? idempotencyKey,
+  }) async {
+    final token = await getToken();
+    final baseUrl = await getServerUrl();
+    final url = Uri.parse('$baseUrl/api/support/developer/notifications');
+
+    final payload = <String, dynamic>{
+      'title': title.trim(),
+      'body': body.trim(),
+      'audience': audience,
+      if (recipientEmail != null && recipientEmail.trim().isNotEmpty)
+        'recipient_email': recipientEmail.trim(),
+      if (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+        'idempotency_key': idempotencyKey.trim(),
+    };
+
+    final response = await _safePost(
+      url,
+      headers: _headers(token),
+      body: json.encode(payload),
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    }
+
+    throw _mapError(response, 'Failed to send notification');
+  }
+
+  /// Search or list eligible customer recipients
+  Future<List<Map<String, dynamic>>> getCustomers({String? search}) async {
+    final token = await getToken();
+    final baseUrl = await getServerUrl();
+    final uri = Uri.parse('$baseUrl/api/support/developer/customers').replace(
+      queryParameters: search != null && search.trim().isNotEmpty
+          ? {'search': search.trim()}
+          : null,
+    );
+
+    final response = await _safeGet(uri, headers: _headers(token));
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final list = decoded['customers'] as List<dynamic>? ?? [];
+      return list.cast<Map<String, dynamic>>();
+    }
+
+    throw _mapError(response, 'Failed to fetch customer recipients');
+  }
+
+  /// Fetch notification history audit log
+  Future<List<Map<String, dynamic>>> getNotificationHistory({int limit = 50}) async {
+    final token = await getToken();
+    final baseUrl = await getServerUrl();
+    final uri = Uri.parse('$baseUrl/api/support/developer/notifications/history').replace(
+      queryParameters: {'limit': limit.toString()},
+    );
+
+    final response = await _safeGet(uri, headers: _headers(token));
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final list = decoded['notifications'] as List<dynamic>? ?? [];
+      return list.cast<Map<String, dynamic>>();
+    }
+
+    throw _mapError(response, 'Failed to fetch notification history');
+  }
+
   // --- Network Helpers ---
 
   Future<http.Response> _safeGet(Uri uri, {Map<String, String>? headers}) async {
