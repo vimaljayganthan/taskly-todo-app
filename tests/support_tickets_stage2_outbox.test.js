@@ -29,6 +29,8 @@ const { ResendEmailProvider, MockEmailProvider } = require('../services/emailPro
 const { FileOutboxStore } = require('../services/outboxStore');
 const { OutboxWorker } = require('../services/outboxWorker');
 
+process.env.SUPPORT_EMAIL_WORKFLOW_ENABLED = 'true';
+
 const TEST_DATA_DIR = path.join(__dirname, '..', 'data');
 const TEST_DATA_FILE = path.join(TEST_DATA_DIR, `test_outbox_${Date.now()}_${Math.random().toString(36).substring(2)}.json`);
 
@@ -519,10 +521,13 @@ describe('Taskly Customer Support — Stage 2: Outbox Worker & Resend Integratio
         deduplicationKey: `endpoint-test-${Date.now()}`
       });
 
+      const authHeaders = process.env.CRON_SECRET ? { authorization: `Bearer ${process.env.CRON_SECRET}` } : {};
+
       // 1. Test POST /api/internal/support/outbox/process
       const processRes = await dispatchRequest({
         method: 'POST',
-        url: '/api/internal/support/outbox/process'
+        url: '/api/internal/support/outbox/process',
+        headers: authHeaders
       });
 
       assert.strictEqual(processRes.status, 200);
@@ -533,7 +538,8 @@ describe('Taskly Customer Support — Stage 2: Outbox Worker & Resend Integratio
       // 2. Test GET /api/internal/support/outbox/metrics
       const metricsRes = await dispatchRequest({
         method: 'GET',
-        url: '/api/internal/support/outbox/metrics'
+        url: '/api/internal/support/outbox/metrics',
+        headers: authHeaders
       });
 
       assert.strictEqual(metricsRes.status, 200);
@@ -544,7 +550,8 @@ describe('Taskly Customer Support — Stage 2: Outbox Worker & Resend Integratio
       // 3. Test POST /api/internal/support/outbox/sweep
       const sweepRes = await dispatchRequest({
         method: 'POST',
-        url: '/api/internal/support/outbox/sweep'
+        url: '/api/internal/support/outbox/sweep',
+        headers: authHeaders
       });
 
       assert.strictEqual(sweepRes.status, 200);

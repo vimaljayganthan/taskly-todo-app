@@ -61,12 +61,21 @@ describe('Taskly Customer Support — Production Fail-Safe Suite', () => {
 
   beforeEach(() => {
     originalEnv = { ...process.env };
+    process.env.SUPPORT_EMAIL_WORKFLOW_ENABLED = 'true';
+    delete process.env.CRON_SECRET;
     resetOutboxStore();
     resetEmailProvider();
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) {
+        delete process.env[key];
+      }
+    }
+    for (const [key, val] of Object.entries(originalEnv)) {
+      process.env[key] = val;
+    }
     resetOutboxStore();
     resetEmailProvider();
   });
@@ -228,6 +237,8 @@ describe('Taskly Customer Support — Production Fail-Safe Suite', () => {
     delete process.env.VERCEL;
     delete process.env.VERCEL_ENV;
     delete process.env.RESEND_API_KEY;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     const emailProvider = getEmailProvider();
     assert.ok(emailProvider instanceof MockEmailProvider);

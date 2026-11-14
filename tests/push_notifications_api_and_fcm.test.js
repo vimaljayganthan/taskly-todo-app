@@ -30,9 +30,294 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
   let server;
   let baseUrl;
   const cronSecret = process.env.CRON_SECRET || 'test-cron-secret-32-bytes-secure';
+  const originalEnv = { ...process.env };
+
+  const mockTokens = new Map();
+  const mockNotifications = [];
+  const mockOutbox = [];
+
+  function createMockSupabaseClient() {
+    return {
+      rpc: async (fnName, params = {}) => {
+        if (fnName === 'claim_notification_outbox_batch') {
+          const batchSize = params.p_batch_size || 10;
+          const claimed = [];
+          for (const job of mockOutbox) {
+            if (job.status === 'pending') {
+              job.status = 'processing';
+              job.worker_id = params.p_worker_id;
+              claimed.push({ ...job });
+              if (claimed.length >= batchSize) break;
+            }
+          }
+          return { data: claimed, error: null };
+        }
+        if (fnName === 'expand_broadcast_inbox_atomic') {
+          return { data: 2, error: null };
+        }
+        if (fnName === 'get_authorized_developer_user_ids') {
+          return { data: [{ user_id: 'dev-1' }], error: null };
+        }
+        if (fnName === 'mark_outbox_job_completed') {
+          const job = mockOutbox.find(j => j.id === params.p_job_id);
+          if (job) {
+            job.status = 'completed';
+            job.delivery_status = 'delivered';
+            job.processed_at = new Date().toISOString();
+          }
+          return { data: true, error: null };
+        }
+        if (fnName === 'mark_outbox_job_failed') {
+          const job = mockOutbox.find(j => j.id === params.p_job_id);
+          if (job) {
+            job.status = params.p_dead_letter ? 'dead_letter' : 'pending';
+            job.last_error = params.p_error_message;
+          }
+          return { data: true, error: null };
+        }
+        return { data: null, error: null };
+      },
+      auth: {
+        admin: {
+          listUsers: async () => ({
+            data: {
+              users: [
+                { id: 'cust-1', email: 'customer@taskly.app', created_at: new Date().toISOString() }
+              ]
+            },
+            error: null
+          })
+        }
+      },
+      from: (table) => {
+        let selectedCols = '*';
+        let selectOpts = {};
+        let filters = [];
+        let orderField = null;
+        let orderAsc = true;
+        let limitVal = null;
+        let rangeStart = null;
+        let rangeEnd = null;
+
+        const chain = {
+          select: (cols = '*', opts = {}) => {
+            selectedCols = cols;
+            selectOpts = opts;
+            return chain;
+          },
+          upsert: (row, opts = {}) => {
+            if (table === 'user_device_tokens') {
+              const record = { id: `tok_${Date.now()}`, ...row };
+              mockTokens.set(row.fcm_token, record);
+              const result = { data: record, error: null };
+              return {
+                select: () => ({
+                  single: async () => ({ data: record, error: null }),
+                  maybeSingle: async () => ({ data: record, error: null }),
+                  then: (resolve, reject) => Promise.resolve(result).then(resolve, reject)
+                }),
+                then: (resolve, reject) => Promise.resolve(result).then(resolve, reject)
+              };
+            }
+            const res = { data: row, error: null };
+            return {
+              select: () => ({
+                single: async () => ({ data: row, error: null }),
+                maybeSingle: async () => ({ data: row, error: null }),
+                then: (resolve, reject) => Promise.resolve(res).then(resolve, reject)
+              }),
+              then: (resolve, reject) => Promise.resolve(res).then(resolve, reject)
+            };
+          },
+          insert: (row) => {
+            const makeRecord = (r) => ({
+              id: `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              status: 'pending',
+              delivery_status: 'pending',
+              created_at: new Date().toISOString(),
+              retry_count: 0,
+              ...r
+            });
+            const record = Array.isArray(row) ? row.map(makeRecord) : makeRecord(row);
+            if (table === 'notifications') {
+              if (Array.isArray(record)) mockNotifications.push(...record);
+              else mockNotifications.push(record);
+            }
+            if (table === 'notification_outbox') {
+              if (Array.isArray(record)) mockOutbox.push(...record);
+              else mockOutbox.push(record);
+            }
+            const result = { data: record, error: null };
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: Array.isArray(record) ? record[0] : record,
+                  error: null
+                }),
+                maybeSingle: async () => ({
+                  data: Array.isArray(record) ? record[0] : record,
+                  error: null
+                }),
+                then: (resolve, reject) => Promise.resolve(result).then(resolve, reject)
+              }),
+              then: (resolve, reject) => Promise.resolve(result).then(resolve, reject)
+            };
+          },
+          update: (updates) => {
+            const updateFilters = [];
+            const updateChain = {
+              eq: (col, val) => {
+                updateFilters.push({ col, val });
+                return updateChain;
+              },
+              then: (resolve, reject) => {
+                let count = 0;
+                let targetList = [];
+                if (table === 'user_device_tokens') targetList = Array.from(mockTokens.values());
+                else if (table === 'notification_outbox') targetList = mockOutbox;
+                else if (table === 'notifications') targetList = mockNotifications;
+
+                for (const item of targetList) {
+                  const match = updateFilters.every(f => item[f.col] === f.val);
+                  if (match) {
+                    Object.assign(item, updates);
+                    count++;
+                  }
+                }
+                Promise.resolve({ data: null, error: null, count }).then(resolve, reject);
+              }
+            };
+            return updateChain;
+          },
+          eq: (col, val) => {
+            filters.push({ col, op: 'eq', val });
+            return chain;
+          },
+          neq: (col, val) => {
+            filters.push({ col, op: 'neq', val });
+            return chain;
+          },
+          gt: (col, val) => {
+            filters.push({ col, op: 'gt', val });
+            return chain;
+          },
+          gte: (col, val) => {
+            filters.push({ col, op: 'gte', val });
+            return chain;
+          },
+          lt: (col, val) => {
+            filters.push({ col, op: 'lt', val });
+            return chain;
+          },
+          lte: (col, val) => {
+            filters.push({ col, op: 'lte', val });
+            return chain;
+          },
+          ilike: (col, pattern) => {
+            filters.push({ col, op: 'ilike', val: pattern });
+            return chain;
+          },
+          in: (col, arr) => {
+            filters.push({ col, op: 'in', val: arr });
+            return chain;
+          },
+          order: (col, opts = {}) => {
+            orderField = col;
+            orderAsc = opts.ascending !== false;
+            return chain;
+          },
+          limit: (n) => {
+            limitVal = n;
+            return chain;
+          },
+          range: (from, to) => {
+            rangeStart = from;
+            rangeEnd = to;
+            return chain;
+          },
+          maybeSingle: async () => {
+            const res = await chain._execute();
+            return { data: res.data && res.data.length > 0 ? res.data[0] : null, error: null };
+          },
+          single: async () => {
+            const res = await chain._execute();
+            return { data: res.data && res.data.length > 0 ? res.data[0] : null, error: null };
+          },
+          then: (resolve, reject) => {
+            chain._execute().then(resolve, reject);
+          },
+          _execute: async () => {
+            let items = [];
+            if (table === 'user_device_tokens') {
+              items = Array.from(mockTokens.values());
+            } else if (table === 'notifications') {
+              items = [...mockNotifications];
+            } else if (table === 'notification_outbox') {
+              items = [...mockOutbox];
+            }
+
+            for (const f of filters) {
+              if (f.op === 'eq') items = items.filter(it => it[f.col] === f.val);
+              else if (f.op === 'neq') items = items.filter(it => it[f.col] !== f.val);
+              else if (f.op === 'gt') items = items.filter(it => it[f.col] > f.val);
+              else if (f.op === 'gte') items = items.filter(it => it[f.col] >= f.val);
+              else if (f.op === 'lt') items = items.filter(it => it[f.col] < f.val);
+              else if (f.op === 'lte') items = items.filter(it => it[f.col] <= f.val);
+              else if (f.op === 'in') items = items.filter(it => f.val.includes(it[f.col]));
+              else if (f.op === 'ilike') {
+                const sub = f.val.replace(/%/g, '').toLowerCase();
+                items = items.filter(it => String(it[f.col] || '').toLowerCase().includes(sub));
+              }
+            }
+
+            const countVal = items.length;
+
+            if (orderField) {
+              items.sort((a, b) => {
+                const va = a[orderField] || '';
+                const vb = b[orderField] || '';
+                return orderAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+              });
+            }
+
+            if (rangeStart != null && rangeEnd != null) {
+              items = items.slice(rangeStart, rangeEnd + 1);
+            } else if (limitVal != null) {
+              items = items.slice(0, limitVal);
+            }
+
+            if (selectOpts.head === true) {
+              return { data: [], error: null, count: countVal };
+            }
+
+            return { data: items, error: null, count: countVal };
+          }
+        };
+        return chain;
+      }
+    };
+  }
 
   before(async () => {
+    process.env.NODE_ENV = 'development';
     process.env.CRON_SECRET = cronSecret;
+
+    // Seed sample customer token
+    mockTokens.set('fcm-sample-cust-tok', {
+      id: 'tok-sample-1',
+      user_id: 'cust-1',
+      user_email: 'customer@taskly.app',
+      fcm_token: 'fcm-sample-cust-tok',
+      app_type: 'customer',
+      device_platform: 'android',
+      is_active: true,
+      last_seen_at: new Date().toISOString()
+    });
+
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      app.locals.mockSupabaseClient = createMockSupabaseClient();
+    }
+
     await new Promise((resolve) => {
       server = http.createServer(app);
       server.listen(0, '127.0.0.1', () => {
@@ -44,8 +329,18 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
   });
 
   after(async () => {
+    delete app.locals.mockSupabaseClient;
     if (server) {
       await new Promise((resolve) => server.close(resolve));
+    }
+    // Cleanly restore process.env to avoid cross-suite pollution
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) {
+        delete process.env[key];
+      }
+    }
+    for (const [key, val] of Object.entries(originalEnv)) {
+      process.env[key] = val;
     }
   });
 

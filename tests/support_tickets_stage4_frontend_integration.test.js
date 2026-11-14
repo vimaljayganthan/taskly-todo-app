@@ -26,6 +26,7 @@ const TEST_SECRET = 'whsec_test_secret_1234567890abcdefghijklmnopqrstuv';
 process.env.RESEND_WEBHOOK_SECRET = TEST_SECRET;
 process.env.SUPPORT_DEVELOPER_EMAIL = 'tasklypets@gmail.com';
 process.env.RESEND_RECEIVING_DOMAIN = 'd893f1.resend.app';
+process.env.SUPPORT_EMAIL_WORKFLOW_ENABLED = 'true';
 
 const app = require('../server.js');
 const SupportStore = require('../storage/supportStore');

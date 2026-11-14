@@ -43,6 +43,10 @@ function canonicalHash(obj) {
   return crypto.createHash('sha256').update(str).digest('hex');
 }
 
+function isValidUuid(id) {
+  return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 /**
  * Generates human-friendly ticket code matching Migration 007
  * Format: TK-XXXXXXXX (8 uppercase hex/alphanumeric characters)
@@ -53,6 +57,26 @@ function generateTicketCode() {
 }
 
 /**
+ * Robust detection of internal notes across all storage representations and client conventions
+ */
+function isInternalNote(m) {
+  if (!m) return false;
+  if (m.is_internal_note === true || m.isInternalNote === true) return true;
+  if (m.type === 'internal_note') return true;
+  if (m.sender_type === 'internal') return true;
+  let meta = m.metadata;
+  if (typeof meta === 'string') {
+    try { meta = JSON.parse(meta); } catch (_) { meta = null; }
+  }
+  if (meta && typeof meta === 'object') {
+    if (meta.is_internal_note === true || meta.isInternalNote === true || meta.type === 'internal_note') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Formats message object with canonical schema columns and backward-compatible aliases
  */
 function formatMessageOutput(m) {
@@ -60,6 +84,10 @@ function formatMessageOutput(m) {
   const senderType = m.sender_type || (m.author_type === 'customer' ? 'user' : (m.author_type === 'agent' ? 'developer' : m.author_type)) || 'user';
   const senderUserId = m.sender_user_id || m.author_id || null;
   const senderEmail = m.sender_email || m.author_email || '';
+  let meta = m.metadata || {};
+  if (typeof meta === 'string') {
+    try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+  }
   return {
     id: m.id,
     ticket_id: m.ticket_id,
@@ -68,7 +96,8 @@ function formatMessageOutput(m) {
     sender_email: senderEmail,
     body: m.body,
     channel: m.channel || 'in_app',
-    metadata: m.metadata || {},
+    metadata: meta,
+    is_internal_note: isInternalNote(m),
     created_at: m.created_at,
     // Aliases for backward compatibility
     author_type: senderType === 'user' ? 'customer' : (senderType === 'developer' ? 'agent' : senderType),
@@ -336,8 +365,9 @@ class FileSupportStorageAdapter {
       return null;
     }
 
+    // Customer view: Strictly exclude internal notes
     const messages = data.messages
-      .filter(m => m.ticket_id === ticketId)
+      .filter(m => m.ticket_id === ticketId && !isInternalNote(m))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
       .map(formatMessageOutput);
 
@@ -498,8 +528,9 @@ class FileSupportStorageAdapter {
       return null;
     }
 
+    // Customer view: Strictly exclude internal notes
     return data.messages
-      .filter(m => m.ticket_id === ticketId)
+      .filter(m => m.ticket_id === ticketId && !isInternalNote(m))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
       .map(formatMessageOutput);
   }
@@ -827,9 +858,19 @@ class FileSupportStorageAdapter {
     const messages = data.messages
       .filter(m => m.ticket_id === ticketId)
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      .map(formatMessageOutput);
+      .map(m => {
+        const out = formatMessageOutput(m);
+        out.is_internal_note = isInternalNote(m);
+        return out;
+      });
 
-    return { ...ticket, messages };
+    return {
+      ...ticket,
+      user_id: ticket.user_id,
+      user_email: ticket.user_email,
+      user_name: ticket.metadata?.user_name || (ticket.user_email ? ticket.user_email.split('@')[0] : 'Customer'),
+      messages
+    };
   }
 
   async developerAddMessage({
@@ -850,9 +891,9 @@ class FileSupportStorageAdapter {
     const now = new Date().toISOString();
     const messageId = crypto.randomUUID();
     const oldStatus = ticket.status;
-    let targetStatus = status ? normalizeStatus(status) : 'waiting_customer';
+    let targetStatus = status ? normalizeStatus(status) : (ticket.status || 'in_progress');
     if (!VALID_STATUSES.includes(targetStatus)) {
-      targetStatus = 'waiting_customer';
+      targetStatus = 'in_progress';
     }
 
     const devMessage = {
@@ -899,6 +940,88 @@ class FileSupportStorageAdapter {
 
     await this._writeData(data);
     return formatMessageOutput(devMessage);
+  }
+
+  async developerAddNote({
+    ticketId,
+    developerId,
+    developerEmail,
+    body
+  }) {
+    if (!body || !body.trim()) {
+      throw new Error('Message body is required');
+    }
+
+    const data = await this._readData();
+    const ticket = data.tickets.find(t => t.id === ticketId);
+    if (!ticket) return null;
+
+    const now = new Date().toISOString();
+    const messageId = crypto.randomUUID();
+
+    const noteMessage = {
+      id: messageId,
+      ticket_id: ticketId,
+      sender_type: 'developer',
+      sender_user_id: developerId || null,
+      sender_email: developerEmail || 'developer@taskly.app',
+      body: body.trim(),
+      channel: 'in_app',
+      metadata: { is_internal_note: true },
+      created_at: now
+    };
+
+    // Internal notes update ticket.updated_at ONLY, never last_message_at (so customer never sees activity)
+    ticket.updated_at = now;
+
+    data.messages.push(noteMessage);
+
+    data.events.push({
+      id: crypto.randomUUID(),
+      ticket_id: ticketId,
+      event_type: 'internal_note_added',
+      actor_id: developerId || null,
+      actor_type: 'developer',
+      new_state: { message_id: messageId, is_internal_note: true },
+      created_at: now
+    });
+
+    await this._writeData(data);
+    const out = formatMessageOutput(noteMessage);
+    out.is_internal_note = true;
+    return out;
+  }
+
+  async developerUpdatePriority(ticketId, priority, developerId = null) {
+    const cleanPriority = (priority || '').toLowerCase().trim();
+    if (!VALID_PRIORITIES.includes(cleanPriority)) {
+      throw new Error(`Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`);
+    }
+
+    const data = await this._readData();
+    const ticket = data.tickets.find(t => t.id === ticketId);
+    if (!ticket) return null;
+
+    const oldPriority = ticket.priority || 'normal';
+    const now = new Date().toISOString();
+    ticket.priority = cleanPriority;
+    ticket.updated_at = now;
+
+    if (oldPriority !== cleanPriority) {
+      data.events.push({
+        id: crypto.randomUUID(),
+        ticket_id: ticketId,
+        event_type: 'priority_changed',
+        actor_id: developerId || null,
+        actor_type: 'developer',
+        old_state: { priority: oldPriority },
+        new_state: { priority: cleanPriority },
+        created_at: now
+      });
+    }
+
+    await this._writeData(data);
+    return ticket;
   }
 
   async developerUpdateStatus(ticketId, status, developerId = null) {
@@ -1058,13 +1181,17 @@ class SupabaseSupportStorageAdapter {
       .from('support_ticket_messages')
       .select('*')
       .eq('ticket_id', ticketId)
+      .or('metadata->>is_internal_note.is.null,metadata->>is_internal_note.neq.true')
       .order('created_at', { ascending: true });
 
     if (msgErr) {
       throw new Error(`Database error fetching ticket messages: ${msgErr.message}`);
     }
 
-    const messages = (rawMessages || []).map(formatMessageOutput);
+    // Customer view: Strictly exclude internal notes (double-layer protection)
+    const messages = (rawMessages || [])
+      .filter(m => !isInternalNote(m))
+      .map(formatMessageOutput);
     return { ...ticket, messages };
   }
 
@@ -1142,13 +1269,17 @@ class SupabaseSupportStorageAdapter {
       .from('support_ticket_messages')
       .select('*')
       .eq('ticket_id', ticketId)
+      .or('metadata->>is_internal_note.is.null,metadata->>is_internal_note.neq.true')
       .order('created_at', { ascending: true });
 
     if (msgErr) {
       throw new Error(`Database error fetching messages: ${msgErr.message}`);
     }
 
-    return (rawMessages || []).map(formatMessageOutput);
+    // Customer view: Strictly exclude internal notes (double-layer protection)
+    return (rawMessages || [])
+      .filter(m => !isInternalNote(m))
+      .map(formatMessageOutput);
   }
 
   async claimInboundWebhookEvent({
@@ -1286,9 +1417,18 @@ class SupabaseSupportStorageAdapter {
 
     if (msgErr) throw new Error(`Database error fetching developer messages: ${msgErr.message}`);
 
+    const messages = (rawMessages || []).map(m => {
+      const out = formatMessageOutput(m);
+      out.is_internal_note = isInternalNote(m);
+      return out;
+    });
+
     return {
       ...ticket,
-      messages: (rawMessages || []).map(formatMessageOutput)
+      user_id: ticket.user_id,
+      user_email: ticket.user_email,
+      user_name: ticket.metadata?.user_name || (ticket.user_email ? ticket.user_email.split('@')[0] : 'Customer'),
+      messages
     };
   }
 
@@ -1304,13 +1444,19 @@ class SupabaseSupportStorageAdapter {
     }
 
     const cleanBody = body.trim();
-    let targetStatus = status ? normalizeStatus(status) : 'waiting_customer';
-    if (!VALID_STATUSES.includes(targetStatus)) {
-      targetStatus = 'waiting_customer';
+    let targetStatus = status ? normalizeStatus(status) : null;
+    if (!targetStatus || !VALID_STATUSES.includes(targetStatus)) {
+      const { data: curTicket } = await this.client
+        .from('support_tickets')
+        .select('status')
+        .eq('id', ticketId)
+        .maybeSingle();
+      targetStatus = curTicket?.status || 'in_progress';
     }
 
     const messageId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const validDevId = isValidUuid(developerId) ? developerId : null;
 
     const { data: msg, error: msgErr } = await this.client
       .from('support_ticket_messages')
@@ -1318,7 +1464,7 @@ class SupabaseSupportStorageAdapter {
         id: messageId,
         ticket_id: ticketId,
         sender_type: 'developer',
-        sender_user_id: developerId || null,
+        sender_user_id: validDevId,
         sender_email: developerEmail || 'developer@taskly.app',
         body: cleanBody,
         channel: 'in_app',
@@ -1334,7 +1480,7 @@ class SupabaseSupportStorageAdapter {
       .from('support_tickets')
       .update({
         status: targetStatus,
-        developer_user_id: developerId || null,
+        developer_user_id: validDevId,
         last_message_at: now,
         updated_at: now
       })
@@ -1349,13 +1495,110 @@ class SupabaseSupportStorageAdapter {
       .insert({
         ticket_id: ticketId,
         event_type: 'message_added',
-        actor_id: developerId || null,
+        actor_id: validDevId,
         actor_type: 'developer',
         new_state: { message_id: messageId, sender_type: 'developer', channel: 'in_app' },
         created_at: now
       });
 
     return formatMessageOutput(msg);
+  }
+
+  async developerAddNote({
+    ticketId,
+    developerId,
+    developerEmail,
+    body
+  }) {
+    if (!body || !body.trim()) {
+      throw new Error('Note body is required');
+    }
+
+    const { data: ticket, error: ticketErr } = await this.client
+      .from('support_tickets')
+      .select('id')
+      .eq('id', ticketId)
+      .maybeSingle();
+
+    if (ticketErr) throw new Error(`Database error verifying ticket: ${ticketErr.message}`);
+    if (!ticket) return null;
+
+    const now = new Date().toISOString();
+    const messageId = crypto.randomUUID();
+    const validDevId = isValidUuid(developerId) ? developerId : null;
+
+    const { data: msg, error: msgErr } = await this.client
+      .from('support_ticket_messages')
+      .insert({
+        id: messageId,
+        ticket_id: ticketId,
+        sender_type: 'developer',
+        sender_user_id: validDevId,
+        sender_email: developerEmail || 'developer@taskly.app',
+        body: body.trim(),
+        channel: 'in_app',
+        metadata: { is_internal_note: true },
+        created_at: now
+      })
+      .select()
+      .single();
+
+    if (msgErr) throw new Error(`Database error adding internal note: ${msgErr.message}`);
+
+    // Internal note: update updated_at ONLY, never last_message_at (so customer never sees activity)
+    await this.client
+      .from('support_tickets')
+      .update({ updated_at: now })
+      .eq('id', ticketId);
+
+    await this.client
+      .from('support_ticket_events')
+      .insert({
+        ticket_id: ticketId,
+        event_type: 'internal_note_added',
+        actor_id: validDevId,
+        actor_type: 'developer',
+        new_state: { message_id: messageId, is_internal_note: true },
+        created_at: now
+      });
+
+    const out = formatMessageOutput(msg);
+    out.is_internal_note = true;
+    return out;
+  }
+
+  async developerUpdatePriority(ticketId, priority, developerId = null) {
+    const cleanPriority = (priority || '').toLowerCase().trim();
+    if (!VALID_PRIORITIES.includes(cleanPriority)) {
+      throw new Error(`Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`);
+    }
+
+    const now = new Date().toISOString();
+    const validDevId = isValidUuid(developerId) ? developerId : null;
+    const { data: ticket, error } = await this.client
+      .from('support_tickets')
+      .update({
+        priority: cleanPriority,
+        updated_at: now
+      })
+      .eq('id', ticketId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Database error updating ticket priority: ${error.message}`);
+
+    await this.client
+      .from('support_ticket_events')
+      .insert({
+        ticket_id: ticketId,
+        event_type: 'priority_changed',
+        actor_id: validDevId,
+        actor_type: 'developer',
+        new_state: { priority: cleanPriority },
+        created_at: now
+      });
+
+    return ticket;
   }
 
   async developerUpdateStatus(ticketId, status, developerId = null) {
@@ -1365,12 +1608,13 @@ class SupabaseSupportStorageAdapter {
     }
 
     const now = new Date().toISOString();
+    const validDevId = isValidUuid(developerId) ? developerId : null;
     const updatePayload = {
       status: cleanStatus,
       updated_at: now
     };
-    if (developerId) {
-      updatePayload.developer_user_id = developerId;
+    if (validDevId) {
+      updatePayload.developer_user_id = validDevId;
     }
 
     const { data: ticket, error } = await this.client
@@ -1387,7 +1631,7 @@ class SupabaseSupportStorageAdapter {
       .insert({
         ticket_id: ticketId,
         event_type: 'status_changed',
-        actor_id: developerId || null,
+        actor_id: validDevId,
         actor_type: 'developer',
         new_state: { status: cleanStatus },
         created_at: now
@@ -1524,6 +1768,7 @@ module.exports = {
   canonicalHash,
   generateTicketCode,
   formatMessageOutput,
+  isInternalNote,
   normalizeStatus,
   VALID_CATEGORIES,
   VALID_PRIORITIES,

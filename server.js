@@ -275,9 +275,9 @@ async function authenticateUser(req, res, next) {
     }
   }
 
-  // 3. Mock-token authentication: ONLY allowed when process.env.NODE_ENV === 'development'
+  // 3. Mock-token authentication: ONLY allowed in non-production environments (development & test)
   if (token.startsWith('mock-user:')) {
-    if (isDevelopment) {
+    if (!isProduction) {
       const parts = token.split(':');
       if (parts.length >= 2 && parts[1]) {
         req.user = {
@@ -289,7 +289,7 @@ async function authenticateUser(req, res, next) {
         return next();
       }
     }
-    return res.status(401).json({ error: 'Unauthorized: Mock tokens are only allowed in development' });
+    return res.status(401).json({ error: 'Unauthorized: Mock tokens are only allowed in non-production environments' });
   }
 
   // 4. Supabase JWT Authentication
@@ -1625,8 +1625,6 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
     let cleanRecipientEmail = null;
     let recipientUserId = null;
 
-    const serviceClient = getServiceSupabaseClient();
-
     if (!isBroadcast) {
       if (!recipient_email || typeof recipient_email !== 'string' || !recipient_email.trim()) {
         return res.status(400).json({ error: 'Recipient email is required for direct custom notifications' });
@@ -1640,7 +1638,11 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
       if (cleanRecipientEmail === 'tasklypets@gmail.com') {
         return res.status(400).json({ error: 'Cannot send customer direct notification to admin account' });
       }
+    }
 
+    const serviceClient = getServiceSupabaseClient(req);
+
+    if (!isBroadcast) {
       // Resolve recipient user ID from registered customer device tokens or support tickets
       const { data: tokenRow } = await serviceClient
         .from('user_device_tokens')
@@ -1722,7 +1724,7 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
 app.get('/api/support/developer/customers', async (req, res, next) => {
   try {
     const { search, limit } = req.query;
-    const serviceClient = getServiceSupabaseClient();
+    const serviceClient = getServiceSupabaseClient(req);
     const maxLimit = Math.min(parseInt(limit, 10) || 50, 100);
 
     let query = serviceClient
@@ -1821,7 +1823,7 @@ app.get('/api/support/developer/notifications/history', async (req, res, next) =
   try {
     const { limit, offset } = req.query;
     const maxLimit = Math.min(parseInt(limit, 10) || 50, 100);
-    const serviceClient = getServiceSupabaseClient();
+    const serviceClient = getServiceSupabaseClient(req);
 
     const { data: rows, error: histErr } = await serviceClient
       .from('notification_outbox')
@@ -1957,15 +1959,29 @@ app.get('/api/internal/support/outbox/metrics', requireInternalCronAuth, async (
 // ==========================================================================
 
 let cachedServiceSupabase = null;
-function getServiceSupabaseClient() {
+function getServiceSupabaseClient(req = null) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+  // 1. Mock test client injection (strictly prohibited in production)
+  if (!isProduction && req?.app?.locals?.mockSupabaseClient) {
+    return req.app.locals.mockSupabaseClient;
+  }
+  if (!isProduction && app?.locals?.mockSupabaseClient) {
+    return app.locals.mockSupabaseClient;
+  }
+
   if (cachedServiceSupabase) return cachedServiceSupabase;
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase service_role credentials not configured');
+
+  if (isProduction && (!supabaseUrl || !supabaseServiceKey)) {
+    throw new Error('Supabase service_role credentials not configured in production');
   }
+
   const { createClient } = require('@supabase/supabase-js');
-  cachedServiceSupabase = createClient(supabaseUrl, supabaseServiceKey, {
+  cachedServiceSupabase = createClient(supabaseUrl || 'https://mock.supabase.co', supabaseServiceKey || 'mock-service-role-key', {
     auth: { persistSession: false }
   });
   return cachedServiceSupabase;
@@ -2009,7 +2025,7 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       ? (device_platform || platform || '').toLowerCase().trim()
       : 'android';
 
-    const client = getServiceSupabaseClient();
+    const client = getServiceSupabaseClient(req);
     const { data, error } = await client
       .from('user_device_tokens')
       .upsert({
@@ -2055,7 +2071,7 @@ app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next)
       return res.status(400).json({ error: 'fcm_token / device_token is required' });
     }
 
-    const client = getServiceSupabaseClient();
+    const client = getServiceSupabaseClient(req);
     const { error } = await client
       .from('user_device_tokens')
       .update({
@@ -2095,7 +2111,7 @@ app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, 
       });
     }
 
-    const client = getServiceSupabaseClient();
+    const client = getServiceSupabaseClient(req);
     const worker = new NotificationService({
       supabaseClient: client,
       messagingProvider: messaging,
@@ -2119,7 +2135,7 @@ app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, 
 // GET /api/internal/notifications/outbox/metrics - Notification queue health & metrics
 app.get('/api/internal/notifications/outbox/metrics', requireInternalCronAuth, async (req, res, next) => {
   try {
-    const client = getServiceSupabaseClient();
+    const client = getServiceSupabaseClient(req);
     const { count: pendingCount, error: pErr } = await client
       .from('notification_outbox')
       .select('*', { count: 'exact', head: true })
