@@ -82,7 +82,14 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
           listUsers: async () => ({
             data: {
               users: [
-                { id: 'cust-1', email: 'customer@taskly.app', created_at: new Date().toISOString() }
+                {
+                  id: 'cust-1',
+                  email: 'customer@taskly.app',
+                  email_confirmed_at: '2026-11-01T00:00:00Z',
+                  user_metadata: { name: 'Taskly Customer', onboarded: true },
+                  app_metadata: { is_customer: true },
+                  created_at: new Date().toISOString()
+                }
               ]
             },
             error: null
@@ -314,9 +321,9 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
       last_seen_at: new Date().toISOString()
     });
 
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      app.locals.mockSupabaseClient = createMockSupabaseClient();
-    }
+    const mockClient = createMockSupabaseClient();
+    app.locals.mockSupabaseClient = mockClient;
+    app.locals.mockCustomerSupabaseClient = mockClient;
 
     await new Promise((resolve) => {
       server = http.createServer(app);
@@ -330,6 +337,7 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
 
   after(async () => {
     delete app.locals.mockSupabaseClient;
+    delete app.locals.mockCustomerSupabaseClient;
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
@@ -725,6 +733,21 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
     });
 
     it('4.8 Authorized admin enqueues direct notification (201 Created)', async () => {
+      // Dynamically resolve an eligible customer from the authoritative customer search API
+      const custRes = await fetch(`${baseUrl}/api/support/developer/customers`, {
+        headers: { 'Authorization': `Bearer ${developerToken}` }
+      });
+      assert.strictEqual(custRes.status, 200, 'Customer search endpoint must return 200 OK');
+      const custJson = await custRes.json();
+      assert.ok(
+        Array.isArray(custJson.customers) && custJson.customers.length > 0,
+        'Expected at least one eligible mock customer to be returned by customer search API'
+      );
+
+      const targetCustomer = custJson.customers[0]?.user_email;
+      assert.ok(targetCustomer, 'Eligible customer account must have a valid user_email');
+      assert.strictEqual(targetCustomer, 'customer@taskly.app', 'Target customer must match locally mocked eligible customer account');
+
       const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
         method: 'POST',
         headers: {
@@ -735,7 +758,7 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
           title: 'Account Update',
           body: 'Your ticket has been reviewed by the developer team.',
           audience: 'single',
-          recipient_email: 'customer@taskly.app'
+          recipient_email: targetCustomer
         })
       });
       assert.strictEqual(res.status, 201);
@@ -743,7 +766,7 @@ describe('Taskly Push Notifications — API Endpoints & Role Isolation Suite', (
       assert.strictEqual(json.success, true);
       assert.strictEqual(json.title, 'Account Update');
       assert.strictEqual(json.audience, 'direct');
-      assert.strictEqual(json.recipient_email, 'customer@taskly.app');
+      assert.strictEqual(json.recipient_email, targetCustomer);
     });
 
     it('4.9 GET /api/support/developer/customers requires admin auth and returns customer list', async () => {
