@@ -10,7 +10,7 @@
 --   4. Mandatory user_id (NOT NULL) for strict tenant isolation.
 --   5. Enable and FORCE Row Level Security (RLS).
 --   6. Remove the four legacy public policies by exact names.
---   7. Purge any other unvetted policies on public.todos (idempotent).
+--   7. Fail closed if any unexpected policies remain on public.todos (aborts transaction).
 --   8. Create four strict policies for role 'authenticated' using auth.uid() = user_id:
 --        - SELECT: USING (auth.uid() = user_id)
 --        - INSERT: WITH CHECK (auth.uid() = user_id)
@@ -46,7 +46,7 @@ DECLARE
 BEGIN
   -- Verify public.todos table exists
   IF NOT EXISTS (
-    SELECT 1 FROM information_schema.tables 
+    SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'todos'
   ) THEN
     RAISE EXCEPTION 'Table public.todos does not exist. Aborting migration.';
@@ -54,7 +54,7 @@ BEGIN
 
   -- Check whether user_id column is already present
   SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns 
+    SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'todos' AND column_name = 'user_id'
   ) INTO col_exists;
 
@@ -71,7 +71,7 @@ BEGIN
 
   -- Abort if existing records cannot safely satisfy NOT NULL constraint
   IF unowned_count > 0 THEN
-    RAISE EXCEPTION 
+    RAISE EXCEPTION
       'MIGRATION ABORTED: public.todos contains % record(s) without user_id. '
       'Safety policy forbids deleting existing tasks or inventing fake user ownership. '
       'Please back up and assign valid user UUIDs to existing rows before running this migration.',
@@ -85,7 +85,7 @@ END $$;
 -- Adds tenant ownership column and all supported application metadata fields.
 -- Existing columns (id, title, completed, due_date, created_at, updated_at) are preserved.
 -- ------------------------------------------------------------------------------
-ALTER TABLE public.todos 
+ALTER TABLE public.todos
   ADD COLUMN IF NOT EXISTS user_id UUID,
   ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '',
   ADD COLUMN IF NOT EXISTS time VARCHAR(20) DEFAULT NULL,
@@ -129,16 +129,16 @@ BEGIN
   FROM pg_constraint c
   JOIN pg_class t ON t.oid = c.conrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace
-  WHERE n.nspname = 'public' 
-    AND t.relname = 'todos' 
+  WHERE n.nspname = 'public'
+    AND t.relname = 'todos'
     AND c.conname = 'fk_todos_user';
 
   IF v_contype IS NOT NULL THEN
     -- If it exists but is NOT a foreign key (contype <> 'f'), fail closed immediately
     IF v_contype <> 'f' THEN
-      RAISE EXCEPTION 
+      RAISE EXCEPTION
         'MIGRATION ABORTED: Constraint fk_todos_user on public.todos exists but is not a foreign key (contype = "%"). '
-        'Refusing to drop or replace an unexpected non-foreign-key constraint.', 
+        'Refusing to drop or replace an unexpected non-foreign-key constraint.',
         v_contype;
     END IF;
 
@@ -193,7 +193,7 @@ END $$;
 -- ------------------------------------------------------------------------------
 -- Guarantees that every subsequent INSERT must provide a valid user_id.
 -- ------------------------------------------------------------------------------
-ALTER TABLE public.todos 
+ALTER TABLE public.todos
   ALTER COLUMN user_id SET NOT NULL;
 
 -- ------------------------------------------------------------------------------
@@ -201,13 +201,13 @@ ALTER TABLE public.todos
 -- ------------------------------------------------------------------------------
 -- Optimizes per-user filtering, sorting, and foreign key verification lookups.
 -- ------------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS idx_todos_user_id 
+CREATE INDEX IF NOT EXISTS idx_todos_user_id
   ON public.todos (user_id);
 
-CREATE INDEX IF NOT EXISTS idx_todos_user_created 
+CREATE INDEX IF NOT EXISTS idx_todos_user_created
   ON public.todos (user_id, created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_todos_user_completed 
+CREATE INDEX IF NOT EXISTS idx_todos_user_completed
   ON public.todos (user_id, completed);
 
 -- ------------------------------------------------------------------------------
@@ -227,30 +227,38 @@ DROP POLICY IF EXISTS "Allow public update access" ON public.todos;
 DROP POLICY IF EXISTS "Allow public delete access" ON public.todos;
 
 -- ------------------------------------------------------------------------------
--- Step 8: Purge Any Other Legacy / Permissive Policies on public.todos
+-- Step 8: Guard Against Unexpected Policies on public.todos
 -- ------------------------------------------------------------------------------
--- Ensures no unvetted legacy policy remains on public.todos that could grant
--- unintended access. Idempotently preserves only the four strict policies below.
+-- Queries pg_policies for any unexpected or unvetted policies on public.todos.
+-- If any unexpected policies exist, raises an exception listing their names and
+-- aborts the transaction without modifying or deleting them.
+-- Preserves the four exact expected authenticated policies.
 -- ------------------------------------------------------------------------------
 DO $$
 DECLARE
-  pol RECORD;
+  v_unexpected_policies TEXT;
 BEGIN
-  FOR pol IN
-    SELECT policyname
-    FROM pg_policies
-    WHERE schemaname = 'public' 
-      AND tablename = 'todos'
-      AND policyname NOT IN (
-        'todos_select_authenticated',
-        'todos_insert_authenticated',
-        'todos_update_authenticated',
-        'todos_delete_authenticated'
-      )
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.todos', pol.policyname);
-    RAISE NOTICE 'Dropped legacy policy on public.todos: %', pol.policyname;
-  END LOOP;
+  SELECT string_agg(quote_ident(policyname), ', ')
+  INTO v_unexpected_policies
+  FROM pg_policies
+  WHERE schemaname = 'public'
+    AND tablename = 'todos'
+    AND policyname NOT IN (
+      'todos_select_authenticated',
+      'todos_insert_authenticated',
+      'todos_update_authenticated',
+      'todos_delete_authenticated'
+    );
+
+  IF v_unexpected_policies IS NOT NULL THEN
+    RAISE EXCEPTION
+      'MIGRATION ABORTED: Unexpected policy/policies detected on public.todos: %. '
+      'Safety policy forbids automatically dropping unvetted policies. '
+      'Please inspect and resolve unexpected policies manually before retrying this migration.',
+      v_unexpected_policies;
+  END IF;
+
+  RAISE NOTICE 'Policy safety check PASSED: Zero unexpected policies detected on public.todos.';
 END $$;
 
 -- ------------------------------------------------------------------------------
@@ -298,13 +306,11 @@ CREATE POLICY "todos_delete_authenticated" ON public.todos
 REVOKE ALL ON TABLE public.todos FROM PUBLIC;
 REVOKE ALL ON TABLE public.todos FROM anon;
 
-GRANT SELECT, INSERT, UPDATE, DELETE 
-  ON TABLE public.todos 
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON TABLE public.todos
   TO authenticated;
 
-COMMIT;
-
--- Verification notice upon successful commit
+-- Verification notice upon successful execution
 DO $$
 BEGIN
   RAISE NOTICE '=======================================================';
@@ -318,3 +324,5 @@ BEGIN
   RAISE NOTICE 'Please run scripts/001_post_migration_check.sql next.';
   RAISE NOTICE '=======================================================';
 END $$;
+
+COMMIT;

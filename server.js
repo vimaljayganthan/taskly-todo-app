@@ -19,6 +19,7 @@ const { initializeStorage, getStorage, getScopedStorage } = require('./storage/t
 const SmartListStore = require('./storage/smartListStore');
 const SupportStore = require('./storage/supportStore');
 const HabitStreakService = require('./services/habitStreakService');
+const { findEligibleCustomerByEmail, searchEligibleCustomers, completeCustomerRegistration } = require('./services/customerEligibility');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1109,7 +1110,7 @@ app.use('/api/support/tickets', authenticateUser);
  * Prevents Vercel serverless freeze while ensuring swift foreground/background delivery.
  * Falls back safely to GitHub Actions cron worker on timeout or transient network delays.
  */
-async function dispatchOutboxBatchSafely(batchSize = 10, timeoutMs = 2500) {
+async function dispatchOutboxBatchSafely(batchSize = 10, timeoutMs = 5000) {
   try {
     const { NotificationService } = require('./services/notificationService');
     const { getFirebaseMessaging } = require('./services/firebaseAdmin');
@@ -1117,14 +1118,11 @@ async function dispatchOutboxBatchSafely(batchSize = 10, timeoutMs = 2500) {
     const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
     const isProduction = process.env.NODE_ENV === 'production' || isVercel;
 
-    // In production without messaging configured, defer to worker
-    if (isProduction && !messaging) {
-      return null;
-    }
-
     const client = getServiceSupabaseClient();
+    const customerClient = getCustomerSupabaseClient();
     const worker = new NotificationService({
       supabaseClient: client,
+      customerSupabaseClient: customerClient,
       messagingProvider: messaging,
       batchSize: batchSize,
       leaseSeconds: 60,
@@ -1222,6 +1220,22 @@ app.post('/api/support/tickets', async (req, res, next) => {
     if (ticket.is_replay) {
       return res.status(200).json(ticket);
     }
+
+    // Enqueue developer push notification in outbox
+    try {
+      const client = getServiceSupabaseClient(req);
+      const snippet = trimmedBody.length > 150 ? trimmedBody.substring(0, 150) + '...' : trimmedBody;
+      await client.from('notification_outbox').insert({
+        event_type: 'new_ticket',
+        target_audience: 'developer_all',
+        recipient_email: 'tasklypets@gmail.com',
+        title: `New Ticket: ${ticket.ticket_code || 'Support Request'}`,
+        body: `[${userEmail}]: ${trimmedSubject}\n${snippet}`,
+        data: { ticket_id: ticket.id, ticket_code: ticket.ticket_code, screen: 'ticket_detail' },
+        priority: parsedPriority === 'urgent' || parsedPriority === 'high' ? 'high' : 'normal',
+        deduplication_key: `new_ticket_${ticket.id}`
+      });
+    } catch (_) {}
 
     // Execute immediate bounded sweep of outbox notifications for developer app
     await dispatchOutboxBatchSafely(10, 2500);
@@ -1484,6 +1498,28 @@ app.post('/api/support/developer/tickets/:id/messages', async (req, res, next) =
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
+    // Enqueue outbox notification to customer
+    try {
+      const ticket = await storage.developerGetTicket(req.params.id);
+      if (ticket && ticket.user_id) {
+        const client = getServiceSupabaseClient(req);
+        const snippet = cleanBody.length > 150 ? cleanBody.substring(0, 150) + '...' : cleanBody;
+        await client.from('notification_outbox').insert({
+          event_type: 'ticket_reply',
+          target_audience: 'customer_single',
+          recipient_user_id: ticket.user_id,
+          recipient_email: ticket.user_email,
+          title: `Support Reply: ${ticket.ticket_code || 'Ticket'}`,
+          body: snippet,
+          data: { ticket_id: ticket.id, ticket_code: ticket.ticket_code, screen: 'support' },
+          priority: 'high',
+          deduplication_key: `ticket_reply_${message.id}`
+        });
+      }
+    } catch (replyErr) {
+      console.warn('[DeveloperReply] Notice enqueuing customer notification outbox job:', replyErr?.message);
+    }
+
     // Execute immediate bounded sweep of outbox notifications for customer app
     await dispatchOutboxBatchSafely(10, 2500);
 
@@ -1545,6 +1581,27 @@ app.patch('/api/support/developer/tickets/:id/status', async (req, res, next) =>
       return res.status(404).json({ error: 'Ticket not found' });
     }
 
+    // Enqueue outbox notification to customer on status change
+    try {
+      const ticket = await storage.developerGetTicket(req.params.id);
+      if (ticket && ticket.user_id) {
+        const client = getServiceSupabaseClient(req);
+        await client.from('notification_outbox').insert({
+          event_type: 'status_changed',
+          target_audience: 'customer_single',
+          recipient_user_id: ticket.user_id,
+          recipient_email: ticket.user_email,
+          title: `Ticket ${ticket.ticket_code || ''} Updated`,
+          body: `Status changed to ${cleanStatus.replace('_', ' ')}`,
+          data: { ticket_id: ticket.id, ticket_code: ticket.ticket_code, status: cleanStatus, screen: 'support' },
+          priority: 'high',
+          deduplication_key: `ticket_status_${ticket.id}_${cleanStatus}_${Date.now()}`
+        });
+      }
+    } catch (statusErr) {
+      console.warn('[DeveloperStatus] Notice enqueuing customer notification outbox job:', statusErr?.message);
+    }
+
     // Execute immediate bounded sweep of outbox notifications for customer app
     await dispatchOutboxBatchSafely(10, 2500);
 
@@ -1574,6 +1631,27 @@ app.patch('/api/support/developer/tickets/:id/priority', async (req, res, next) 
 
     if (!updated) {
       return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    // Enqueue outbox notification to customer on priority change
+    try {
+      const ticket = await storage.developerGetTicket(req.params.id);
+      if (ticket && ticket.user_id) {
+        const client = getServiceSupabaseClient(req);
+        await client.from('notification_outbox').insert({
+          event_type: 'priority_changed',
+          target_audience: 'customer_single',
+          recipient_user_id: ticket.user_id,
+          recipient_email: ticket.user_email,
+          title: `Ticket ${ticket.ticket_code || ''} Priority Updated`,
+          body: `Priority changed to ${cleanPriority}`,
+          data: { ticket_id: ticket.id, ticket_code: ticket.ticket_code, priority: cleanPriority, screen: 'support' },
+          priority: 'high',
+          deduplication_key: `ticket_priority_${ticket.id}_${cleanPriority}_${Date.now()}`
+        });
+      }
+    } catch (priErr) {
+      console.warn('[DeveloperPriority] Notice enqueuing customer notification outbox job:', priErr?.message);
     }
 
     // Execute immediate bounded sweep of outbox notifications for customer app
@@ -1641,30 +1719,15 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
     }
 
     const serviceClient = getServiceSupabaseClient(req);
+    const customerClient = getCustomerSupabaseClient(req);
 
     if (!isBroadcast) {
-      // Resolve recipient user ID from registered customer device tokens or support tickets
-      const { data: tokenRow } = await serviceClient
-        .from('user_device_tokens')
-        .select('user_id')
-        .eq('user_email', cleanRecipientEmail)
-        .order('last_seen_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (tokenRow && tokenRow.user_id) {
-        recipientUserId = tokenRow.user_id;
-      } else {
-        const { data: ticketRow } = await serviceClient
-          .from('support_tickets')
-          .select('user_id')
-          .eq('user_email', cleanRecipientEmail)
-          .limit(1)
-          .maybeSingle();
-        if (ticketRow && ticketRow.user_id) {
-          recipientUserId = ticketRow.user_id;
-        }
+      // Authoritative recipient customer validation: strictly genuine registered customer accounts
+      const eligibleCustomer = await findEligibleCustomerByEmail(customerClient, cleanRecipientEmail);
+      if (!eligibleCustomer) {
+        return res.status(400).json({ error: 'Recipient is not a registered Taskly customer account' });
       }
+      recipientUserId = eligibleCustomer.id;
     }
 
     const dedupKey = idempotency_key
@@ -1694,7 +1757,7 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
     }
 
     // Execute immediate bounded sweep
-    const dispatchResult = await dispatchOutboxBatchSafely(10, 2500);
+    const dispatchResult = await dispatchOutboxBatchSafely(10, 5000);
 
     // Read updated job status
     const { data: currentJob } = await serviceClient
@@ -1720,98 +1783,33 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
   }
 });
 
+// POST /api/customer/registration/complete - Secure backend-controlled customer registration completion
+app.post('/api/customer/registration/complete', authenticateUser, async (req, res, next) => {
+  try {
+    const serviceClient = getServiceSupabaseClient(req);
+    const { name, age } = req.body || {};
+
+    const result = await completeCustomerRegistration(serviceClient, req.user, { name, age });
+    if (!result.success) {
+      return res.status(result.statusCode || 400).json({ error: result.error });
+    }
+
+    res.json({
+      success: true,
+      message: 'Customer registration verified and completed',
+      customer: result.customer
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/support/developer/customers - List & search registered customer recipients
 app.get('/api/support/developer/customers', async (req, res, next) => {
   try {
     const { search, limit } = req.query;
-    const serviceClient = getServiceSupabaseClient(req);
-    const maxLimit = Math.min(parseInt(limit, 10) || 50, 100);
-
-    let query = serviceClient
-      .from('user_device_tokens')
-      .select('user_id, user_email, device_platform, is_active, last_seen_at')
-      .eq('app_type', 'customer')
-      .order('last_seen_at', { ascending: false })
-      .limit(maxLimit);
-
-    if (search && typeof search === 'string' && search.trim()) {
-      query = query.ilike('user_email', `%${search.trim()}%`);
-    }
-
-    const { data: tokens, error: tokErr } = await query;
-    if (tokErr) {
-      return res.status(500).json({ error: tokErr.message });
-    }
-
-    const seen = new Set();
-    const customers = [];
-    for (const t of (tokens || [])) {
-      const email = (t.user_email || '').toLowerCase().trim();
-      if (email && !seen.has(email)) {
-        seen.add(email);
-        customers.push({
-          user_id: t.user_id,
-          user_email: email,
-          device_platform: t.device_platform,
-          is_active: t.is_active,
-          last_seen_at: t.last_seen_at
-        });
-      }
-    }
-
-    // Include recent ticket authors if active tokens list has capacity
-    if (customers.length < maxLimit) {
-      let ticketQuery = serviceClient
-        .from('support_tickets')
-        .select('user_id, user_email, created_at')
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (search && typeof search === 'string' && search.trim()) {
-        ticketQuery = ticketQuery.ilike('user_email', `%${search.trim()}%`);
-      }
-
-      const { data: ticketUsers } = await ticketQuery;
-      for (const tu of (ticketUsers || [])) {
-        const email = (tu.user_email || '').toLowerCase().trim();
-        if (email && !seen.has(email) && email !== 'tasklypets@gmail.com') {
-          seen.add(email);
-          customers.push({
-            user_id: tu.user_id,
-            user_email: email,
-            device_platform: 'customer',
-            is_active: false,
-            last_seen_at: tu.created_at
-          });
-        }
-      }
-    }
-
-    // Also include registered users from auth.users if list has capacity
-    if (customers.length < maxLimit && serviceClient.auth && serviceClient.auth.admin) {
-      try {
-        const { data: authData } = await serviceClient.auth.admin.listUsers({ perPage: 50 });
-        const authUsers = authData?.users || [];
-        for (const u of authUsers) {
-          const email = (u.email || '').toLowerCase().trim();
-          if (email && !seen.has(email) && email !== 'tasklypets@gmail.com') {
-            if (!search || email.includes(search.toLowerCase().trim())) {
-              seen.add(email);
-              customers.push({
-                user_id: u.id,
-                user_email: email,
-                device_platform: 'customer',
-                is_active: false,
-                last_seen_at: u.created_at
-              });
-            }
-          }
-        }
-      } catch (authErr) {
-        console.warn('[CustomersAPI] auth.admin.listUsers notice:', authErr.message);
-      }
-    }
-
+    const customerClient = getCustomerSupabaseClient(req);
+    const customers = await searchEligibleCustomers(customerClient, { search, limit });
     res.json({ success: true, count: customers.length, customers });
   } catch (err) {
     next(err);
@@ -1977,7 +1975,7 @@ function getServiceSupabaseClient(req = null) {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (isProduction && (!supabaseUrl || !supabaseServiceKey)) {
-    throw new Error('Supabase service_role credentials not configured in production');
+    throw new Error('Developer Supabase service_role credentials (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) not configured in production');
   }
 
   const { createClient } = require('@supabase/supabase-js');
@@ -1985,6 +1983,89 @@ function getServiceSupabaseClient(req = null) {
     auth: { persistSession: false }
   });
   return cachedServiceSupabase;
+}
+
+let cachedCustomerSupabase = null;
+function getCustomerSupabaseClient(req = null) {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+  // 1. Mock test client injection (strictly prohibited in production)
+  if (!isProduction && req?.app?.locals?.mockCustomerSupabaseClient) {
+    return req.app.locals.mockCustomerSupabaseClient;
+  }
+  if (!isProduction && app?.locals?.mockCustomerSupabaseClient) {
+    return app.locals.mockCustomerSupabaseClient;
+  }
+  if (!isProduction && (req?.app?.locals?.mockSupabaseClient || app?.locals?.mockSupabaseClient)) {
+    return req?.app?.locals?.mockSupabaseClient || app?.locals?.mockSupabaseClient;
+  }
+
+  // 2. Cross-project customer credentials
+  const customerUrl = process.env.CUSTOMER_SUPABASE_URL;
+  const customerKey = process.env.CUSTOMER_SUPABASE_SERVICE_ROLE_KEY;
+
+  if (customerUrl && customerKey) {
+    if (cachedCustomerSupabase) return cachedCustomerSupabase;
+    const { createClient } = require('@supabase/supabase-js');
+    cachedCustomerSupabase = createClient(customerUrl, customerKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    return cachedCustomerSupabase;
+  }
+
+  if (isProduction) {
+    throw new Error('Customer Supabase service_role credentials (CUSTOMER_SUPABASE_URL, CUSTOMER_SUPABASE_SERVICE_ROLE_KEY) not configured in production');
+  }
+
+  // 3. Fallback to default service client in development/test
+  return getServiceSupabaseClient(req);
+}
+
+function validateSupabaseClients() {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+
+  const devUrl = process.env.SUPABASE_URL;
+  const devKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const custUrl = process.env.CUSTOMER_SUPABASE_URL;
+  const custKey = process.env.CUSTOMER_SUPABASE_SERVICE_ROLE_KEY;
+
+  const developerConfigured = Boolean(devUrl && devKey);
+  const customerConfigured = Boolean(custUrl && custKey);
+
+  if (isProduction) {
+    if (!developerConfigured) {
+      throw new Error('Developer Supabase service-role credentials (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) are missing in production');
+    }
+    if (!customerConfigured) {
+      throw new Error('Customer Supabase service-role credentials (CUSTOMER_SUPABASE_URL, CUSTOMER_SUPABASE_SERVICE_ROLE_KEY) are missing in production');
+    }
+  }
+
+  return {
+    developerConfigured,
+    customerConfigured,
+    developerProject: devUrl ? (devUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] || 'configured') : null,
+    customerProject: custUrl ? (custUrl.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] || 'configured') : null
+  };
+}
+
+/**
+ * Resolves the authoritative Supabase client based strictly on the authenticated session identity.
+ * Security Rules:
+ * - Never selects the database based solely on a client-supplied app_type.
+ * - Single-admin (tasklypets@gmail.com) routes strictly to Developer Supabase (mbmqybxwibvqzomssopw).
+ * - Genuine registered customer accounts route strictly to Customer Production Supabase (liucmamlownxfshnaxtc).
+ *
+ * @param {Object} req - Express request with authenticated req.user
+ * @returns {Object} Target Supabase client
+ */
+function getAuthenticatedAudienceClient(req) {
+  const userEmail = (req?.user?.email || '').toLowerCase().trim();
+  const authorizedAdminEmail = (process.env.SUPPORT_DEVELOPER_EMAIL || 'tasklypets@gmail.com').toLowerCase().trim();
+  const isDeveloperAdmin = Boolean(userEmail && userEmail === authorizedAdminEmail);
+  return isDeveloperAdmin ? getServiceSupabaseClient(req) : getCustomerSupabaseClient(req);
 }
 
 // POST /api/notifications/tokens - Register or refresh device push token
@@ -2025,7 +2106,8 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       ? (device_platform || platform || '').toLowerCase().trim()
       : 'android';
 
-    const client = getServiceSupabaseClient(req);
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
     const { data, error } = await client
       .from('user_device_tokens')
       .upsert({
@@ -2071,7 +2153,8 @@ app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next)
       return res.status(400).json({ error: 'fcm_token / device_token is required' });
     }
 
-    const client = getServiceSupabaseClient(req);
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
     const { error } = await client
       .from('user_device_tokens')
       .update({
@@ -2087,6 +2170,262 @@ app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next)
     }
 
     res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// PERSISTENT IN-APP NOTIFICATIONS INBOX APIS
+// ==========================================================================
+
+// GET /api/notifications - List persistent in-app notifications for authenticated user
+app.get('/api/notifications', authenticateUser, async (req, res, next) => {
+  try {
+    const { limit, offset, unread_only } = req.query || {};
+    const maxLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const pageOffset = Math.max(parseInt(offset, 10) || 0, 0);
+    const unreadOnly = unread_only === 'true' || unread_only === '1' || unread_only === true;
+
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
+    const userId = req.user.id;
+
+    // 1. Get exact unread count for badge
+    const { count: unreadCount, error: cntErr } = await client
+      .from('user_notification_inbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_read', false)
+      .eq('is_dismissed', false);
+
+    if (cntErr) {
+      console.warn('[NotificationsInbox] unreadCount error:', cntErr.message);
+    }
+
+    // 2. Query user's inbox rows with associated notification details
+    let query = client
+      .from('user_notification_inbox')
+      .select(`
+        id,
+        notification_id,
+        is_read,
+        read_at,
+        is_dismissed,
+        created_at,
+        notifications (
+          id,
+          notification_type,
+          title,
+          body,
+          data,
+          sender_email,
+          target_audience,
+          created_at
+        )
+      `, { count: 'exact' })
+      .eq('user_id', userId)
+      .eq('is_dismissed', false);
+
+    if (unreadOnly) {
+      query = query.eq('is_read', false);
+    }
+
+    query = query
+      .order('created_at', { ascending: false })
+      .range(pageOffset, pageOffset + maxLimit - 1);
+
+    const { data: inboxRows, count: totalCount, error: fetchErr } = await query;
+
+    if (fetchErr) {
+      console.error('[NotificationsInbox] fetch error:', fetchErr);
+      return res.status(500).json({ error: 'Failed to fetch in-app notifications' });
+    }
+
+    // 3. Flatten and normalize for client applications
+    const notifications = (inboxRows || []).map(row => {
+      const notif = row.notifications || {};
+      const notifData = notif.data || {};
+      const ticketId = notifData.ticket_id || notifData.ticketId || null;
+
+      return {
+        id: row.id,
+        inbox_id: row.id,
+        notification_id: notif.id || row.notification_id,
+        notification_type: notif.notification_type || 'system',
+        title: notif.title || '',
+        body: notif.body || '',
+        data: notifData,
+        ticket_id: ticketId,
+        is_read: Boolean(row.is_read),
+        read_at: row.read_at,
+        created_at: row.created_at || notif.created_at,
+        sender_email: notif.sender_email || null,
+        target_audience: notif.target_audience || null
+      };
+    });
+
+    res.json({
+      success: true,
+      count: notifications.length,
+      total: totalCount || 0,
+      unread_count: unreadCount || 0,
+      notifications
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/notifications/unread-count - Lightweight unread badge count
+app.get('/api/notifications/unread-count', authenticateUser, async (req, res, next) => {
+  try {
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
+    const { count, error } = await client
+      .from('user_notification_inbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', req.user.id)
+      .eq('is_read', false)
+      .eq('is_dismissed', false);
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch unread notification count' });
+    }
+
+    res.json({ success: true, unread_count: count || 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/notifications/:id/read - Mark individual notification as read
+app.patch('/api/notifications/:id/read', authenticateUser, async (req, res, next) => {
+  try {
+    const notifId = req.params.id;
+    if (!notifId || typeof notifId !== 'string') {
+      return res.status(400).json({ error: 'Notification ID is required' });
+    }
+
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
+    const userId = req.user.id;
+    const now = new Date().toISOString();
+
+    // Check if ID matches inbox id or notification_id
+    let { data: updated, error } = await client
+      .from('user_notification_inbox')
+      .update({ is_read: true, read_at: now })
+      .eq('id', notifId)
+      .eq('user_id', userId)
+      .select('id, is_read, read_at')
+      .maybeSingle();
+
+    if (!updated && !error) {
+      const resByNotifId = await client
+        .from('user_notification_inbox')
+        .update({ is_read: true, read_at: now })
+        .eq('notification_id', notifId)
+        .eq('user_id', userId)
+        .select('id, is_read, read_at')
+        .maybeSingle();
+      updated = resByNotifId.data;
+      error = resByNotifId.error;
+    }
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to update notification read status' });
+    }
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Notification not found in your inbox' });
+    }
+
+    const { count: unreadCount } = await client
+      .from('user_notification_inbox')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_read', false)
+      .eq('is_dismissed', false);
+
+    res.json({
+      success: true,
+      id: updated.id,
+      is_read: true,
+      read_at: updated.read_at,
+      unread_count: unreadCount || 0
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/notifications/read-all - Mark all unread notifications as read
+app.post('/api/notifications/read-all', authenticateUser, async (req, res, next) => {
+  try {
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
+    const userId = req.user.id;
+    const now = new Date().toISOString();
+
+    const { data: updated, error } = await client
+      .from('user_notification_inbox')
+      .update({ is_read: true, read_at: now })
+      .eq('user_id', userId)
+      .eq('is_read', false)
+      .select('id');
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+
+    res.json({
+      success: true,
+      updated_count: updated?.length || 0,
+      unread_count: 0
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/notifications/:id - Dismiss notification from inbox
+app.delete('/api/notifications/:id', authenticateUser, async (req, res, next) => {
+  try {
+    const notifId = req.params.id;
+    // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
+    const client = getAuthenticatedAudienceClient(req);
+    const userId = req.user.id;
+
+    let { data: updated, error } = await client
+      .from('user_notification_inbox')
+      .update({ is_dismissed: true })
+      .eq('id', notifId)
+      .eq('user_id', userId)
+      .select('id')
+      .maybeSingle();
+
+    if (!updated && !error) {
+      const resByNotif = await client
+        .from('user_notification_inbox')
+        .update({ is_dismissed: true })
+        .eq('notification_id', notifId)
+        .eq('user_id', userId)
+        .select('id')
+        .maybeSingle();
+      updated = resByNotif.data;
+      error = resByNotif.error;
+    }
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to dismiss notification' });
+    }
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Notification not found in your inbox' });
+    }
+
+    res.json({ success: true, id: updated.id, dismissed: true });
   } catch (err) {
     next(err);
   }
@@ -2112,8 +2451,10 @@ app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, 
     }
 
     const client = getServiceSupabaseClient(req);
+    const customerClient = getCustomerSupabaseClient(req);
     const worker = new NotificationService({
       supabaseClient: client,
+      customerSupabaseClient: customerClient,
       messagingProvider: messaging,
       batchSize: parseInt(batchSize, 10) || 10,
       leaseSeconds: parseInt(leaseSeconds, 10) || 60,
@@ -2228,5 +2569,10 @@ async function startServer() {
 if (require.main === module) {
   startServer();
 }
+
+app.getServiceSupabaseClient = getServiceSupabaseClient;
+app.getCustomerSupabaseClient = getCustomerSupabaseClient;
+app.validateSupabaseClients = validateSupabaseClients;
+app.getAuthenticatedAudienceClient = getAuthenticatedAudienceClient;
 
 module.exports = app;

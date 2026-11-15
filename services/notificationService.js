@@ -15,6 +15,7 @@
  */
 
 const crypto = require('crypto');
+const { listEligibleCustomerUsers } = require('./customerEligibility');
 
 // ==============================================================================
 // 1. FCM Error Classification Strategy
@@ -50,7 +51,12 @@ const FATAL_CONFIG_ERROR_CODES = new Set([
   'messaging/invalid-recipient',
   'messaging/project-not-found',
   'messaging/authentication-error',
-  'messaging/missing-credentials'
+  'messaging/missing-credentials',
+  'app/invalid-credential',
+  'app/invalid-credential-provider',
+  'auth/invalid-credential',
+  'invalid_grant',
+  'invalid-grant'
 ]);
 
 /**
@@ -106,16 +112,28 @@ function classifyFcmError(err) {
   const statusCode = err.statusCode || (err.response && err.response.status) || null;
   const msgLower = message.toLowerCase();
 
-  // 1. Explicit Check: Project/Sender Credential Mismatches are FATAL CONFIGURATION ERRORS.
+  // 1. Explicit Check: Project/Sender Credential Mismatches and Firebase Auth/Credential errors are FATAL CONFIGURATION ERRORS.
   // Must NEVER deactivate user device tokens!
-  if (code === 'messaging/mismatched-credential' || code === 'MismatchSenderId' || msgLower.includes('mismatched-credential') || msgLower.includes('mismatchsenderid')) {
+  if (
+    code === 'messaging/mismatched-credential' ||
+    code === 'MismatchSenderId' ||
+    code === 'app/invalid-credential' ||
+    code === 'auth/invalid-credential' ||
+    code === 'app/invalid-credential-provider' ||
+    msgLower.includes('mismatched-credential') ||
+    msgLower.includes('mismatchsenderid') ||
+    msgLower.includes('invalid_grant') ||
+    msgLower.includes('invalid grant') ||
+    msgLower.includes('account not found') ||
+    msgLower.includes('invalid jwt signature')
+  ) {
     return {
       isTransient: false,
       isPermanentInvalidToken: false,
       isFatal: true,
       category: 'fatal',
-      statusCode: statusCode || 403,
-      message: `Fatal Firebase credential mismatch (Sender ID / Project does not match token project): [${code}] ${message}`
+      statusCode: statusCode || 401,
+      message: `Fatal Firebase authentication/service account credential error: [${code}] ${message}`
     };
   }
 
@@ -225,6 +243,7 @@ class NotificationService {
    */
   constructor(options = {}) {
     this.supabase = options.supabaseClient || null;
+    this.customerSupabase = options.customerSupabaseClient || options.supabaseClient || null;
     this.messaging = options.messagingProvider || null;
     this.workerId = options.workerId || `worker_${process.pid}_${crypto.randomBytes(4).toString('hex')}`;
     this.batchSize = Math.max(1, Math.min(50, options.batchSize || 10));
@@ -270,18 +289,25 @@ class NotificationService {
   }
 
   /**
-   * Ensures the master notification row exists in public.notifications using
-   * the outbox job's deduplication_key as the idempotency_key.
+   * Ensures the master notification row exists in a target Supabase client's
+   * public.notifications table using the outbox job's deduplication_key as idempotency_key.
    * 
    * @param {Object} job - notification_outbox row
+   * @param {Object} client - Target Supabase client (Developer or Customer)
    * @returns {Promise<string>} notification_id (UUID)
    */
-  async ensureMasterNotification(job) {
+  async ensureMasterNotificationInClient(job, client) {
+    if (!client) {
+      throw new Error('Supabase client is required to ensure master notification');
+    }
+
+    const dedupKey = job.deduplication_key || `job_dedup_${job.id}`;
+
     // 1. Try to fetch existing notification by idempotency key
-    const { data: existing, error: fetchErr } = await this.supabase
+    const { data: existing, error: fetchErr } = await client
       .from('notifications')
       .select('id')
-      .eq('idempotency_key', job.deduplication_key)
+      .eq('idempotency_key', dedupKey)
       .maybeSingle();
 
     if (fetchErr) {
@@ -312,10 +338,10 @@ class NotificationService {
       else safeNotifType = 'admin_custom_broadcast';
     }
 
-    const { data: inserted, error: insertErr } = await this.supabase
+    const { data: inserted, error: insertErr } = await client
       .from('notifications')
       .insert({
-        idempotency_key: job.deduplication_key,
+        idempotency_key: dedupKey,
         notification_type: safeNotifType,
         title: job.title,
         body: job.body,
@@ -329,10 +355,10 @@ class NotificationService {
     if (insertErr) {
       // Handle race condition where another worker inserted concurrently
       if (insertErr.code === '23505') { // unique violation
-        const { data: retryFetch } = await this.supabase
+        const { data: retryFetch } = await client
           .from('notifications')
           .select('id')
-          .eq('idempotency_key', job.deduplication_key)
+          .eq('idempotency_key', dedupKey)
           .single();
         if (retryFetch && retryFetch.id) return retryFetch.id;
       }
@@ -343,27 +369,73 @@ class NotificationService {
   }
 
   /**
-   * Expands recipient inbox entries idempotently based on target_audience.
+   * Ensures the master notification row exists in Developer database public.notifications
+   * using the outbox job's deduplication_key as the idempotency_key.
+   *
+   * @param {Object} job - notification_outbox row
+   * @returns {Promise<string>} notification_id (UUID)
+   */
+  async ensureMasterNotification(job) {
+    return await this.ensureMasterNotificationInClient(job, this.supabase);
+  }
+
+  /**
+   * Expands recipient inbox entries idempotently based on target_audience across dual databases.
    * Guarantees:
-   * - customer_all: Calls atomic stored procedure expand_broadcast_inbox_atomic()
+   * - customer_all: Resolves eligible customers and inserts into Customer DB public.user_notification_inbox
+   *   referencing customerNotificationId. Does NOT write to Developer DB.
    * - developer_all: Resolves authorized developer IDs via get_authorized_developer_user_ids()
-   * - customer_single: Inserts single inbox entry for recipient_user_id
+   *   and inserts into Developer DB public.user_notification_inbox referencing devNotificationId.
+   * - customer_single: Inserts single inbox entry for recipient_user_id in Customer DB
+   *   referencing customerNotificationId. Does NOT write to Developer DB.
    * 
    * Retries never duplicate inbox records due to UNIQUE(user_id, notification_id).
    * 
    * @param {Object} job - notification_outbox row
-   * @param {string} notificationId - public.notifications UUID
+   * @param {string|Object} notificationIds - notification UUID or { devNotificationId, customerNotificationId }
    */
-  async expandInbox(job, notificationId) {
-    if (job.target_audience === 'customer_all') {
-      const { data: insertedCount, error } = await this.supabase.rpc('expand_broadcast_inbox_atomic', {
-        p_notification_id: notificationId
-      });
+  async expandInbox(job, notificationIds) {
+    const devNotificationId = typeof notificationIds === 'object' && notificationIds !== null
+      ? (notificationIds.devNotificationId || notificationIds.notificationId)
+      : notificationIds;
+    const customerNotificationId = typeof notificationIds === 'object' && notificationIds !== null
+      ? (notificationIds.customerNotificationId || notificationIds.notificationId || devNotificationId)
+      : notificationIds;
 
-      if (error) {
-        throw new Error(`expand_broadcast_inbox_atomic failed: ${error.message}`);
+    const targetCustomerClient = this.customerSupabase || this.supabase;
+
+    if (job.target_audience === 'customer_all') {
+      let insertedCount = 0;
+      if (targetCustomerClient.auth && targetCustomerClient.auth.admin && typeof targetCustomerClient.auth.admin.listUsers === 'function') {
+        const eligibleCustomers = await listEligibleCustomerUsers(targetCustomerClient);
+        if (eligibleCustomers.length > 0) {
+          const inboxRows = eligibleCustomers.map(c => ({
+            notification_id: customerNotificationId,
+            user_id: c.id
+          }));
+
+          // Batch insert in chunks of 200 to prevent payload limits
+          for (let i = 0; i < inboxRows.length; i += 200) {
+            const chunk = inboxRows.slice(i, i + 200);
+            const { error: insErr } = await targetCustomerClient
+              .from('user_notification_inbox')
+              .upsert(chunk, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
+            if (insErr) {
+              throw new Error(`Failed to insert broadcast customer inbox rows: ${insErr.message}`);
+            }
+          }
+          insertedCount = eligibleCustomers.length;
+        }
+      } else {
+        const { data: count, error } = await targetCustomerClient.rpc('expand_broadcast_inbox_atomic', {
+          p_notification_id: customerNotificationId
+        });
+        if (error) {
+          throw new Error(`expand_broadcast_inbox_atomic failed: ${error.message}`);
+        }
+        insertedCount = count;
       }
-      this.logger.info(`Broadcast inbox expanded atomically`, { notificationId, insertedCount });
+      this.logger.info(`Broadcast inbox expanded for customer accounts in Customer DB`, { customerNotificationId, insertedCount });
       return;
     }
 
@@ -375,7 +447,7 @@ class NotificationService {
 
       if (devs && devs.length > 0) {
         const inboxRows = devs.map(d => ({
-          notification_id: notificationId,
+          notification_id: devNotificationId,
           user_id: d.user_id
         }));
 
@@ -396,10 +468,10 @@ class NotificationService {
         return;
       }
 
-      const { error: insErr } = await this.supabase
+      const { error: insErr } = await targetCustomerClient
         .from('user_notification_inbox')
         .upsert({
-          notification_id: notificationId,
+          notification_id: customerNotificationId,
           user_id: job.recipient_user_id
         }, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
 
@@ -481,9 +553,10 @@ class NotificationService {
    */
   async fetchAllTargetTokens(job) {
     const allTokens = [];
+    const targetCustomerClient = this.customerSupabase || this.supabase;
 
     if (job.target_audience === 'customer_single') {
-      let query = this.supabase
+      let query = targetCustomerClient
         .from('user_device_tokens')
         .select('id, user_id, fcm_token, device_platform, app_type')
         .eq('app_type', 'customer')
@@ -514,10 +587,16 @@ class NotificationService {
     }
 
     if (job.target_audience === 'customer_all') {
+      let eligibleUserIds = null;
+      if (targetCustomerClient.auth && targetCustomerClient.auth.admin && typeof targetCustomerClient.auth.admin.listUsers === 'function') {
+        const eligibleCustomers = await listEligibleCustomerUsers(targetCustomerClient);
+        eligibleUserIds = new Set(eligibleCustomers.map(c => c.id));
+      }
+
       // Keyset pagination over (id ASC) WHERE is_active = true AND app_type = 'customer'
       let lastSeenId = '00000000-0000-0000-0000-000000000000';
       while (true) {
-        const { data, error } = await this.supabase
+        const { data, error } = await targetCustomerClient
           .from('user_device_tokens')
           .select('id, user_id, fcm_token, device_platform, app_type')
           .eq('app_type', 'customer')
@@ -530,7 +609,9 @@ class NotificationService {
         if (!data || data.length === 0) break;
 
         for (const token of data) {
-          allTokens.push(token);
+          if (!eligibleUserIds || eligibleUserIds.has(token.user_id)) {
+            allTokens.push(token);
+          }
         }
 
         lastSeenId = data[data.length - 1].id;
@@ -566,9 +647,10 @@ class NotificationService {
    * - Channel IDs: 'taskly-support-tickets-v1' or 'taskly-developer-tickets-v1'.
    * - No explicit sound override in payload: preserves native channel sound configuration ('taskly_meow').
    * 
-   * @param {string} notificationId - master notifications UUID
+   * @param {string} notificationId - notification UUID for push payload
    * @param {Object} job - outbox job row
    * @param {Array<Object>} tokensToDispatch - array of device tokens to send
+   * @param {string} [logNotificationId] - notification UUID for Developer DB delivery logs (defaults to notificationId)
    * @returns {Promise<{
    *   accepted: Array<string>,
    *   invalid: Array<string>,
@@ -576,7 +658,8 @@ class NotificationService {
    *   fatalErrors: Array<{ tokenId: string, error: string }>
    * }>}
    */
-  async dispatchToTokens(notificationId, job, tokensToDispatch) {
+  async dispatchToTokens(notificationId, job, tokensToDispatch, logNotificationId = null) {
+    const deliveryLogNotifId = logNotificationId || notificationId;
     const results = {
       accepted: [],
       invalid: [],
@@ -638,7 +721,7 @@ class NotificationService {
         // 1. Success Outcome: Must durably record outcome BEFORE counting as accepted!
         // Propagates persistence failure if logging fails.
         await this._logDeliveryOutcome({
-          notificationId,
+          notificationId: deliveryLogNotifId,
           deviceTokenId: tokenRow.id,
           status: 'fcm_accepted',
           fcmMessageId: typeof fcmResponse === 'string' ? fcmResponse : (fcmResponse && fcmResponse.name) || 'accepted',
@@ -657,7 +740,8 @@ class NotificationService {
 
         if (classified.isPermanentInvalidToken) {
           // 2. Confirmed Invalid Token: Deactivate token in DB with strict error checking
-          const { error: deactErr } = await this.supabase
+          const targetDeactClient = (tokenRow.app_type === 'customer' && this.customerSupabase) ? this.customerSupabase : this.supabase;
+          const { error: deactErr } = await targetDeactClient
             .from('user_device_tokens')
             .update({ is_active: false, updated_at: new Date().toISOString() })
             .eq('id', tokenRow.id);
@@ -669,7 +753,7 @@ class NotificationService {
 
           // Durably log outcome (propagates on error)
           await this._logDeliveryOutcome({
-            notificationId,
+            notificationId: deliveryLogNotifId,
             deviceTokenId: tokenRow.id,
             status: 'invalid_token',
             errorMessage: classified.message
@@ -684,7 +768,7 @@ class NotificationService {
 
           // Attempt to log delivery failure
           await this._logDeliveryOutcome({
-            notificationId,
+            notificationId: deliveryLogNotifId,
             deviceTokenId: tokenRow.id,
             status: 'fcm_failed',
             errorMessage: classified.message
@@ -697,7 +781,7 @@ class NotificationService {
           results.transientFailed.push(tokenRow.id);
 
           await this._logDeliveryOutcome({
-            notificationId,
+            notificationId: deliveryLogNotifId,
             deviceTokenId: tokenRow.id,
             status: 'fcm_failed',
             errorMessage: classified.message
@@ -751,23 +835,32 @@ class NotificationService {
     this.logger.info(`Processing outbox notification job`, { jobId: job.id, eventType: job.event_type, audience: job.target_audience });
 
     try {
-      // 1. Create / retrieve master notification record
-      const notificationId = await this.ensureMasterNotification(job);
+      // 1. Dual Supabase Master Notification Persistence
+      // - Developer DB (this.supabase) master record satisfies foreign key for notification_delivery_logs
+      // - Customer DB (this.customerSupabase) master record satisfies foreign key for user_notification_inbox
+      const isCustomerAudience = job.target_audience === 'customer_single' || job.target_audience === 'customer_all';
+      const devNotificationId = await this.ensureMasterNotification(job);
+      let customerNotificationId = devNotificationId;
 
-      // 2. Expand inbox atomically
-      await this.expandInbox(job, notificationId);
+      if (isCustomerAudience && this.customerSupabase && this.customerSupabase !== this.supabase) {
+        customerNotificationId = await this.ensureMasterNotificationInClient(job, this.customerSupabase);
+      }
 
-      // 3. Keyset fetch all target device tokens
+      // 2. Expand inbox atomically across dual databases
+      await this.expandInbox(job, { devNotificationId, customerNotificationId });
+
+      // 3. Keyset fetch all target device tokens from appropriate database
       const allTargetTokens = await this.fetchAllTargetTokens(job);
 
-      // 4. Query prior delivery logs with pagination to enable partial batch recovery
-      const priorLogs = await this.getPriorDeliveryLogs(notificationId);
+      // 4. Query prior delivery logs with pagination using devNotificationId
+      const priorLogs = await this.getPriorDeliveryLogs(devNotificationId);
 
       // 5. Exclude already-terminal tokens (accepted or invalid)
       const tokensToDispatch = this.filterUnresolvedTokens(allTargetTokens, priorLogs.terminalTokenIds);
 
-      // 6. Dispatch to unresolved tokens
-      const dispatchSummary = await this.dispatchToTokens(notificationId, job, tokensToDispatch);
+      // 6. Dispatch to unresolved tokens with dual notification ID routing
+      const targetNotifIdForPayload = isCustomerAudience ? customerNotificationId : devNotificationId;
+      const dispatchSummary = await this.dispatchToTokens(targetNotifIdForPayload, job, tokensToDispatch, devNotificationId);
 
       // 7. Check for fatal configuration / payload errors
       if (dispatchSummary.fatalErrors.length > 0) {
@@ -803,7 +896,7 @@ class NotificationService {
           return { success: false, completed: false, retryScheduled: true };
         }
 
-        this.logger.info(`Outbox notification job completed successfully`, { jobId: job.id, notificationId, totalTerminal });
+        this.logger.info(`Outbox notification job completed successfully`, { jobId: job.id, devNotificationId, customerNotificationId, totalTerminal });
         return { success: true, completed: true, retryScheduled: false };
       } else {
         // Transient failures remain unresolved -> reschedule outbox job with exponential backoff
