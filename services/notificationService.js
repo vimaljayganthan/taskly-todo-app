@@ -229,6 +229,19 @@ function classifyFcmError(err) {
 // 2. NotificationService Worker Class
 // ==============================================================================
 
+/**
+ * Helper to identify Supabase PostgREST table-not-found / schema cache errors.
+ * Strictly distinguishes missing tables (PGRST205, 42P01, 404) from permission,
+ * connection, timeout, and unexpected query errors.
+ */
+function isTableMissingError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = (error.message || '').toLowerCase();
+  const status = error.status || error.statusCode || 0;
+  return code === 'PGRST205' || code === '42P01' || status === 404 || msg.includes('schema cache') || msg.includes('does not exist');
+}
+
 class NotificationService {
   /**
    * @param {Object} options
@@ -311,7 +324,11 @@ class NotificationService {
       .maybeSingle();
 
     if (fetchErr) {
-      throw new Error(`Failed to check existing master notification: ${fetchErr.message}`);
+      const err = new Error(`Failed to check existing master notification: ${fetchErr.message}`);
+      err.code = fetchErr.code;
+      err.status = fetchErr.status;
+      err.raw = fetchErr;
+      throw err;
     }
 
     if (existing && existing.id) {
@@ -362,7 +379,11 @@ class NotificationService {
           .single();
         if (retryFetch && retryFetch.id) return retryFetch.id;
       }
-      throw new Error(`Failed to insert master notification: ${insertErr.message}`);
+      const err = new Error(`Failed to insert master notification: ${insertErr.message}`);
+      err.code = insertErr.code;
+      err.status = insertErr.status;
+      err.raw = insertErr;
+      throw err;
     }
 
     return inserted.id;
@@ -407,7 +428,7 @@ class NotificationService {
     if (job.target_audience === 'customer_all') {
       let insertedCount = 0;
       if (targetCustomerClient.auth && targetCustomerClient.auth.admin && typeof targetCustomerClient.auth.admin.listUsers === 'function') {
-        const eligibleCustomers = await listEligibleCustomerUsers(targetCustomerClient);
+        const eligibleCustomers = await listEligibleCustomerUsers(targetCustomerClient, this.supabase);
         if (eligibleCustomers.length > 0) {
           const inboxRows = eligibleCustomers.map(c => ({
             notification_id: customerNotificationId,
@@ -417,25 +438,55 @@ class NotificationService {
           // Batch insert in chunks of 200 to prevent payload limits
           for (let i = 0; i < inboxRows.length; i += 200) {
             const chunk = inboxRows.slice(i, i + 200);
-            const { error: insErr } = await targetCustomerClient
-              .from('user_notification_inbox')
-              .upsert(chunk, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
-            if (insErr) {
-              throw new Error(`Failed to insert broadcast customer inbox rows: ${insErr.message}`);
+            try {
+              const { error: insErr } = await targetCustomerClient
+                .from('user_notification_inbox')
+                .upsert(chunk, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
+              if (insErr) {
+                throw insErr;
+              }
+            } catch (custErr) {
+              if (isTableMissingError(custErr)) {
+                this.logger.warn(`Failed to insert broadcast inbox rows in Customer DB (table missing), falling back to Developer DB`, { error: custErr.message });
+                const fallbackChunk = chunk.map(r => ({ ...r, notification_id: devNotificationId }));
+                const { error: devInsErr } = await this.supabase
+                  .from('user_notification_inbox')
+                  .upsert(fallbackChunk, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
+                if (devInsErr) {
+                  throw new Error(`Failed to insert broadcast customer inbox rows in Developer DB: ${devInsErr.message}`);
+                }
+              } else {
+                this.logger.error(`Failed to insert broadcast inbox rows in Customer DB: ${custErr.message}`, { error: custErr.message });
+                throw custErr;
+              }
             }
           }
           insertedCount = eligibleCustomers.length;
         }
       } else {
-        const { data: count, error } = await targetCustomerClient.rpc('expand_broadcast_inbox_atomic', {
-          p_notification_id: customerNotificationId
-        });
-        if (error) {
-          throw new Error(`expand_broadcast_inbox_atomic failed: ${error.message}`);
+        try {
+          const { data: count, error } = await targetCustomerClient.rpc('expand_broadcast_inbox_atomic', {
+            p_notification_id: customerNotificationId
+          });
+          if (error) throw error;
+          insertedCount = count;
+        } catch (rpcErr) {
+          if (isTableMissingError(rpcErr) || rpcErr.code === 'PGRST202' || rpcErr.message?.includes('function') || rpcErr.status === 404) {
+            this.logger.warn(`expand_broadcast_inbox_atomic failed in Customer DB (missing); falling back to Developer DB`, { error: rpcErr.message });
+            const { data: count, error: devErr } = await this.supabase.rpc('expand_broadcast_inbox_atomic', {
+              p_notification_id: devNotificationId
+            });
+            if (devErr) {
+              throw new Error(`expand_broadcast_inbox_atomic failed: ${devErr.message}`);
+            }
+            insertedCount = count;
+          } else {
+            this.logger.error(`Failed to execute expand_broadcast_inbox_atomic in Customer DB: ${rpcErr.message}`, { error: rpcErr.message });
+            throw rpcErr;
+          }
         }
-        insertedCount = count;
       }
-      this.logger.info(`Broadcast inbox expanded for customer accounts in Customer DB`, { customerNotificationId, insertedCount });
+      this.logger.info(`Broadcast inbox expanded for customer accounts`, { customerNotificationId, insertedCount });
       return;
     }
 
@@ -468,15 +519,32 @@ class NotificationService {
         return;
       }
 
-      const { error: insErr } = await targetCustomerClient
-        .from('user_notification_inbox')
-        .upsert({
-          notification_id: customerNotificationId,
-          user_id: job.recipient_user_id
-        }, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
+      try {
+        const { error: insErr } = await targetCustomerClient
+          .from('user_notification_inbox')
+          .upsert({
+            notification_id: customerNotificationId,
+            user_id: job.recipient_user_id
+          }, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
 
-      if (insErr) {
-        throw new Error(`Failed to insert customer inbox row: ${insErr.message}`);
+        if (insErr) throw insErr;
+      } catch (custErr) {
+        if (isTableMissingError(custErr)) {
+          this.logger.warn(`Failed to insert customer inbox row in Customer DB (table missing), falling back to Developer DB`, { error: custErr.message });
+          const { error: devInsErr } = await this.supabase
+            .from('user_notification_inbox')
+            .upsert({
+              notification_id: devNotificationId,
+              user_id: job.recipient_user_id
+            }, { onConflict: 'user_id,notification_id', ignoreDuplicates: true });
+
+          if (devInsErr) {
+            throw new Error(`Failed to insert customer inbox row in Developer DB: ${devInsErr.message}`);
+          }
+        } else {
+          this.logger.error(`Failed to insert customer inbox row in Customer DB: ${custErr.message}`, { error: custErr.message });
+          throw custErr;
+        }
       }
     }
   }
@@ -553,6 +621,7 @@ class NotificationService {
    */
   async fetchAllTargetTokens(job) {
     const allTokens = [];
+    const seenTokenStrings = new Set();
     const targetCustomerClient = this.customerSupabase || this.supabase;
 
     if (job.target_audience === 'customer_single') {
@@ -571,8 +640,52 @@ class NotificationService {
       }
 
       const { data, error } = await query;
-      if (error) throw new Error(`Failed to fetch customer tokens: ${error.message}`);
-      return data || [];
+      if (error) {
+        if (!isTableMissingError(error)) {
+          this.logger.error(`Failed to query customer device tokens in Customer DB: ${error.message}`, { error: error.message });
+          throw new Error(`Failed to query customer device tokens: ${error.message}`);
+        }
+      } else if (Array.isArray(data)) {
+        for (const t of data) {
+          if (t.fcm_token && !seenTokenStrings.has(t.fcm_token)) {
+            seenTokenStrings.add(t.fcm_token);
+            allTokens.push(t);
+          }
+        }
+      }
+
+      // Check Developer DB if targetCustomerClient is different from Developer DB.
+      // Customer token query returning zero rows does not incorrectly hide a Developer DB token!
+      if (this.supabase && this.supabase !== targetCustomerClient) {
+        let devQuery = this.supabase
+          .from('user_device_tokens')
+          .select('id, user_id, fcm_token, device_platform, app_type')
+          .eq('app_type', 'customer')
+          .eq('is_active', true);
+
+        if (job.recipient_user_id) {
+          devQuery = devQuery.eq('user_id', job.recipient_user_id);
+        } else if (job.recipient_email) {
+          devQuery = devQuery.eq('user_email', job.recipient_email.toLowerCase().trim());
+        }
+
+        const { data: devData, error: devError } = await devQuery;
+        if (devError) {
+          if (!isTableMissingError(devError)) {
+            this.logger.error(`Failed to query customer device tokens in Developer DB: ${devError.message}`, { error: devError.message });
+            throw new Error(`Failed to query customer device tokens in Developer DB: ${devError.message}`);
+          }
+        } else if (Array.isArray(devData)) {
+          for (const t of devData) {
+            if (t.fcm_token && !seenTokenStrings.has(t.fcm_token)) {
+              seenTokenStrings.add(t.fcm_token);
+              allTokens.push(t);
+            }
+          }
+        }
+      }
+
+      return allTokens;
     }
 
     if (job.target_audience === 'developer_all') {
@@ -589,34 +702,50 @@ class NotificationService {
     if (job.target_audience === 'customer_all') {
       let eligibleUserIds = null;
       if (targetCustomerClient.auth && targetCustomerClient.auth.admin && typeof targetCustomerClient.auth.admin.listUsers === 'function') {
-        const eligibleCustomers = await listEligibleCustomerUsers(targetCustomerClient);
+        const eligibleCustomers = await listEligibleCustomerUsers(targetCustomerClient, this.supabase);
         eligibleUserIds = new Set(eligibleCustomers.map(c => c.id));
       }
 
       // Keyset pagination over (id ASC) WHERE is_active = true AND app_type = 'customer'
-      let lastSeenId = '00000000-0000-0000-0000-000000000000';
-      while (true) {
-        const { data, error } = await targetCustomerClient
-          .from('user_device_tokens')
-          .select('id, user_id, fcm_token, device_platform, app_type')
-          .eq('app_type', 'customer')
-          .eq('is_active', true)
-          .gt('id', lastSeenId)
-          .order('id', { ascending: true })
-          .limit(this.tokenPageSize);
-
-        if (error) throw new Error(`Keyset token query failed: ${error.message}`);
-        if (!data || data.length === 0) break;
-
-        for (const token of data) {
-          if (!eligibleUserIds || eligibleUserIds.has(token.user_id)) {
-            allTokens.push(token);
-          }
-        }
-
-        lastSeenId = data[data.length - 1].id;
-        if (data.length < this.tokenPageSize) break;
+      const clientsToCheck = [targetCustomerClient];
+      if (this.supabase && this.supabase !== targetCustomerClient) {
+        clientsToCheck.push(this.supabase);
       }
+
+      for (const client of clientsToCheck) {
+        let lastSeenId = '00000000-0000-0000-0000-000000000000';
+        while (true) {
+          const { data, error } = await client
+            .from('user_device_tokens')
+            .select('id, user_id, fcm_token, device_platform, app_type')
+            .eq('app_type', 'customer')
+            .eq('is_active', true)
+            .gt('id', lastSeenId)
+            .order('id', { ascending: true })
+            .limit(this.tokenPageSize);
+
+          if (error) {
+            if (isTableMissingError(error)) {
+              break;
+            }
+            this.logger.error(`Keyset token query failed: ${error.message}`, { error: error.message });
+            throw new Error(`Keyset token query failed: ${error.message}`);
+          }
+
+          if (!data || data.length === 0) break;
+
+          for (const token of data) {
+            if ((!eligibleUserIds || eligibleUserIds.has(token.user_id)) && !seenTokenStrings.has(token.fcm_token)) {
+              seenTokenStrings.add(token.fcm_token);
+              allTokens.push(token);
+            }
+          }
+
+          lastSeenId = data[data.length - 1].id;
+          if (data.length < this.tokenPageSize) break;
+        }
+      }
+
       return allTokens;
     }
 
@@ -741,12 +870,32 @@ class NotificationService {
         if (classified.isPermanentInvalidToken) {
           // 2. Confirmed Invalid Token: Deactivate token in DB with strict error checking
           const targetDeactClient = (tokenRow.app_type === 'customer' && this.customerSupabase) ? this.customerSupabase : this.supabase;
-          const { error: deactErr } = await targetDeactClient
+          let deactSuccess = false;
+          let deactErr = null;
+
+          const { error: err1 } = await targetDeactClient
             .from('user_device_tokens')
             .update({ is_active: false, updated_at: new Date().toISOString() })
             .eq('id', tokenRow.id);
 
-          if (deactErr) {
+          if (!err1) {
+            deactSuccess = true;
+          } else if (isTableMissingError(err1)) {
+            if (this.supabase && targetDeactClient !== this.supabase) {
+              const { error: err2 } = await this.supabase
+                .from('user_device_tokens')
+                .update({ is_active: false, updated_at: new Date().toISOString() })
+                .eq('id', tokenRow.id);
+              if (!err2) deactSuccess = true;
+              else deactErr = err2;
+            } else {
+              deactErr = err1;
+            }
+          } else {
+            deactErr = err1;
+          }
+
+          if (!deactSuccess && deactErr) {
             this.logger.error('Failed to deactivate invalid token in user_device_tokens', { tokenId: tokenRow.id, error: deactErr.message });
             throw new Error(`Failed to deactivate invalid token ${tokenRow.id}: ${deactErr.message}`);
           }
@@ -843,7 +992,23 @@ class NotificationService {
       let customerNotificationId = devNotificationId;
 
       if (isCustomerAudience && this.customerSupabase && this.customerSupabase !== this.supabase) {
-        customerNotificationId = await this.ensureMasterNotificationInClient(job, this.customerSupabase);
+        try {
+          customerNotificationId = await this.ensureMasterNotificationInClient(job, this.customerSupabase);
+        } catch (custErr) {
+          if (isTableMissingError(custErr) || (custErr.raw && isTableMissingError(custErr.raw))) {
+            this.logger.warn(`Failed to create master notification in Customer DB (table missing); falling back to Developer DB`, {
+              jobId: job.id,
+              error: custErr.message
+            });
+            customerNotificationId = devNotificationId;
+          } else {
+            this.logger.error(`Failed to create master notification in Customer DB: ${custErr.message}`, {
+              jobId: job.id,
+              error: custErr.message
+            });
+            throw custErr;
+          }
+        }
       }
 
       // 2. Expand inbox atomically across dual databases
@@ -961,6 +1126,7 @@ class NotificationService {
 module.exports = {
   NotificationService,
   classifyFcmError,
+  isTableMissingError,
   CONFIRMED_INVALID_TOKEN_CODES,
   FATAL_CONFIG_ERROR_CODES,
   TRANSIENT_FCM_ERROR_CODES

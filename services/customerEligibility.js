@@ -136,7 +136,7 @@ function isEligibleCustomerAccount(user, activityEvidence = null) {
     }
   }
 
-  // 5. Account carries explicit verified customer activity marker
+  // 6. Account carries explicit verified customer activity marker
   if (user.has_customer_activity === true || user.hasCustomerActivity === true) {
     return true;
   }
@@ -145,7 +145,7 @@ function isEligibleCustomerAccount(user, activityEvidence = null) {
 }
 
 /**
- * Gathers authoritative customer activity evidence from the Customer Production database.
+ * Gathers authoritative customer activity evidence across Customer and Developer databases.
  * Checks:
  * - user_device_tokens WHERE app_type = 'customer' (developer tokens excluded)
  * - todos
@@ -154,22 +154,27 @@ function isEligibleCustomerAccount(user, activityEvidence = null) {
  * 
  * @param {Object} supabaseClient - Customer Supabase client
  * @param {Array<string>} userIds - Array of auth user UUIDs
+ * @param {Object} [developerClient] - Developer Supabase client (where support tickets & device tokens reside)
  * @returns {Promise<Set<string>>} Set of user IDs with confirmed customer activity
  */
-async function fetchCustomerActivityEvidence(supabaseClient, userIds) {
+async function fetchCustomerActivityEvidence(supabaseClient, userIds, developerClient = null) {
   const evidenceUserIds = new Set();
-  if (!supabaseClient || !Array.isArray(userIds) || userIds.length === 0) {
+  if ((!supabaseClient && !developerClient) || !Array.isArray(userIds) || userIds.length === 0) {
     return evidenceUserIds;
   }
 
   const cleanIds = userIds.filter(id => id && typeof id === 'string');
   if (cleanIds.length === 0) return evidenceUserIds;
 
+  const clientsToCheck = [];
+  if (supabaseClient) clientsToCheck.push(supabaseClient);
+  if (developerClient && developerClient !== supabaseClient) clientsToCheck.push(developerClient);
+
   await Promise.allSettled([
     // 1. Customer device tokens (strictly customer tokens, developer tokens excluded)
-    (async () => {
+    ...clientsToCheck.map(async (client) => {
       try {
-        const { data } = await supabaseClient
+        const { data } = await client
           .from('user_device_tokens')
           .select('user_id')
           .in('user_id', cleanIds)
@@ -178,12 +183,12 @@ async function fetchCustomerActivityEvidence(supabaseClient, userIds) {
           if (row.user_id) evidenceUserIds.add(row.user_id);
         }
       } catch (_) {}
-    })(),
+    }),
 
     // 2. Authoritative customer todos
-    (async () => {
+    ...clientsToCheck.map(async (client) => {
       try {
-        const { data } = await supabaseClient
+        const { data } = await client
           .from('todos')
           .select('user_id')
           .in('user_id', cleanIds)
@@ -192,12 +197,12 @@ async function fetchCustomerActivityEvidence(supabaseClient, userIds) {
           if (row.user_id) evidenceUserIds.add(row.user_id);
         }
       } catch (_) {}
-    })(),
+    }),
 
     // 3. Authoritative customer habits
-    (async () => {
+    ...clientsToCheck.map(async (client) => {
       try {
-        const { data } = await supabaseClient
+        const { data } = await client
           .from('habits')
           .select('user_id')
           .in('user_id', cleanIds)
@@ -206,12 +211,12 @@ async function fetchCustomerActivityEvidence(supabaseClient, userIds) {
           if (row.user_id) evidenceUserIds.add(row.user_id);
         }
       } catch (_) {}
-    })(),
+    }),
 
     // 4. Support tickets
-    (async () => {
+    ...clientsToCheck.map(async (client) => {
       try {
-        const { data } = await supabaseClient
+        const { data } = await client
           .from('support_tickets')
           .select('user_id')
           .in('user_id', cleanIds)
@@ -220,7 +225,7 @@ async function fetchCustomerActivityEvidence(supabaseClient, userIds) {
           if (row.user_id) evidenceUserIds.add(row.user_id);
         }
       } catch (_) {}
-    })()
+    })
   ]);
 
   return evidenceUserIds;
@@ -345,9 +350,10 @@ async function completeCustomerRegistration(supabaseClient, user, { name, age } 
  * Fetches all genuine registered Taskly Customer accounts from Supabase Auth admin API.
  * 
  * @param {Object} supabaseClient - Customer Supabase service client with admin privileges
+ * @param {Object} [developerSupabaseClient] - Optional Developer Supabase client for cross-database evidence
  * @returns {Promise<Array<Object>>} Array of eligible user objects
  */
-async function listEligibleCustomerUsers(supabaseClient) {
+async function listEligibleCustomerUsers(supabaseClient, developerSupabaseClient = null) {
   if (!supabaseClient?.auth?.admin?.listUsers) {
     return [];
   }
@@ -385,7 +391,7 @@ async function listEligibleCustomerUsers(supabaseClient) {
   const candidatesNeedingEvidence = [];
 
   for (const u of allCandidates) {
-    if (u.app_metadata && u.app_metadata.is_customer === true) {
+    if (isEligibleCustomerAccount(u)) {
       eligibleUsers.push(u);
     } else {
       candidatesNeedingEvidence.push(u);
@@ -394,9 +400,9 @@ async function listEligibleCustomerUsers(supabaseClient) {
 
   if (candidatesNeedingEvidence.length > 0) {
     const candidateIds = candidatesNeedingEvidence.map(u => u.id);
-    const evidenceUserIds = await fetchCustomerActivityEvidence(supabaseClient, candidateIds);
+    const evidenceUserIds = await fetchCustomerActivityEvidence(supabaseClient, candidateIds, developerSupabaseClient);
     for (const u of candidatesNeedingEvidence) {
-      if (evidenceUserIds.has(u.id)) {
+      if (evidenceUserIds.has(u.id) || isEligibleCustomerAccount(u, evidenceUserIds)) {
         eligibleUsers.push(u);
       }
     }
@@ -408,14 +414,16 @@ async function listEligibleCustomerUsers(supabaseClient) {
 /**
  * Finds a genuine registered customer account matching an exact email address.
  * Validates against Customer Production database using:
- * 1. app_metadata.is_customer === true
+ * 1. app_metadata.is_customer === true or valid customer registration profile
  * 2. OR authoritative customer activity evidence (customer tokens, todos, habits, support tickets)
  * 
  * @param {Object} supabaseClient - Customer Supabase client
  * @param {string} email
+ * @param {Object} [options]
+ * @param {Object} [options.developerSupabaseClient] - Optional Developer Supabase client for evidence verification
  * @returns {Promise<Object|null>} The eligible customer user object or null
  */
-async function findEligibleCustomerByEmail(supabaseClient, email) {
+async function findEligibleCustomerByEmail(supabaseClient, email, { developerSupabaseClient = null } = {}) {
   if (!email || typeof email !== 'string') return null;
   const cleanEmail = email.toLowerCase().trim();
   if (!cleanEmail || DEVELOPER_ADMIN_EMAILS.has(cleanEmail)) return null;
@@ -455,14 +463,14 @@ async function findEligibleCustomerByEmail(supabaseClient, email) {
   );
   if (!isConfirmed) return null;
 
-  // If server app_metadata.is_customer is true, confirmed immediately
-  if (matchedUser.app_metadata && matchedUser.app_metadata.is_customer === true) {
+  // If server app_metadata or registration metadata confirms eligibility, return immediately
+  if (isEligibleCustomerAccount(matchedUser)) {
     return matchedUser;
   }
 
-  // Otherwise check customer activity evidence
-  const evidenceIds = await fetchCustomerActivityEvidence(supabaseClient, [matchedUser.id]);
-  if (evidenceIds.has(matchedUser.id)) {
+  // Otherwise check customer activity evidence across databases
+  const evidenceIds = await fetchCustomerActivityEvidence(supabaseClient, [matchedUser.id], developerSupabaseClient);
+  if (evidenceIds.has(matchedUser.id) || isEligibleCustomerAccount(matchedUser, evidenceIds)) {
     return matchedUser;
   }
 
@@ -479,9 +487,10 @@ async function findEligibleCustomerByEmail(supabaseClient, email) {
  * @param {Object} [options]
  * @param {string} [options.search]
  * @param {number} [options.limit]
+ * @param {Object} [options.developerSupabaseClient] - Optional Developer Supabase client for evidence and token lookup
  * @returns {Promise<Array<Object>>}
  */
-async function searchEligibleCustomers(supabaseClient, { search = '', limit = 50 } = {}) {
+async function searchEligibleCustomers(supabaseClient, { search = '', limit = 50, developerSupabaseClient = null } = {}) {
   if (!supabaseClient?.auth?.admin?.listUsers) {
     return [];
   }
@@ -530,12 +539,12 @@ async function searchEligibleCustomers(supabaseClient, { search = '', limit = 50
 
   if (candidateUsers.length === 0) return [];
 
-  // 2. Filter candidates for eligibility (app_metadata or customer activity evidence)
+  // 2. Filter candidates for eligibility (app_metadata, registration metadata, or activity evidence)
   const eligibleUsers = [];
   const candidatesNeedingEvidence = [];
 
   for (const u of candidateUsers) {
-    if (u.app_metadata && u.app_metadata.is_customer === true) {
+    if (isEligibleCustomerAccount(u)) {
       eligibleUsers.push(u);
     } else {
       candidatesNeedingEvidence.push(u);
@@ -544,9 +553,9 @@ async function searchEligibleCustomers(supabaseClient, { search = '', limit = 50
 
   if (candidatesNeedingEvidence.length > 0) {
     const candidateIds = candidatesNeedingEvidence.map(u => u.id);
-    const evidenceIds = await fetchCustomerActivityEvidence(supabaseClient, candidateIds);
+    const evidenceIds = await fetchCustomerActivityEvidence(supabaseClient, candidateIds, developerSupabaseClient);
     for (const u of candidatesNeedingEvidence) {
-      if (evidenceIds.has(u.id)) {
+      if (evidenceIds.has(u.id) || isEligibleCustomerAccount(u, evidenceIds)) {
         eligibleUsers.push(u);
       }
     }
@@ -559,21 +568,27 @@ async function searchEligibleCustomers(supabaseClient, { search = '', limit = 50
   const userIds = sliced.map(u => u.id);
   const tokenMap = new Map();
 
-  try {
-    const { data: tokens } = await supabaseClient
-      .from('user_device_tokens')
-      .select('user_id, device_platform, is_active, last_seen_at')
-      .in('user_id', userIds)
-      .eq('app_type', 'customer')
-      .order('last_seen_at', { ascending: false });
+  const tokenClients = [];
+  if (developerSupabaseClient) tokenClients.push(developerSupabaseClient);
+  if (supabaseClient && supabaseClient !== developerSupabaseClient) tokenClients.push(supabaseClient);
 
-    for (const t of (tokens || [])) {
-      if (!tokenMap.has(t.user_id) || t.is_active) {
-        tokenMap.set(t.user_id, t);
+  for (const client of tokenClients) {
+    try {
+      const { data: tokens } = await client
+        .from('user_device_tokens')
+        .select('user_id, device_platform, is_active, last_seen_at')
+        .in('user_id', userIds)
+        .eq('app_type', 'customer')
+        .order('last_seen_at', { ascending: false });
+
+      for (const t of (tokens || [])) {
+        if (!tokenMap.has(t.user_id) || (!tokenMap.get(t.user_id)?.is_active && t.is_active)) {
+          tokenMap.set(t.user_id, t);
+        }
       }
+    } catch (tokErr) {
+      console.warn('[CustomerEligibility] token query notice:', tokErr.message);
     }
-  } catch (tokErr) {
-    console.warn('[CustomerEligibility] token query notice:', tokErr.message);
   }
 
   return sliced.map(u => {

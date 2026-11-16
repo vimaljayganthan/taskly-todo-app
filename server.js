@@ -1723,7 +1723,7 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
 
     if (!isBroadcast) {
       // Authoritative recipient customer validation: strictly genuine registered customer accounts
-      const eligibleCustomer = await findEligibleCustomerByEmail(customerClient, cleanRecipientEmail);
+      const eligibleCustomer = await findEligibleCustomerByEmail(customerClient, cleanRecipientEmail, { developerSupabaseClient: serviceClient });
       if (!eligibleCustomer) {
         return res.status(400).json({ error: 'Recipient is not a registered Taskly customer account' });
       }
@@ -1746,7 +1746,8 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
         body: cleanBody,
         data: { screen: 'notifications' },
         priority: priority === 'high' ? 'high' : (isBroadcast ? 'normal' : 'high'),
-        deduplication_key: dedupKey
+        deduplication_key: dedupKey,
+        status: 'pending'
       })
       .select()
       .single();
@@ -1762,7 +1763,7 @@ app.post('/api/support/developer/notifications', async (req, res, next) => {
     // Read updated job status
     const { data: currentJob } = await serviceClient
       .from('notification_outbox')
-      .select('id, status, error_message, processed_at')
+      .select('id, status, last_error, processed_at')
       .eq('id', outboxRow.id)
       .maybeSingle();
 
@@ -1809,7 +1810,8 @@ app.get('/api/support/developer/customers', async (req, res, next) => {
   try {
     const { search, limit } = req.query;
     const customerClient = getCustomerSupabaseClient(req);
-    const customers = await searchEligibleCustomers(customerClient, { search, limit });
+    const serviceClient = getServiceSupabaseClient(req);
+    const customers = await searchEligibleCustomers(customerClient, { search, limit, developerSupabaseClient: serviceClient });
     res.json({ success: true, count: customers.length, customers });
   } catch (err) {
     next(err);
@@ -2052,6 +2054,17 @@ function validateSupabaseClients() {
 }
 
 /**
+ * Helper to identify Supabase PostgREST table-not-found / schema cache errors.
+ */
+function isTableMissingError(error) {
+  if (!error) return false;
+  const code = error.code || '';
+  const msg = (error.message || '').toLowerCase();
+  const status = error.status || error.statusCode || 0;
+  return code === 'PGRST205' || code === '42P01' || status === 404 || msg.includes('schema cache') || msg.includes('does not exist');
+}
+
+/**
  * Resolves the authoritative Supabase client based strictly on the authenticated session identity.
  * Security Rules:
  * - Never selects the database based solely on a client-supplied app_type.
@@ -2107,8 +2120,8 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       : 'android';
 
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
-    const { data, error } = await client
+    let targetClient = getAuthenticatedAudienceClient(req);
+    let { data, error } = await targetClient
       .from('user_device_tokens')
       .upsert({
         user_id: req.user.id,
@@ -2125,6 +2138,31 @@ app.post('/api/notifications/tokens', authenticateUser, async (req, res, next) =
       })
       .select('id, user_id, user_email, fcm_token, app_type, device_platform, is_active, last_seen_at')
       .single();
+
+    // Fallback: If Customer DB lacks user_device_tokens table, persist to Developer DB
+    if (error && isTableMissingError(error) && targetClient !== getServiceSupabaseClient(req)) {
+      console.warn('[TokenRegister] Customer DB table missing; falling back to Developer DB');
+      targetClient = getServiceSupabaseClient(req);
+      const resFallback = await targetClient
+        .from('user_device_tokens')
+        .upsert({
+          user_id: req.user.id,
+          user_email: userEmail,
+          fcm_token: cleanToken,
+          app_type: cleanAppType,
+          device_platform: cleanPlatform,
+          device_model: (device_model && typeof device_model === 'string') ? device_model.trim().slice(0, 128) : null,
+          app_version: (app_version && typeof app_version === 'string') ? app_version.trim().slice(0, 32) : null,
+          is_active: true,
+          last_seen_at: new Date().toISOString()
+        }, {
+          onConflict: 'fcm_token'
+        })
+        .select('id, user_id, user_email, fcm_token, app_type, device_platform, is_active, last_seen_at')
+        .single();
+      data = resFallback.data;
+      error = resFallback.error;
+    }
 
     if (error) {
       console.error('[TokenRegister] Supabase error:', error);
@@ -2154,8 +2192,8 @@ app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next)
     }
 
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
-    const { error } = await client
+    let targetClient = getAuthenticatedAudienceClient(req);
+    let { error } = await targetClient
       .from('user_device_tokens')
       .update({
         is_active: false,
@@ -2163,6 +2201,19 @@ app.delete('/api/notifications/tokens', authenticateUser, async (req, res, next)
       })
       .eq('fcm_token', rawToken.trim())
       .eq('user_id', req.user.id);
+
+    if (error && isTableMissingError(error) && targetClient !== getServiceSupabaseClient(req)) {
+      targetClient = getServiceSupabaseClient(req);
+      const resFallback = await targetClient
+        .from('user_device_tokens')
+        .update({
+          is_active: false,
+          last_seen_at: new Date().toISOString()
+        })
+        .eq('fcm_token', rawToken.trim())
+        .eq('user_id', req.user.id);
+      error = resFallback.error;
+    }
 
     if (error) {
       console.error('[TokenDeactivate] Supabase error:', error);
@@ -2188,19 +2239,33 @@ app.get('/api/notifications', authenticateUser, async (req, res, next) => {
     const unreadOnly = unread_only === 'true' || unread_only === '1' || unread_only === true;
 
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
+    let client = getAuthenticatedAudienceClient(req);
     const userId = req.user.id;
 
     // 1. Get exact unread count for badge
-    const { count: unreadCount, error: cntErr } = await client
+    let { count: unreadCount, error: cntErr } = await client
       .from('user_notification_inbox')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('is_read', false)
       .eq('is_dismissed', false);
 
-    if (cntErr) {
+    // If Customer DB lacks table, fall back to Developer DB
+    if (cntErr && isTableMissingError(cntErr) && client !== getServiceSupabaseClient(req)) {
+      client = getServiceSupabaseClient(req);
+      const resCnt = await client
+        .from('user_notification_inbox')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('is_read', false)
+        .eq('is_dismissed', false);
+      unreadCount = resCnt.count;
+      cntErr = resCnt.error;
+    }
+
+    if (cntErr && !isTableMissingError(cntErr)) {
       console.warn('[NotificationsInbox] unreadCount error:', cntErr.message);
+      return res.status(500).json({ error: 'Failed to fetch in-app notifications' });
     }
 
     // 2. Query user's inbox rows with associated notification details
@@ -2235,7 +2300,45 @@ app.get('/api/notifications', authenticateUser, async (req, res, next) => {
       .order('created_at', { ascending: false })
       .range(pageOffset, pageOffset + maxLimit - 1);
 
-    const { data: inboxRows, count: totalCount, error: fetchErr } = await query;
+    let { data: inboxRows, count: totalCount, error: fetchErr } = await query;
+
+    if (fetchErr && isTableMissingError(fetchErr) && client !== getServiceSupabaseClient(req)) {
+      client = getServiceSupabaseClient(req);
+      let fallbackQuery = client
+        .from('user_notification_inbox')
+        .select(`
+          id,
+          notification_id,
+          is_read,
+          read_at,
+          is_dismissed,
+          created_at,
+          notifications (
+            id,
+            notification_type,
+            title,
+            body,
+            data,
+            sender_email,
+            target_audience,
+            created_at
+          )
+        `, { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('is_dismissed', false);
+
+      if (unreadOnly) {
+        fallbackQuery = fallbackQuery.eq('is_read', false);
+      }
+      fallbackQuery = fallbackQuery
+        .order('created_at', { ascending: false })
+        .range(pageOffset, pageOffset + maxLimit - 1);
+
+      const resFetch = await fallbackQuery;
+      inboxRows = resFetch.data;
+      totalCount = resFetch.count;
+      fetchErr = resFetch.error;
+    }
 
     if (fetchErr) {
       console.error('[NotificationsInbox] fetch error:', fetchErr);
@@ -2281,13 +2384,25 @@ app.get('/api/notifications', authenticateUser, async (req, res, next) => {
 app.get('/api/notifications/unread-count', authenticateUser, async (req, res, next) => {
   try {
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
-    const { count, error } = await client
+    let client = getAuthenticatedAudienceClient(req);
+    let { count, error } = await client
       .from('user_notification_inbox')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', req.user.id)
       .eq('is_read', false)
       .eq('is_dismissed', false);
+
+    if (error && isTableMissingError(error) && client !== getServiceSupabaseClient(req)) {
+      client = getServiceSupabaseClient(req);
+      const resFallback = await client
+        .from('user_notification_inbox')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', req.user.id)
+        .eq('is_read', false)
+        .eq('is_dismissed', false);
+      count = resFallback.count;
+      error = resFallback.error;
+    }
 
     if (error) {
       return res.status(500).json({ error: 'Failed to fetch unread notification count' });
@@ -2308,7 +2423,7 @@ app.patch('/api/notifications/:id/read', authenticateUser, async (req, res, next
     }
 
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
+    let client = getAuthenticatedAudienceClient(req);
     const userId = req.user.id;
     const now = new Date().toISOString();
 
@@ -2331,6 +2446,43 @@ app.patch('/api/notifications/:id/read', authenticateUser, async (req, res, next
         .maybeSingle();
       updated = resByNotifId.data;
       error = resByNotifId.error;
+    }
+
+    // Fallback: If table missing in Customer DB, check Developer DB
+    // Fallback: strictly when Customer DB returns a confirmed table/schema missing error
+    if (error && isTableMissingError(error) && client !== getServiceSupabaseClient(req)) {
+      const devClient = getServiceSupabaseClient(req);
+      const resFallback = await devClient
+        .from('user_notification_inbox')
+        .update({ is_read: true, read_at: now })
+        .eq('id', notifId)
+        .eq('user_id', userId)
+        .select('id, is_read, read_at')
+        .maybeSingle();
+
+      if (resFallback.data) {
+        updated = resFallback.data;
+        error = null;
+        client = devClient;
+      } else if (!resFallback.error) {
+        const resByNotifFallback = await devClient
+          .from('user_notification_inbox')
+          .update({ is_read: true, read_at: now })
+          .eq('notification_id', notifId)
+          .eq('user_id', userId)
+          .select('id, is_read, read_at')
+          .maybeSingle();
+        if (resByNotifFallback.data) {
+          updated = resByNotifFallback.data;
+          error = null;
+          client = devClient;
+        } else {
+          updated = null;
+          error = null;
+        }
+      } else {
+        error = resFallback.error;
+      }
     }
 
     if (error) {
@@ -2364,16 +2516,28 @@ app.patch('/api/notifications/:id/read', authenticateUser, async (req, res, next
 app.post('/api/notifications/read-all', authenticateUser, async (req, res, next) => {
   try {
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
+    let client = getAuthenticatedAudienceClient(req);
     const userId = req.user.id;
     const now = new Date().toISOString();
 
-    const { data: updated, error } = await client
+    let { data: updated, error } = await client
       .from('user_notification_inbox')
       .update({ is_read: true, read_at: now })
       .eq('user_id', userId)
       .eq('is_read', false)
       .select('id');
+
+    if (error && isTableMissingError(error) && client !== getServiceSupabaseClient(req)) {
+      client = getServiceSupabaseClient(req);
+      const resFallback = await client
+        .from('user_notification_inbox')
+        .update({ is_read: true, read_at: now })
+        .eq('user_id', userId)
+        .eq('is_read', false)
+        .select('id');
+      updated = resFallback.data;
+      error = resFallback.error;
+    }
 
     if (error) {
       return res.status(500).json({ error: 'Failed to mark all notifications as read' });
@@ -2394,7 +2558,7 @@ app.delete('/api/notifications/:id', authenticateUser, async (req, res, next) =>
   try {
     const notifId = req.params.id;
     // Audience-isolated database client: Developer DB for admin, Customer DB for genuine customers
-    const client = getAuthenticatedAudienceClient(req);
+    let client = getAuthenticatedAudienceClient(req);
     const userId = req.user.id;
 
     let { data: updated, error } = await client
@@ -2417,6 +2581,40 @@ app.delete('/api/notifications/:id', authenticateUser, async (req, res, next) =>
       error = resByNotif.error;
     }
 
+    // Fallback: strictly when Customer DB returns a confirmed table/schema missing error
+    if (error && isTableMissingError(error) && client !== getServiceSupabaseClient(req)) {
+      const devClient = getServiceSupabaseClient(req);
+      const resFallback = await devClient
+        .from('user_notification_inbox')
+        .update({ is_dismissed: true })
+        .eq('id', notifId)
+        .eq('user_id', userId)
+        .select('id')
+        .maybeSingle();
+
+      if (resFallback.data) {
+        updated = resFallback.data;
+        error = null;
+      } else if (!resFallback.error) {
+        const resByNotifFallback = await devClient
+          .from('user_notification_inbox')
+          .update({ is_dismissed: true })
+          .eq('notification_id', notifId)
+          .eq('user_id', userId)
+          .select('id')
+          .maybeSingle();
+        if (resByNotifFallback.data) {
+          updated = resByNotifFallback.data;
+          error = null;
+        } else {
+          updated = null;
+          error = null;
+        }
+      } else {
+        error = resFallback.error;
+      }
+    }
+
     if (error) {
       return res.status(500).json({ error: 'Failed to dismiss notification' });
     }
@@ -2431,10 +2629,11 @@ app.delete('/api/notifications/:id', authenticateUser, async (req, res, next) =>
   }
 });
 
-// POST /api/internal/notifications/outbox/process - Process batch of pending push notifications
-app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, async (req, res, next) => {
+// POST & GET /api/internal/notifications/outbox/process - Process batch of pending push notifications
+// Supports HTTP POST (GitHub Actions / manual curl) and HTTP GET (Vercel Cron automatic invocations)
+const handleOutboxProcess = async (req, res, next) => {
   try {
-    const { batchSize, leaseSeconds } = req.body || {};
+    const { batchSize, leaseSeconds } = req.method === 'POST' ? (req.body || {}) : (req.query || {});
     const { NotificationService } = require('./services/notificationService');
     const { getFirebaseMessaging } = require('./services/firebaseAdmin');
 
@@ -2471,7 +2670,10 @@ app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, 
       error: err.message || 'Failed to process notification outbox batch'
     });
   }
-});
+};
+
+app.post('/api/internal/notifications/outbox/process', requireInternalCronAuth, handleOutboxProcess);
+app.get('/api/internal/notifications/outbox/process', requireInternalCronAuth, handleOutboxProcess);
 
 // GET /api/internal/notifications/outbox/metrics - Notification queue health & metrics
 app.get('/api/internal/notifications/outbox/metrics', requireInternalCronAuth, async (req, res, next) => {

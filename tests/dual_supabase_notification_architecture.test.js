@@ -201,6 +201,26 @@ function createDualMockClients() {
         return { data: null, error: null };
       },
       from: (tableName) => {
+        if (db.__tableErrors && db.__tableErrors[tableName]) {
+          const err = db.__tableErrors[tableName];
+          const errChain = {
+            select: () => errChain,
+            eq: () => errChain,
+            in: () => errChain,
+            gt: () => errChain,
+            order: () => errChain,
+            limit: () => errChain,
+            range: () => errChain,
+            single: async () => ({ data: null, error: err }),
+            maybeSingle: async () => ({ data: null, error: err }),
+            update: () => errChain,
+            upsert: () => errChain,
+            insert: () => errChain,
+            then: (resolve, reject) => Promise.resolve({ data: null, count: null, error: err }).then(resolve, reject)
+          };
+          return errChain;
+        }
+
         const table = db[tableName] || new Map();
         let selectedCols = '*';
         let selectOpts = {};
@@ -293,6 +313,9 @@ function createDualMockClients() {
             const inserted = [];
             for (const r of records) {
               const id = r.id || `uuid_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+              if (tableName === 'notification_outbox' && !r.status) {
+                r.status = 'pending';
+              }
               const rec = { id, created_at: new Date().toISOString(), ...r };
 
               // Foreign key validation for user_notification_inbox!
@@ -1506,6 +1529,416 @@ describe('Taskly Dual Supabase Notification Architecture Suite', () => {
 
       const devToken = Array.from(devDb.user_device_tokens.values()).find(t => t.fcm_token === 'fcm_dev_live_token_http_2');
       assert.strictEqual(devToken.is_active, false);
+    });
+
+    it('10.16 Customer search via GET /api/support/developer/customers?search=vimal returns customer with token augmentation from Developer DB', async () => {
+      // Seed a customer device token for Vimal in devDb (matching production topology)
+      devDb.user_device_tokens.set('tok-cust-dev-vimal', {
+        id: 'tok-cust-dev-vimal',
+        user_id: 'cust-uuid-1',
+        user_email: 'vimaljayganthan16@gmail.com',
+        fcm_token: 'fcm_vimal_dev_token',
+        device_platform: 'android',
+        app_type: 'customer',
+        is_active: true,
+        last_seen_at: '2026-11-15T12:00:00Z'
+      });
+
+      const res = await fetch(`${baseUrl}/api/support/developer/customers?search=vimal`, {
+        headers: {
+          'Authorization': 'Bearer mock-user:admin-uuid-dev:tasklypets%40gmail.com'
+        }
+      });
+      const body = await res.json();
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(body.success, true);
+      assert.strictEqual(body.count, 1);
+      assert.strictEqual(body.customers[0].user_email, 'vimaljayganthan16@gmail.com');
+      assert.strictEqual(body.customers[0].user_name, 'Vimal Jayganthan');
+      assert.strictEqual(body.customers[0].is_active, true);
+      assert.strictEqual(body.customers[0].device_platform, 'android');
+    });
+
+    it('10.17 Customer search strictly excludes developer administrator (tasklypets@gmail.com)', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/customers?search=tasklypets`, {
+        headers: {
+          'Authorization': 'Bearer mock-user:admin-uuid-dev:tasklypets%40gmail.com'
+        }
+      });
+      const body = await res.json();
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(body.success, true);
+      assert.strictEqual(body.count, 0);
+      assert.deepStrictEqual(body.customers, []);
+    });
+
+    it('10.18 Vercel Cron invocation via GET /api/internal/notifications/outbox/process succeeds with CRON_SECRET', async () => {
+      const origSecret = process.env.CRON_SECRET;
+      process.env.CRON_SECRET = 'test-cron-secret-123';
+      try {
+        const res = await fetch(`${baseUrl}/api/internal/notifications/outbox/process`, {
+          method: 'GET',
+          headers: {
+            'Authorization': 'Bearer test-cron-secret-123'
+          }
+        });
+        const body = await res.json();
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(body.success, true);
+      } finally {
+        process.env.CRON_SECRET = origSecret;
+      }
+    });
+
+    it('10.19 GitHub Actions invocation via POST /api/internal/notifications/outbox/process succeeds with CRON_SECRET', async () => {
+      const origSecret = process.env.CRON_SECRET;
+      process.env.CRON_SECRET = 'test-cron-secret-123';
+      try {
+        const res = await fetch(`${baseUrl}/api/internal/notifications/outbox/process`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-cron-secret-123'
+          },
+          body: JSON.stringify({ batchSize: 10, leaseSeconds: 60 })
+        });
+        const body = await res.json();
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(body.success, true);
+      } finally {
+        process.env.CRON_SECRET = origSecret;
+      }
+    });
+
+    it('10.20 Outbox worker rejects unauthorized requests without CRON_SECRET when secret is configured', async () => {
+      const origSecret = process.env.CRON_SECRET;
+      const origNodeEnv = process.env.NODE_ENV;
+      process.env.CRON_SECRET = 'test-cron-secret-123';
+      process.env.NODE_ENV = 'production';
+      try {
+        // Missing auth
+        const resNoAuth = await fetch(`${baseUrl}/api/internal/notifications/outbox/process`, {
+          method: 'GET'
+        });
+        assert.strictEqual(resNoAuth.status, 401);
+
+        // Invalid auth
+        const resBadAuth = await fetch(`${baseUrl}/api/internal/notifications/outbox/process`, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer wrong-secret' }
+        });
+        assert.strictEqual(resBadAuth.status, 403);
+      } finally {
+        process.env.CRON_SECRET = origSecret;
+        process.env.NODE_ENV = origNodeEnv;
+      }
+    });
+
+    it('10.21 Direct customer notification POST /api/support/developer/notifications returns completed status', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer mock-user:admin-uuid-dev:tasklypets%40gmail.com'
+        },
+        body: JSON.stringify({
+          audience: 'direct',
+          recipient_email: 'vimaljayganthan16@gmail.com',
+          title: 'Direct Test Alert',
+          body: 'Testing direct push delivery'
+        })
+      });
+      const body = await res.json();
+      assert.strictEqual(res.status, 201);
+      assert.strictEqual(body.success, true);
+      assert.strictEqual(body.status, 'completed');
+      assert.strictEqual(body.recipient_email, 'vimaljayganthan16@gmail.com');
+    });
+
+    it('10.22 Tokenless customer notification completes cleanly and persists inbox row in Customer DB', async () => {
+      const res = await fetch(`${baseUrl}/api/support/developer/notifications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer mock-user:admin-uuid-dev:tasklypets%40gmail.com'
+        },
+        body: JSON.stringify({
+          audience: 'direct',
+          recipient_email: 'sarah.smith@example.com',
+          title: 'Tokenless Alert',
+          body: 'Inbox alert for tokenless customer'
+        })
+      });
+      const body = await res.json();
+      assert.strictEqual(res.status, 201);
+      assert.strictEqual(body.success, true);
+      assert.strictEqual(body.status, 'completed');
+
+      // Verify inbox row was persisted in customerDb
+      const sarahInbox = Array.from(customerDb.user_notification_inbox.values()).filter(r => r.user_id === 'cust-uuid-2-tokenless');
+      assert.ok(sarahInbox.length >= 1, 'Sarah must have inbox row in Customer DB');
+    });
+
+    it('10.23 Customer inbox returns empty when Customer DB query succeeds with zero rows, without reading Developer DB', async () => {
+      // Setup a user who has zero notifications in Customer DB, but has a notification in Developer DB
+      const zeroUserId = 'cust-uuid-zero-rows';
+      const zeroEmail = 'zero.rows@example.com';
+      customerDb.users.push({
+        id: zeroUserId,
+        email: zeroEmail,
+        app_metadata: { is_customer: true },
+        user_metadata: { name: 'Zero Rows Customer' }
+      });
+
+      // Seed notification in Developer DB for zeroUserId
+      devDb.notifications.set('dev-notif-hidden', {
+        id: 'dev-notif-hidden',
+        title: 'Hidden Dev Alert',
+        body: 'Should not leak to customer with healthy Customer DB',
+        notification_type: 'system',
+        target_audience: 'customer_single'
+      });
+      devDb.user_notification_inbox.set('dev-inbox-hidden', {
+        id: 'dev-inbox-hidden',
+        user_id: zeroUserId,
+        notification_id: 'dev-notif-hidden',
+        is_read: false,
+        read_at: null,
+        is_dismissed: false,
+        created_at: new Date().toISOString()
+      });
+
+      // Customer DB has user_notification_inbox healthy and present, but ZERO rows for zeroUserId
+      const resList = await fetch(`${baseUrl}/api/notifications`, {
+        headers: {
+          'Authorization': `Bearer mock-user:${zeroUserId}:${encodeURIComponent(zeroEmail)}`
+        }
+      });
+      const bodyList = await resList.json();
+      assert.strictEqual(resList.status, 200);
+      assert.strictEqual(bodyList.success, true);
+      assert.strictEqual(bodyList.count, 0, 'Customer inbox must be empty');
+      assert.strictEqual(bodyList.total, 0);
+      assert.strictEqual(bodyList.unread_count, 0);
+      assert.deepStrictEqual(bodyList.notifications, []);
+
+      // Check unread count endpoint
+      const resCount = await fetch(`${baseUrl}/api/notifications/unread-count`, {
+        headers: {
+          'Authorization': `Bearer mock-user:${zeroUserId}:${encodeURIComponent(zeroEmail)}`
+        }
+      });
+      const bodyCount = await resCount.json();
+      assert.strictEqual(resCount.status, 200);
+      assert.strictEqual(bodyCount.unread_count, 0, 'Unread count must be 0 without falling back');
+
+      // Attempting to read a notification that only exists in Developer DB returns 404
+      const resRead = await fetch(`${baseUrl}/api/notifications/dev-inbox-hidden/read`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer mock-user:${zeroUserId}:${encodeURIComponent(zeroEmail)}`
+        }
+      });
+      assert.strictEqual(resRead.status, 404, 'Must return 404 without falling back to Developer DB');
+    });
+
+    it('10.24 Missing Customer inbox table correctly triggers fallback to Developer DB', async () => {
+      const fallbackUserId = 'cust-uuid-fallback';
+      const fallbackEmail = 'fallback.customer@example.com';
+      customerDb.users.push({
+        id: fallbackUserId,
+        email: fallbackEmail,
+        app_metadata: { is_customer: true },
+        user_metadata: { name: 'Fallback Customer' }
+      });
+
+      // Seed notification in Developer DB
+      devDb.notifications.set('dev-notif-fallback-test', {
+        id: 'dev-notif-fallback-test',
+        title: 'Fallback DB Alert',
+        body: 'Visible via fallback when table is missing',
+        notification_type: 'system',
+        target_audience: 'customer_single'
+      });
+      devDb.user_notification_inbox.set('dev-inbox-fallback-test', {
+        id: 'dev-inbox-fallback-test',
+        user_id: fallbackUserId,
+        notification_id: 'dev-notif-fallback-test',
+        is_read: false,
+        read_at: null,
+        is_dismissed: false,
+        created_at: new Date().toISOString()
+      });
+
+      // Simulate missing table in Customer DB (PGRST205 / 404)
+      customerDb.__tableErrors = {
+        user_notification_inbox: {
+          code: 'PGRST205',
+          message: "Could not find the 'user_notification_inbox' table in the schema cache",
+          status: 404
+        }
+      };
+
+      try {
+        // GET /api/notifications should fall back to Developer DB
+        const res = await fetch(`${baseUrl}/api/notifications`, {
+          headers: {
+            'Authorization': `Bearer mock-user:${fallbackUserId}:${encodeURIComponent(fallbackEmail)}`
+          }
+        });
+        const body = await res.json();
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(body.success, true);
+        assert.strictEqual(body.count, 1);
+        assert.strictEqual(body.notifications[0].title, 'Fallback DB Alert');
+        assert.strictEqual(body.unread_count, 1);
+
+        // GET /api/notifications/unread-count should also fall back
+        const resCount = await fetch(`${baseUrl}/api/notifications/unread-count`, {
+          headers: {
+            'Authorization': `Bearer mock-user:${fallbackUserId}:${encodeURIComponent(fallbackEmail)}`
+          }
+        });
+        const bodyCount = await resCount.json();
+        assert.strictEqual(resCount.status, 200);
+        assert.strictEqual(bodyCount.unread_count, 1);
+
+        // PATCH /api/notifications/:id/read should update row in Developer DB via fallback
+        const resRead = await fetch(`${baseUrl}/api/notifications/dev-inbox-fallback-test/read`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer mock-user:${fallbackUserId}:${encodeURIComponent(fallbackEmail)}`
+          }
+        });
+        const bodyRead = await resRead.json();
+        assert.strictEqual(resRead.status, 200);
+        assert.strictEqual(bodyRead.is_read, true);
+        assert.strictEqual(devDb.user_notification_inbox.get('dev-inbox-fallback-test').is_read, true);
+      } finally {
+        delete customerDb.__tableErrors;
+      }
+    });
+
+    it('10.25 Permission and connection errors do not silently trigger fallback', async () => {
+      const permUserId = 'cust-uuid-perm-err';
+      const permEmail = 'perm.error@example.com';
+      customerDb.users.push({
+        id: permUserId,
+        email: permEmail,
+        app_metadata: { is_customer: true },
+        user_metadata: { name: 'Permission Error Customer' }
+      });
+
+      // Seed in devDb
+      devDb.notifications.set('dev-notif-perm', {
+        id: 'dev-notif-perm',
+        title: 'Dev Notif',
+        body: 'Should never be accessed on permission error',
+        notification_type: 'system',
+        target_audience: 'customer_single'
+      });
+      devDb.user_notification_inbox.set('dev-inbox-perm', {
+        id: 'dev-inbox-perm',
+        user_id: permUserId,
+        notification_id: 'dev-notif-perm',
+        is_read: false,
+        read_at: null,
+        is_dismissed: false,
+        created_at: new Date().toISOString()
+      });
+
+      // Simulate RLS / permission denied error (42501 / 403)
+      customerDb.__tableErrors = {
+        user_notification_inbox: {
+          code: '42501',
+          message: 'permission denied for table user_notification_inbox',
+          status: 403
+        }
+      };
+
+      try {
+        // GET /api/notifications must return 500, NOT fall back to Developer DB
+        const res = await fetch(`${baseUrl}/api/notifications`, {
+          headers: {
+            'Authorization': `Bearer mock-user:${permUserId}:${encodeURIComponent(permEmail)}`
+          }
+        });
+        assert.strictEqual(res.status, 500, 'Must fail with 500 on permission error');
+
+        // GET /api/notifications/unread-count must return 500
+        const resCount = await fetch(`${baseUrl}/api/notifications/unread-count`, {
+          headers: {
+            'Authorization': `Bearer mock-user:${permUserId}:${encodeURIComponent(permEmail)}`
+          }
+        });
+        assert.strictEqual(resCount.status, 500, 'Must fail with 500 on permission error');
+
+        // NotificationService.fetchAllTargetTokens must throw on permission error rather than swallowing
+        const { NotificationService } = require('../services/notificationService');
+        const notifService = new NotificationService({
+          supabaseClient: devSupabase,
+          customerSupabaseClient: custSupabase,
+          logger: { info: () => {}, warn: () => {}, error: () => {} }
+        });
+
+        customerDb.__tableErrors = {
+          user_device_tokens: {
+            code: '42501',
+            message: 'permission denied for table user_device_tokens',
+            status: 403
+          }
+        };
+
+        await assert.rejects(
+          async () => {
+            await notifService.fetchAllTargetTokens({
+              target_audience: 'customer_single',
+              recipient_user_id: permUserId
+            });
+          },
+          (err) => {
+            assert.ok(err.message.includes('permission denied') || err.message.includes('Customer device token query failed'));
+            return true;
+          },
+          'NotificationService must reject on permission failure'
+        );
+      } finally {
+        delete customerDb.__tableErrors;
+      }
+    });
+
+    it('10.26 Customer token query returning zero rows does not incorrectly hide a Developer DB token', async () => {
+      const { NotificationService } = require('../services/notificationService');
+      const testUserId = 'cust-uuid-dual-token-test';
+      const testEmail = 'dual.token@example.com';
+
+      // Customer DB has NO tokens for testUserId (0 rows)
+      // Developer DB HAS an active token for testUserId
+      devDb.user_device_tokens.set('tok-dev-dual-1', {
+        id: 'tok-dev-dual-1',
+        user_id: testUserId,
+        user_email: testEmail,
+        fcm_token: 'fcm_dual_test_token_123',
+        device_platform: 'android',
+        app_type: 'customer',
+        is_active: true,
+        last_seen_at: new Date().toISOString()
+      });
+
+      const notifService = new NotificationService({
+        supabaseClient: devSupabase,
+        customerSupabaseClient: custSupabase,
+        logger: { info: () => {}, warn: () => {}, error: () => {} }
+      });
+
+      const tokens = await notifService.fetchAllTargetTokens({
+        target_audience: 'customer_single',
+        recipient_user_id: testUserId
+      });
+
+      assert.strictEqual(tokens.length, 1, 'Developer DB token must be found even when Customer DB query returns 0 rows');
+      assert.strictEqual(tokens[0].fcm_token, 'fcm_dual_test_token_123');
+      assert.strictEqual(tokens[0].user_id, testUserId);
     });
   });
 

@@ -30,12 +30,12 @@ jobs:
       - name: Dispatch Outbox Operation
         env:
           BACKEND_URL: ${{ vars.TASKLY_BACKEND_URL || secrets.TASKLY_BACKEND_URL || 'https://taskly-developer-backend.vercel.app' }}
-          CRON_SECRET: ${{ secrets.TASKLY_CRON_SECRET }}
+          CRON_SECRET: ${{ secrets.TASKLY_CRON_SECRET || secrets.CRON_SECRET }}
           ACTION: ${{ github.event.inputs.action || 'process' }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "::error ::TASKLY_CRON_SECRET is not configured in GitHub repository secrets. Outbox processing aborted."
-            echo "Please navigate to GitHub Repo -> Settings -> Secrets and variables -> Actions and add 'TASKLY_CRON_SECRET'."
+            echo "::error ::Neither TASKLY_CRON_SECRET nor CRON_SECRET is configured in GitHub repository secrets. Outbox processing aborted."
+            echo "Please navigate to GitHub Repo -> Settings -> Secrets and variables -> Actions and add 'TASKLY_CRON_SECRET' or 'CRON_SECRET'."
             exit 1
           fi
 

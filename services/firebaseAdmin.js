@@ -51,16 +51,50 @@ function resolveCredentials() {
     };
   }
 
+  // Support single JSON string or base64 JSON from environment variable (common in Vercel)
+  const rawKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (rawKey && typeof rawKey === 'string' && rawKey.trim()) {
+    try {
+      let jsonStr = rawKey.trim();
+      if (!jsonStr.startsWith('{')) {
+        try {
+          const decoded = Buffer.from(jsonStr, 'base64').toString('utf8');
+          if (decoded.trim().startsWith('{')) {
+            jsonStr = decoded.trim();
+          }
+        } catch (_) {}
+      }
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.project_id && parsed.client_email && parsed.private_key) {
+        let pk = parsed.private_key;
+        if (pk.includes('\\n')) {
+          pk = pk.replace(/\\n/g, '\n');
+        }
+        return {
+          projectId: parsed.project_id,
+          clientEmail: parsed.client_email,
+          privateKey: pk
+        };
+      }
+    } catch (err) {
+      console.warn('[FirebaseAdmin] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY environment variable:', err.message);
+    }
+  }
+
   // Local fallback via file path (keeps secrets out of git repo)
   const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
       if (parsed.project_id && parsed.client_email && parsed.private_key) {
+        let pk = parsed.private_key;
+        if (pk.includes('\\n')) {
+          pk = pk.replace(/\\n/g, '\n');
+        }
         return {
           projectId: parsed.project_id,
           clientEmail: parsed.client_email,
-          privateKey: parsed.private_key
+          privateKey: pk
         };
       }
     } catch (err) {
