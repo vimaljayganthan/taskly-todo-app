@@ -25,6 +25,7 @@ data/todos.json
 data/*.backup.json
 data/*.tmp
 !data/.gitkeep
+backups/
 
 # Logs
 logs/

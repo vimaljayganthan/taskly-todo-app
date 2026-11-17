@@ -63,6 +63,12 @@
       "source": "/healthz",
       "destination": "/api/index.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/daily-reports",
+      "schedule": "0 * * * *"
+    }
   ]
 }
 

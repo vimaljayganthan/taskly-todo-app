@@ -1,0 +1,375 @@
+{
+  "previewVersion": "2.2.0",
+  "latestVersion": "2.2.0",
+  "versionCode": 140,
+  "displayBuild": "14",
+  "buildLabel": "Build 14",
+  "releaseStage": "preview",
+  "title": "Taskly v2.2.0 (Build 14) – Productivity & Habit Tracking",
+  "releaseNotes": "# Taskly v2.2.0 (Build 14) — Productivity & Habit Tracking\n\nTaskly v2.2.0 introduces Routines & Smart Lists management, Habit tracking with dynamic streaks, and multi-theme support.",
+  "releaseDate": "2026-11-10",
+  "minimumSupportedVersion": "1.0.0",
+  "fileSize": null,
+  "fileSizeBytes": null,
+  "sha256": null,
+  "apkFileName": null,
+  "apkDownloadUrl": null,
+  "mandatoryUpdate": false,
+  "history": [
+    {
+      "version": "2.2.0",
+      "versionName": "2.2.0",
+      "versionCode": 140,
+      "displayBuild": "14",
+      "buildLabel": "Build 14",
+      "releaseDate": "2026-11-10",
+      "releaseStage": "preview",
+      "title": "Taskly v2.2.0 (Build 14) – Productivity & Habit Tracking",
+      "summary": "Productivity features, routines, habit tracking, and performance updates.",
+      "features": [
+        "Routines & Smart Lists management",
+        "Habit tracking with dynamic streaks",
+        "Pastel Light, Pet, Day, and Dark themes"
+      ],
+      "improvements": [
+        "Updated profile layout",
+        "Performance optimizations"
+      ],
+      "performance": [],
+      "fixes": [],
+      "security": [
+        "Anti-spoofing user token binding on all API endpoints"
+      ],
+      "apkDownloadUrl": null,
+      "fileSize": null,
+      "fileSizeBytes": null,
+      "sha256": null
+    },
+    {
+      "version": "2.1.1",
+      "versionName": "2.1.1",
+      "versionCode": 121,
+      "releaseDate": "2026-11-10",
+      "title": "Taskly v2.1.1 (Build 12.1) – Routine Deletion & Foreign Key Integrity Hotfix",
+      "summary": "# Taskly v2.1.1 (Build 12.1) — Routine Deletion & Foreign Key Integrity Hotfix\n\nTaskly v2.1.1 (Build 12.1) addresses a critical routine deletion error on Supabase. Deleting a routine from today's list now immediately cleans up future and tomorrow occurrences. Removing tomorrow entries after parent routine deletion no longer triggers foreign key constraint violations, and orphaned completion records are safely pruned without application errors.\n\n### Bug Fixes\n- Fixed foreign key constraint violation (smart_routine_completions_routine_id_fkey) when removing routines.\n- Fixed deleted routines remaining visible in tomorrow's routine list.\n- Fixed failed remove operations when deleting tomorrow entries after parent routine is deleted.\n- Fixed orphaned completion records lingering after parent routine removal.\n\n### Reliability Improvements\n- Safe, idempotent deletion of remaining tomorrow entries without errors.\n- Verified existence check before attempting completion state updates or upserts.\n- Immediate UI synchronization across routine counts, daily summaries, and habit streaks upon deletion.",
+      "features": [
+        "Safe and idempotent routine deletion preventing foreign key constraint violations",
+        "Instant removal of deleted routines from tomorrow's list and routine counts without restarting",
+        "Automatic cleanup of orphaned completion records when parent routines are removed",
+        "Robust existence verification before attempting completion state updates or upserts",
+        "Multi-device and multi-user routine deletion isolation and integrity protection"
+      ],
+      "improvements": [
+        "Strengthened referential integrity safeguards across Supabase and local storage",
+        "Eliminated spurious error alerts when removing deleted routines from tomorrow",
+        "Immediate UI synchronization across routine counts, daily summaries, and habit streaks upon deletion"
+      ],
+      "performance": [
+        "Optimistic sub-10ms UI deletion updates with asynchronous background database reconciliation",
+        "Eliminated redundant network queries and failed retries during routine deletion"
+      ],
+      "fixes": [
+        "Fixed foreign key constraint violation (smart_routine_completions_routine_id_fkey) during routine deletion",
+        "Fixed deleted routines remaining visible in tomorrow's routine list",
+        "Fixed failed remove operations when deleting tomorrow entries after parent routine is deleted",
+        "Fixed orphaned completion records lingering after parent routine removal"
+      ],
+      "security": [
+        "Preserved strict Row-Level Security (RLS) enforcement on all routine deletion operations",
+        "Cryptographically signed production APK with verified SHA-256 package integrity"
+      ],
+      "apkFileName": "taskly-v2.1.1.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18574313,
+      "sha256": "38e0dc6bc66a056edffefe4bea7c3f7e23a49d482273f9bc77b117cd09eac618",
+      "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.1/taskly-v2.1.1.apk",
+      "displayBuild": "12.1",
+      "buildLabel": "Build 12.1"
+    },
+    {
+      "version": "2.1.0",
+      "versionName": "2.1.0",
+      "versionCode": 12,
+      "releaseDate": "2026-11-10",
+      "title": "Taskly v2.1.0 – Reliability & Smart Lists Update",
+      "summary": "# Taskly v2.1.0 (Build 12) — Reliability & Smart Lists Update\n\nTaskly v2.1.0 brings improved Smart Lists reliability and carry-forward synchronization. Routine updates now appear immediately without restarting the application. We have also improved Supabase persistence, fixed synchronization issues and strengthened duplicate-action protection.\n\n### Carry-Forward Improvements\n- Fixed carry-forward changes not appearing immediately in the application.\n- Fixed missing Supabase persistence for Android/Capacitor carry-forward operations.\n- Fixed carried-forward routines being incorrectly excluded by date-range filtering.\n- Improved synchronization between local application state and Supabase.\n- Added immediate refresh of routine lists, counts, daily summaries, streak indicators and productivity analytics.\n- Added protection against duplicate carry-forward actions.\n- Improved failure handling and state rollback when persistence fails.\n\n### Reliability Improvements\n- Improved Smart Lists data synchronization.\n- Improved application state consistency.\n- Improved Android Capacitor behaviour.\n- Preserved existing routine completion and streak calculations.\n- Improved error handling during cloud synchronization.",
+      "features": [
+        "Immediate carry-forward UI refresh without requiring application restart",
+        "Direct Supabase cloud persistence for Android/Capacitor carry-forward decisions",
+        "Robust date-range filtering preserving carried-forward routines",
+        "Protection against duplicate carry-forward actions with button state locking",
+        "Automatic state rollback safeguarding UI and data integrity on synchronization failure",
+        "Immediate refresh of routine lists, counts, daily summaries, streak indicators and productivity analytics",
+        "Preserved routine completion states and 80% habit qualification streak calculations"
+      ],
+      "improvements": [
+        "Improved Smart Lists data synchronization between local application state and Supabase",
+        "Improved application state consistency across screen navigation and app pauses",
+        "Improved Android Capacitor behaviour and cloud persistence reliability"
+      ],
+      "performance": [
+        "Instantaneous UI state transitions with zero artificial delays or blocking loaders",
+        "Eliminated duplicate and redundant network queries during carry-forward operations"
+      ],
+      "fixes": [
+        "Fixed carry-forward changes not appearing immediately in the application",
+        "Fixed missing Supabase persistence for Android/Capacitor carry-forward operations",
+        "Fixed carried-forward routines being incorrectly excluded by date-range filtering",
+        "Improved error handling during cloud synchronization"
+      ],
+      "security": [
+        "Preserved Row-Level Security (RLS) enforcement on all routine tables and completions",
+        "Cryptographically signed production APK with verified SHA-256 integrity"
+      ],
+      "apkFileName": "taskly-v2.1.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18571173,
+      "sha256": "286596d7e4224af9e68ecd3e0270388d46c26e27179c9745e5b58843df37967f",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.0/taskly-v2.1.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
+    {
+      "version": "2.0.0",
+      "versionName": "2.0.0",
+      "versionCode": 11,
+      "releaseDate": "2026-11-08",
+      "title": "Taskly v2.0.0 – Build 11: Habit Streaks & Productivity Analytics",
+      "summary": "# Taskly v2.0.0 (Build 11) — Habit Streaks & Productivity Analytics\n\nIntroduced comprehensive habit streak tracking, robust 4-state routine lifecycle management (completed, pending, postponed, cancelled), intelligent carry-forward and next-day routine scheduling, streak reset safeguards, unified productivity analytics separating tasks from habits, and interactive in-app update announcements.\n\n### What's New\n- **Habit Streak Engine**: Intelligent habit tracking requiring an 80% daily qualification threshold to extend streaks, with current streak, longest streak, and consistency percentages.\n- **4-State Routine Lifecycle**: Complete state machine supporting Completed, Pending, Postponed (carried forward to tomorrow), and Cancelled routines with full audit integrity.\n- **Undo Cancellation**: Instantly restore erroneously cancelled routines back to pending, dynamically recalculating streak denominators without losing progress.\n- **Next-Day Routine Planning**: Dedicated tomorrow view allowing advance scheduling, viewing carried-forward items, and occurrence isolation without affecting recurring routines.\n- **Streak Reset Controls**: Dedicated reset modal with user confirmation to restart streak counters from zero while preserving routine definitions and historical task/routine analytics.\n- **Dedicated Productivity Analytics**: Clear separation between Task Analytics and Routine/Habit Analytics in the Progress tab, with responsive charts and rate indicators.\n- **In-App Update Announcements**: Native and web update modal highlighting new features upon upgrade, with notification duplicate prevention and permission guards.\n- **Four-Theme Visual Polish**: Pixel-perfect layout across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.",
+      "features": [
+        "Habit streak engine with 80% qualification threshold for streak maintenance",
+        "4-state routine lifecycle: completed, pending, postponed, and cancelled",
+        "Undo cancellation action to restore cancelled routines back to pending state",
+        "Advance routine planning for tomorrow with carry-forward status indicators",
+        "Streak reset operation with user confirmation dialogue and audit preservation",
+        "Productivity Analytics separating task metrics from habit streak metrics",
+        "In-app update announcement modal and native notification delivery",
+        "Full multi-theme responsiveness across Light, Dark, Pet, and Pastel Light themes"
+      ],
+      "improvements": [
+        "Occurrence isolation for carried-forward and ad-hoc routines without affecting recurring templates",
+        "Enhanced routine card actions with intuitive status picker and undo controls",
+        "Hardened database migration prerequisites (003 and 004) with complete RLS and trigger safety",
+        "Optimized analytics tab with independent completion cards for tasks and routines"
+      ],
+      "performance": [],
+      "fixes": [
+        "Prevented streak denominator distortion when cancelling or un-cancelling routines",
+        "Fixed next-day routine duplication on repeated carry-forward taps",
+        "Eliminated duplicate native update notifications using persistent versionCode tracking"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v2.0.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18562521,
+      "sha256": "a1c39d5ec5b9c8c2133de89c98e7331fb682d1c64dbcbeab1654c2e567e8880a",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.0.0/taskly-v2.0.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
+    {
+      "version": "1.9.0",
+      "versionName": "1.9.0",
+      "versionCode": 10,
+      "releaseDate": "2026-11-08",
+      "title": "Smart Lists – Daily Routine Management",
+      "summary": "# Taskly v1.9.0 (Build 10) — Smart Lists\n\nIntroduced Smart Lists, a dedicated daily routine tracker with individual completion checkboxes, configurable summary notifications, carry-forward functionality, historical productivity reports, responsive paper layout, and seamless multi-theme integration.\n\n### What's New\n- **Daily Routine Management**: Simple routine creation, inline editing, and deletion with instant cloud synchronization.\n- **Individual Completion Tracking**: Interactive checkboxes with date-specific completion state and reactive day progress tracking.\n- **Configurable Daily Summary Notifications**: Automatic daily summary reminders (default 10:00 PM) scheduled via native Android Local Notifications.\n- **Paper-Style Productivity Reports**: Visual paper document showing completed routines, incomplete items, completion percentages, and closing encouragement.\n- **Carry-Forward Intelligence**: Option to carry forward incomplete routines into tomorrow's routine checklist or close them for today.\n- **Historical Reports**: Dedicated history viewer to review exact saved snapshots of past daily performance without recalculation.\n- **Responsive Mobile Layout**: 2-column statistics grid preventing horizontal overflow on all Android screen sizes.\n- **Four-Theme Support**: Full visual polish across Light Mode, Dark Mode, Pet Mode, and Pastel Light Mode.\n- **UI Refinements**: Premium golden pill badge in Profile and a styled red destructive Delete confirmation button.",
+      "features": [
+        "Simple daily routine creation, editing, and deletion with persistent cloud sync",
+        "Individual routine completion checkboxes with reactive progress calculation",
+        "Date-specific routine completion tracking with full historical date isolation",
+        "Paper-style daily productivity summary reports with completion metrics",
+        "Configurable daily summary reminder defaulting to 10:00 PM via Android Local Notifications",
+        "Carry-forward workflow for rescheduling incomplete routines into tomorrow",
+        "Historical daily reports with snapshot review and report deletion safety",
+        "Full four-theme compatibility (Light, Dark, Pet, Pastel Light)",
+        "Responsive 2-column paper report layout preventing horizontal overflow on mobile",
+        "Dedicated golden status pill badge for Smart Lists in the Profile screen",
+        "Redesigned destructive Delete confirmation button with trash icon"
+      ],
+      "improvements": [
+        "Optimized paper report statistics grid to adapt dynamically to mobile screens",
+        "Redesigned View History interface with styled secondary action and individual report cards",
+        "Hardened report normalization logic against serialized string arrays and snake_case keys",
+        "Enhanced Profile menu navigation and visual hierarchy above Logout"
+      ],
+      "performance": [],
+      "fixes": [
+        "Resolved summary report data divergence by enforcing single immutable snapshot rendering",
+        "Fixed horizontal overflow in the paper summary document on narrow viewports",
+        "Replaced unstyled browser-default Delete button with styled destructive action button",
+        "Corrected Profile Smart Lists status indicator to avoid text-selection appearance"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v1.9.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18539409,
+      "sha256": "e35b7bba033d7489497dca36d1f9ffb5debd80cf80a859e4f78e03cebae59cc3",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.9.0/taskly-v1.9.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
+    {
+      "version": "1.8.0",
+      "versionName": "1.8.0",
+      "versionCode": 9,
+      "releaseDate": "2026-11-07",
+      "title": "Custom Category Persistence & Data Consistency",
+      "summary": "Critical bug fixes for custom category persistence, calendar indicators, and data consistency across devices.",
+      "features": [
+        "Custom category creation and cross-device persistence",
+        "Direct authenticated Supabase CRUD integration",
+        "Custom-category Yellow (#FACC15) calendar workload indicators",
+        "Synchronized Add Task and Edit Task dynamic category selection"
+      ],
+      "improvements": [
+        "Release History and What's New authoritative manifest synchronization",
+        "Seamless multi-device custom category discovery from stored tasks and user metadata"
+      ],
+      "performance": [
+        "Instant targeted DOM updates for task cards and calendar upon database confirmation"
+      ],
+      "fixes": [
+        "Prevented custom categories from reverting to Personal",
+        "Fixed calendar date indicators to properly display custom category Yellow without breaking priority aggregation",
+        "Eliminated hung task saves with 10-second timeout guard and database ID verification",
+        "Synchronized Add Task category pill selector with category dropdown"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v1.8.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18517801,
+      "sha256": "33d90003e9e6ac876a954a6818094bacd1a0f9ec496d2fd17f86881a3c10b294",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.8.0/taskly-v1.8.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
+    {
+      "version": "1.7.0",
+      "versionName": "1.7.0",
+      "versionCode": 8,
+      "releaseDate": "2026-11-07",
+      "title": "Notification Settings & 10 Custom Notification Sounds",
+      "summary": "Taskly v1.7.0 introduces dedicated Notification Settings with 10 custom chimes, a silent notification mode, a master notifications toggle, and multichannel Android audio routing.",
+      "features": [
+        "Dedicated Notification Settings screen accessible from Profile item 6",
+        "10 custom notification chimes bundled locally (Cat Meow, Gentle Chime, Soft Bell, Classic Notification, Digital Pop, Bubble, Glass Tap, Soft Marimba, Calm Melody, and Water Drop)",
+        "Master Notifications switch to toggle reminder delivery with pending schedule restoration",
+        "Notification Sound switch with dedicated silent channel and vibration preservation",
+        "In-app audio preview player to listen to chimes without scheduling alerts"
+      ],
+      "improvements": [
+        "Multichannel Android notification architecture with dedicated channels per sound",
+        "Persistent user notification preferences stored across app restarts",
+        "System permission indicator warning if OS-level notification permissions are denied"
+      ],
+      "performance": [],
+      "fixes": [
+        "Resolved reminder scheduling edge case when editing task deadlines past midnight"
+      ],
+      "security": [],
+      "apkFileName": "taskly-v1.7.0.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18512481,
+      "sha256": "1a14e720c6ff2f1a11306de44ffb9033c2882f3b7f6a3e49b0764727fc3eb77e",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.7.0/taskly-v1.7.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
+    {
+      "version": "1.6.0",
+      "versionName": "1.6.0",
+      "versionCode": 7,
+      "releaseDate": "2026-11-07",
+      "title": "Permanent Release History & What's New System",
+      "summary": "Taskly v1.6.0 introduces an integrated Permanent Release History and interactive What's New feature showcase in Profile → Version, allowing users to browse historical release notes across all 4 themes and compare versions with responsive compact-screen support.",
+      "features": [
+        "Permanent Release History in Profile → Version & Updates tracking all published Taskly versions",
+        "Interactive What's New modal showcasing categorized feature highlights and release notes",
+        "Historical version switcher with contextual diff comparison banners",
+        "One-time post-upgrade display automatically highlighting new features after an update"
+      ],
+      "improvements": [
+        "Fully responsive What's New layout optimized for compact Android displays down to 320px",
+        "Complete multi-theme support across all 4 themes (Light, Dark, Pet, Pastel)",
+        "Interactive collapsible history list with quick What's New inspection"
+      ],
+      "performance": [],
+      "fixes": [
+        "Corrected legacy placeholder text for v1.5.0 historical release notes"
+      ],
+      "security": [
+        "Two-phase staged release-manifest publishing with atomic file replacement and automatic rollback protection",
+        "Pre-publishing schema validation and data loss prevention safeguards"
+      ],
+      "apkFileName": "taskly-v1.6.0.apk",
+      "fileSize": "17.0 MB",
+      "fileSizeBytes": 17851188,
+      "sha256": "913a24200eb88d6abaa61dba64bd26876eabfc0a5537cd0309e46b1b01d2ebc0",
+      "downloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v1.6.0/taskly-v1.6.0.apk",
+      "minSdkVersion": "24",
+      "targetSdkVersion": "34"
+    },
+    {
+      "version": "1.5.0",
+      "versionCode": 6,
+      "releaseDate": "2026-11-07",
+      "summary": "Taskly v1.5.0 brings approved Android notification branding with the Cat & Dog logo for system notices, monochrome paw status icon, cute cat mascot deadline alerts, and full in-app APK update capabilities.",
+      "features": [
+        "Approved production release"
+      ],
+      "improvements": [],
+      "fixes": []
+    },
+    {
+      "version": "1.4.0",
+      "versionCode": 5,
+      "releaseDate": "2026-11-07",
+      "summary": "Brand refresh, dynamic calendar priority intelligence & cute cat meow notifications",
+      "features": [
+        "New Taskly Cat & Dog logo across Android launcher and web application",
+        "Dynamic calendar priority workload colors (Pink for High, Green for Medium, Cyan for Low, Grey for Homogeneous)",
+        "Custom category deletion with safe task reassignment to Personal",
+        "Cute Cat Meow notification sound on Android task reminders"
+      ],
+      "improvements": [
+        "High-contrast Dark Mode styling for Quick Capture cards and badges",
+        "Logout confirmation modal with duplicate-tap protection",
+        "Preserved Supabase authentication session across app updates"
+      ],
+      "fixes": [
+        "Fixed CSS declaration structure in public/styles.css",
+        "Separated Android monochrome notification icon from cute cat mascots"
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "versionCode": 3,
+      "releaseDate": "2026-11-05",
+      "summary": "Multi-user cloud synchronization & Supabase authentication",
+      "features": [
+        "Supabase cloud database synchronization for tasks and notes",
+        "Secure user registration and email confirmation workflow"
+      ],
+      "improvements": [
+        "Offline-first local cache fallback when network is unavailable"
+      ],
+      "fixes": [
+        "Improved deadline reminder notification scheduling across device sleep cycles"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "versionCode": 1,
+      "releaseDate": "2026-11-01",
+      "summary": "Initial Taskly release",
+      "features": [
+        "Smart task management and progress tracking",
+        "Quick notes capture with pin functionality",
+        "Interactive calendar view and four theme system"
+      ],
+      "improvements": [],
+      "fixes": []
+    }
+  ]
+}

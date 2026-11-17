@@ -7,7 +7,9 @@ const {
   validateStatusTransition,
   toYmdString,
   VALID_STATUSES,
-  addDays
+  addDays,
+  getLocalYmdInTimezone,
+  getLocalTimeInTimezone
 } = HabitStreakService;
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -102,7 +104,7 @@ const SmartListStore = {
       .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0) || new Date(a.createdAt) - new Date(b.createdAt));
   },
 
-  async addRoutine(userId, { title, orderIndex = 0, startDate = null, endDate = null, recurrence = 'daily' }) {
+  async addRoutine(userId, { title, orderIndex = 0, startDate = null, endDate = null, recurrence = 'daily', createdAt = null }) {
     const data = await ensureDataLoaded();
     const newRoutine = {
       id: crypto.randomUUID(),
@@ -113,7 +115,7 @@ const SmartListStore = {
       startDate: startDate ? toYmdString(startDate) : null,
       endDate: endDate ? toYmdString(endDate) : null,
       recurrence: recurrence || (endDate ? 'once' : 'daily'),
-      createdAt: new Date().toISOString(),
+      createdAt: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString(),
       updatedAt: null,
       deletedAt: null
     };
@@ -860,10 +862,14 @@ const SmartListStore = {
     return (data.reports || []).find(r => (r.userId === userId || r.user_id === userId) && r.date === cleanDate) || null;
   },
 
-  async saveReport(userId, reportData) {
+  async saveReport(userId, reportData, { overwrite = true } = {}) {
     const data = await ensureDataLoaded();
     const date = toYmdString(reportData.date);
     const existingIndex = data.reports.findIndex(r => (r.userId === userId || r.user_id === userId) && r.date === date);
+
+    if (existingIndex !== -1 && overwrite === false) {
+      return data.reports[existingIndex];
+    }
 
     let completedRoutines = reportData.completedRoutines;
     if (typeof completedRoutines === 'string') {
@@ -897,8 +903,12 @@ const SmartListStore = {
       : (Array.isArray(reportData.cancelled_routines) ? reportData.cancelled_routines : []);
     cancelledRoutines = cancelledRoutines.map(t => (typeof t === 'string' ? t.trim() : (t?.title ? String(t.title).trim() : ''))).filter(Boolean);
 
-    const completedCount = completedRoutines.length;
-    const incompleteCount = incompleteRoutines.length;
+    const completedCount = Array.isArray(completedRoutines) && completedRoutines.length > 0
+      ? completedRoutines.length
+      : (typeof reportData.completedCount === 'number' ? reportData.completedCount : completedRoutines.length);
+    const incompleteCount = Array.isArray(incompleteRoutines) && incompleteRoutines.length > 0
+      ? incompleteRoutines.length
+      : (typeof reportData.incompleteCount === 'number' ? reportData.incompleteCount : incompleteRoutines.length);
     const postponedCount = postponedRoutines.length;
     const cancelledCount = cancelledRoutines.length;
 
@@ -907,15 +917,20 @@ const SmartListStore = {
       : (completedCount + incompleteCount + cancelledCount);
 
     const eligibleCount = totalRoutines - cancelledCount;
-    const completionRate = eligibleCount > 0
-      ? Math.round((completedCount / eligibleCount) * 100)
-      : (totalRoutines > 0 ? Math.round((completedCount / totalRoutines) * 100) : 0);
+    const completionRate = typeof reportData.completionRate === 'number'
+      ? reportData.completionRate
+      : (eligibleCount > 0
+          ? Math.round((completedCount / eligibleCount) * 100)
+          : (totalRoutines > 0 ? Math.round((completedCount / totalRoutines) * 100) : 0));
 
     const isStreakQualified = (eligibleCount > 0) && (completionRate >= 80);
 
     let status = reportData.status || 'Not Started';
-    let statusBadge = reportData.statusBadge || 'Not Started';
-    if (eligibleCount > 0 && completedCount === eligibleCount) {
+    let statusBadge = reportData.statusBadge || (totalRoutines === 0 ? 'No Routines' : 'Not Started');
+    if (totalRoutines === 0) {
+      status = 'Not Started';
+      statusBadge = 'No Routines';
+    } else if (eligibleCount > 0 && completedCount === eligibleCount) {
       status = 'Fully Completed';
       statusBadge = 'Exceptional';
     } else if (completionRate >= 80) {
@@ -927,14 +942,17 @@ const SmartListStore = {
     } else if (completedCount > 0) {
       status = 'Partially Completed';
       statusBadge = 'Needs Focus';
+    } else {
+      status = 'Not Started';
+      statusBadge = 'Not Started';
     }
 
     let closingStatement = reportData.closingStatement;
     if (!closingStatement) {
-      if (eligibleCount === 0 && cancelledCount > 0) {
-        closingStatement = 'All scheduled routines were excused/cancelled for this date.';
-      } else if (totalRoutines === 0) {
+      if (totalRoutines === 0) {
         closingStatement = 'No routines scheduled for this date.';
+      } else if (eligibleCount === 0 && cancelledCount > 0) {
+        closingStatement = 'All scheduled routines were excused/cancelled for this date.';
       } else if (completedCount === eligibleCount) {
         closingStatement = 'Outstanding work! You completed 100% of your eligible routines today. All objectives achieved!';
       } else if (completionRate >= 80) {
@@ -973,7 +991,8 @@ const SmartListStore = {
       routinesSnapshot: Array.isArray(reportData.routinesSnapshot) ? reportData.routinesSnapshot : [],
       carryForwardDecision: reportData.carryForwardDecision || 'pending',
       createdAt: existingIndex !== -1 ? data.reports[existingIndex].createdAt : new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      isReconciled: Boolean(reportData.isReconciled)
     };
 
     if (existingIndex !== -1) {
@@ -990,9 +1009,159 @@ const SmartListStore = {
     const data = await ensureDataLoaded();
     const idx = data.reports.findIndex(r => (r.id === reportId || r.date === reportId) && (r.userId === userId || r.user_id === userId));
     if (idx === -1) return false;
-    data.reports.splice(idx, 1);
+    const deletedReport = data.reports.splice(idx, 1)[0];
+    if (!data.deletedReportDates) data.deletedReportDates = {};
+    if (!data.deletedReportDates[userId]) data.deletedReportDates[userId] = [];
+    if (deletedReport?.date && !data.deletedReportDates[userId].includes(deletedReport.date)) {
+      data.deletedReportDates[userId].push(deletedReport.date);
+    }
     await persistData();
     return true;
+  },
+
+  // --- Missed-Day Reconciliation & Zero-Gap Generation ---
+
+  async reconcileDailyReports(userId, options = {}) {
+    const data = await ensureDataLoaded();
+    const userSettings = (data.settings && data.settings[userId]) || {
+      dailySummaryEnabled: true,
+      dailySummaryTime: '22:00',
+      timezone: 'UTC'
+    };
+
+    const tz = options.timezone || userSettings.timezone || 'UTC';
+    const now = options.now instanceof Date ? options.now : (options.now ? new Date(options.now) : new Date());
+    const currentLocalDate = options.localDate || getLocalYmdInTimezone(now, tz);
+    const currentLocalTime = options.currentTime || getLocalTimeInTimezone(now, tz);
+    const targetReportTime = options.reportTime || userSettings.dailySummaryTime || '22:00';
+    const maxLookbackDays = typeof options.maxLookbackDays === 'number' ? options.maxLookbackDays : 30;
+
+    const userRoutines = (data.routines || []).filter(r => r.userId === userId || r.user_id === userId);
+    const userCompletions = (data.completions || []).filter(c => c.userId === userId || c.user_id === userId);
+    const existingReports = (data.reports || []).filter(r => r.userId === userId || r.user_id === userId);
+    const existingDateSet = new Set(existingReports.map(r => r.date));
+    const deletedDates = new Set((data.deletedReportDates && data.deletedReportDates[userId]) || []);
+
+    // Determine earliest relevant start date
+    let earliestYmd = options.startDate || currentLocalDate;
+    if (!options.startDate) {
+      if (userRoutines.length > 0) {
+        const routineDates = userRoutines.map(r => (r.createdAt || r.created_at || '').slice(0, 10)).filter(Boolean);
+        if (routineDates.length > 0) {
+          routineDates.sort();
+          if (routineDates[0] < earliestYmd) earliestYmd = routineDates[0];
+        }
+      }
+      if (existingReports.length > 0) {
+        const reportDates = existingReports.map(r => r.date).filter(Boolean);
+        reportDates.sort();
+        if (reportDates[0] < earliestYmd) earliestYmd = reportDates[0];
+      }
+    }
+
+    // Clamp lookback to avoid excessive loops
+    const minAllowedDate = addDays(currentLocalDate, -maxLookbackDays);
+    if (earliestYmd < minAllowedDate) {
+      earliestYmd = minAllowedDate;
+    }
+
+    const maxEndDate = options.endDate || currentLocalDate;
+    const generated = [];
+    let cursor = earliestYmd;
+
+    while (cursor <= maxEndDate) {
+      // Do not recreate user-deleted reports
+      if (!deletedDates.has(cursor)) {
+        // If report does not already exist
+        if (!existingDateSet.has(cursor)) {
+          const isToday = (cursor === currentLocalDate);
+          // Past dates are always closed and should have reports
+          // Today is only finalized if current local time >= target report time, or forceToday is true
+          const shouldGenerate = !isToday || Boolean(options.forceToday) || (currentLocalTime >= targetReportTime);
+
+          if (shouldGenerate) {
+            // Find routines that actually existed on this historical date (preserve historical accuracy)
+            const applicableRoutines = userRoutines.filter(r => {
+              const comp = userCompletions.find(c => (c.routineId === r.id || c.routine_id === r.id) && c.date === cursor);
+              const hasActivity = comp && (comp.completed || comp.status);
+              if (!hasActivity) {
+                const createdYmd = (r.createdAt || r.created_at || '').slice(0, 10);
+                if (createdYmd && createdYmd > cursor) return false;
+              }
+              if (r.startDate && r.startDate > cursor) return false;
+              if (r.endDate && r.endDate < cursor) return false;
+              return true;
+            });
+
+            const completedTitles = [];
+            const incompleteTitles = [];
+
+            applicableRoutines.forEach(r => {
+              const comp = userCompletions.find(c => (c.routineId === r.id || c.routine_id === r.id) && c.date === cursor);
+              if (comp && comp.completed) {
+                completedTitles.push(r.title);
+              } else {
+                incompleteTitles.push(r.title);
+              }
+            });
+
+            const totalCount = applicableRoutines.length;
+            const completedCount = completedTitles.length;
+            const incompleteCount = incompleteTitles.length;
+            const rate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+            let status = 'Not Started';
+            let statusBadge = totalCount === 0 ? 'No Routines' : 'Not Started';
+            if (totalCount === 0) {
+              status = 'Not Started';
+              statusBadge = 'No Routines';
+            } else if (completedCount === totalCount) {
+              status = 'Fully Completed';
+              statusBadge = 'Exceptional';
+            } else if (rate >= 80) {
+              status = 'Partially Completed';
+              statusBadge = 'Great Job';
+            } else if (rate >= 50) {
+              status = 'Partially Completed';
+              statusBadge = 'Good Progress';
+            } else if (completedCount > 0) {
+              status = 'Partially Completed';
+              statusBadge = 'Needs Focus';
+            } else {
+              status = 'Not Started';
+              statusBadge = 'Not Started';
+            }
+
+            const newReport = await this.saveReport(userId, {
+              date: cursor,
+              totalRoutines: totalCount,
+              completedRoutines: completedTitles,
+              completedCount,
+              incompleteRoutines: incompleteTitles,
+              incompleteCount,
+              completionRate: rate,
+              status,
+              statusBadge,
+              closingStatement: totalCount === 0 ? 'No routines scheduled for this date.' : undefined,
+              carryForwardDecision: 'pending',
+              isReconciled: true
+            }, { overwrite: false });
+
+            generated.push(newReport);
+            existingDateSet.add(cursor);
+          }
+        }
+      }
+      cursor = addDays(cursor, 1);
+    }
+
+    return {
+      userId,
+      reconciledCount: generated.length,
+      reconciledDatesCount: generated.length,
+      generatedReports: generated,
+      reports: generated
+    };
   },
 
   // --- Settings ---
@@ -1002,6 +1171,7 @@ const SmartListStore = {
     return (data.settings && data.settings[userId]) || {
       dailySummaryEnabled: true,
       dailySummaryTime: '22:00',
+      timezone: 'UTC',
       streakThreshold: 80,
       streakResetAt: null
     };
@@ -1010,7 +1180,13 @@ const SmartListStore = {
   async saveSettings(userId, settings) {
     const data = await ensureDataLoaded();
     if (!data.settings) data.settings = {};
-    const existing = data.settings[userId] || { dailySummaryEnabled: true, dailySummaryTime: '22:00', streakThreshold: 80, streakResetAt: null };
+    const existing = data.settings[userId] || {
+      dailySummaryEnabled: true,
+      dailySummaryTime: '22:00',
+      timezone: 'UTC',
+      streakThreshold: 80,
+      streakResetAt: null
+    };
 
     data.settings[userId] = {
       dailySummaryEnabled: typeof settings.dailySummaryEnabled === 'boolean'
@@ -1019,6 +1195,9 @@ const SmartListStore = {
       dailySummaryTime: typeof settings.dailySummaryTime === 'string' && settings.dailySummaryTime.trim()
         ? settings.dailySummaryTime.trim()
         : existing.dailySummaryTime,
+      timezone: typeof settings.timezone === 'string' && settings.timezone.trim()
+        ? settings.timezone.trim()
+        : (existing.timezone || 'UTC'),
       streakThreshold: typeof settings.streakThreshold === 'number' && settings.streakThreshold >= 1 && settings.streakThreshold <= 100
         ? settings.streakThreshold
         : (existing.streakThreshold || 80),
@@ -1032,13 +1211,19 @@ const SmartListStore = {
     return data.settings[userId];
   },
 
+  async getAllDataForAudit() {
+    const data = await ensureDataLoaded();
+    return data;
+  },
+
   // Test helper
   __resetForTests() {
     inMemoryData = {
       routines: [],
       completions: [],
       reports: [],
-      settings: {}
+      settings: {},
+      deletedReportDates: {}
     };
   },
   __clearCache() {

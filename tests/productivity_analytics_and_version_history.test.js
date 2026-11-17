@@ -302,26 +302,26 @@ describe('Taskly v2.0.0 Build 11 — Productivity Analytics & Version History Su
       });
     });
 
-    test('getApprovedReleaseHistory strictly preserves all approved production releases including Build 12.1 (code 121)', () => {
+    test('getApprovedReleaseHistory strictly preserves all approved production releases including Build 15 (code 150)', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
       const approved = updateMgr.getApprovedReleaseHistory();
-      assert.strictEqual(approved.length, 11, 'Must preserve Build 12.1 + Build 12 + Build 11 + all 8 previous releases');
+      assert.strictEqual(approved.length, 13, 'Must preserve Build 15 + Build 14 + Build 12.1 + all 10 previous releases');
 
-      const expectedVersionCodes = [121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1];
+      const expectedVersionCodes = [150, 140, 121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1];
       const actualCodes = approved.map(r => parseInt(r.versionCode, 10));
       assert.deepStrictEqual(actualCodes, expectedVersionCodes);
     });
 
-    test('getReleaseHistory cleanly prepends v2.1.1 Build 12.1 when installed is 121 without duplicating', () => {
+    test('getReleaseHistory cleanly prepends v2.3.0 Build 15 when installed is 150 without duplicating', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
-      updateMgr.state.installedVersionCode = 121;
-      updateMgr.state.installedVersionName = '2.1.1';
+      updateMgr.state.installedVersionCode = 150;
+      updateMgr.state.installedVersionName = '2.3.0';
 
       const history = updateMgr.getReleaseHistory();
-      assert.strictEqual(history.length, 11, 'History includes Build 12.1 + Build 12 + Build 11 + 8 previous releases');
-      assert.strictEqual(history[0].versionCode, 121);
-      assert.strictEqual(history[1].versionCode, 12);
-      assert.strictEqual(history[2].versionCode, 11);
+      assert.strictEqual(history.length, 13, 'History includes Build 15 + Build 14 + Build 12.1 + 10 previous releases');
+      assert.strictEqual(history[0].versionCode, 150);
+      assert.strictEqual(history[1].versionCode, 140);
+      assert.strictEqual(history[2].versionCode, 121);
     });
   });
 

@@ -68,6 +68,30 @@ BEGIN
     RAISE EXCEPTION 'Pre-migration check failed! Core Migration 002 tables are missing:% Please execute scripts/002_smart_lists_schema.sql first.', v_missing;
   END IF;
 
+  -- 0.1b Verify Row Level Security is enabled on all four Migration 002 tables
+  IF (
+    SELECT COUNT(*)
+    FROM pg_class c
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND c.relname IN ('smart_routines', 'smart_routine_completions', 'smart_routine_reports', 'smart_routine_settings')
+      AND c.relkind = 'r'
+      AND c.relrowsecurity = true
+  ) <> 4 THEN
+    FOR r IN
+      SELECT c.relname
+      FROM pg_class c
+      JOIN pg_namespace n ON c.relnamespace = n.oid
+      WHERE n.nspname = 'public'
+        AND c.relname IN ('smart_routines', 'smart_routine_completions', 'smart_routine_reports', 'smart_routine_settings')
+        AND c.relkind = 'r'
+        AND NOT c.relrowsecurity
+    LOOP
+      v_missing := v_missing || ' RLS not enabled on public.' || r.relname || ';';
+    END LOOP;
+    RAISE EXCEPTION 'Pre-migration check failed! Row Level Security is not enabled on core tables:% Please ensure scripts/002_smart_lists_schema.sql was applied correctly.', v_missing;
+  END IF;
+
   -- 0.2 Verify Primary Keys specifically cover column 'id'
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint c
@@ -445,7 +469,10 @@ WHERE (status IS NULL OR status NOT IN ('completed', 'pending', 'postponed', 'ca
 -- Keeps legacy clients (sending completed: true/false) and modern clients (sending status)
 -- in complete synchronization automatically.
 CREATE OR REPLACE FUNCTION public.fn_sync_smart_completion_status()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     -- If status was explicitly set to completed, ensure completed boolean is true
@@ -488,8 +515,17 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
+-- 1.9 Explicit Function Execution Privilege Lockdown:
+-- In PostgreSQL, triggers execute without requiring the calling DML role to hold direct EXECUTE
+-- on the trigger function. Revoking all execute privileges from PUBLIC, anon, and authenticated
+-- prevents direct execution and RPC enumeration while table triggers fire seamlessly.
+REVOKE ALL ON FUNCTION public.fn_sync_smart_completion_status() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fn_sync_smart_completion_status() FROM anon;
+REVOKE ALL ON FUNCTION public.fn_sync_smart_completion_status() FROM authenticated;
+
+-- 1.10 Bi-directional trigger registration
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -563,6 +599,432 @@ BEGIN
       ADD CONSTRAINT chk_smart_settings_streak_threshold
       CHECK (streak_threshold >= 1 AND streak_threshold <= 100);
   END IF;
+END $$;
+
+
+-- ------------------------------------------------------------------------------
+-- Step 4: Transactional Post-Migration Assertions & Integrity Verification
+-- ------------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_rec RECORD;
+  v_tbl RECORD;
+  v_pol RECORD;
+  v_rls_enabled BOOLEAN;
+  v_auth_privileges TEXT[];
+  v_grantable_count INTEGER;
+  v_forbidden_count INTEGER;
+  v_unauth_count INTEGER;
+  v_table_policy_count INTEGER;
+  v_unexpected_pol_names TEXT;
+BEGIN
+  -- 4.1 Verify all 11 new columns, exact types, nullability, max length, and normalized defaults
+  FOR v_rec IN
+    WITH expected_cols(table_name, column_name, exp_type, exp_max_len, exp_nullable, exp_default_norm) AS (
+      VALUES
+        ('smart_routine_completions', 'status', 'character varying', 20, 'NO', '''pending'''),
+        ('smart_routine_completions', 'postponed_to', 'date', NULL::integer, 'YES', NULL),
+        ('smart_routine_completions', 'cancellation_reason', 'character varying', 100, 'YES', NULL),
+        ('smart_routine_completions', 'updated_at', 'timestamptz', NULL::integer, 'YES', NULL),
+        ('smart_routine_reports', 'eligible_count', 'integer', NULL::integer, 'NO', '0'),
+        ('smart_routine_reports', 'postponed_count', 'integer', NULL::integer, 'NO', '0'),
+        ('smart_routine_reports', 'cancelled_count', 'integer', NULL::integer, 'NO', '0'),
+        ('smart_routine_reports', 'postponed_routines', 'jsonb', NULL::integer, 'NO', '''[]'''),
+        ('smart_routine_reports', 'cancelled_routines', 'jsonb', NULL::integer, 'NO', '''[]'''),
+        ('smart_routine_reports', 'is_streak_qualified', 'boolean', NULL::integer, 'NO', 'false'),
+        ('smart_routine_settings', 'streak_threshold', 'integer', NULL::integer, 'NO', '80')
+    )
+    SELECT
+      ec.table_name,
+      ec.column_name,
+      ec.exp_type,
+      ec.exp_max_len,
+      ec.exp_nullable,
+      ec.exp_default_norm,
+      c.data_type,
+      c.udt_name,
+      c.character_maximum_length,
+      c.is_nullable,
+      c.column_default,
+      regexp_replace(
+        regexp_replace(lower(c.column_default), '::(character varying|varchar|text|jsonb|date|timestamp with time zone)', '', 'g'),
+        '\s+', '', 'g'
+      ) AS actual_default_norm
+    FROM expected_cols ec
+    LEFT JOIN information_schema.columns c
+      ON c.table_schema = 'public'
+     AND c.table_name = ec.table_name
+     AND c.column_name = ec.column_name
+  LOOP
+    IF v_rec.data_type IS NULL THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% is missing',
+        v_rec.table_name, v_rec.column_name;
+    END IF;
+
+    IF v_rec.exp_type = 'timestamptz' THEN
+      IF v_rec.udt_name <> 'timestamptz' THEN
+        RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% udt_name is %, expected timestamptz',
+          v_rec.table_name, v_rec.column_name, v_rec.udt_name;
+      END IF;
+    ELSIF v_rec.data_type <> v_rec.exp_type THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% data_type is %, expected %',
+        v_rec.table_name, v_rec.column_name, v_rec.data_type, v_rec.exp_type;
+    END IF;
+
+    IF v_rec.exp_max_len IS NOT NULL AND v_rec.character_maximum_length <> v_rec.exp_max_len THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% max length is %, expected %',
+        v_rec.table_name, v_rec.column_name, v_rec.character_maximum_length, v_rec.exp_max_len;
+    END IF;
+
+    IF v_rec.is_nullable <> v_rec.exp_nullable THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% is_nullable is %, expected %',
+        v_rec.table_name, v_rec.column_name, v_rec.is_nullable, v_rec.exp_nullable;
+    END IF;
+
+    IF v_rec.exp_default_norm IS NOT NULL AND (v_rec.actual_default_norm IS NULL OR v_rec.actual_default_norm <> v_rec.exp_default_norm) THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% default is %, expected %',
+        v_rec.table_name, v_rec.column_name, coalesce(v_rec.actual_default_norm, 'NULL'), v_rec.exp_default_norm;
+    END IF;
+
+    IF v_rec.exp_default_norm IS NULL AND v_rec.actual_default_norm IS NOT NULL AND v_rec.actual_default_norm <> 'null' THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Column %.% default is expected to evaluate to NULL, found %',
+        v_rec.table_name, v_rec.column_name, v_rec.column_default;
+    END IF;
+  END LOOP;
+
+  -- 4.2 Verify both CHECK constraints exist, are validated, and enforce expected check clauses
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    JOIN pg_namespace n ON t.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND t.relname = 'smart_routine_completions'
+      AND c.conname = 'chk_smart_completions_status'
+      AND c.contype = 'c'
+      AND c.convalidated = true
+      AND pg_get_constraintdef(c.oid) ~* 'status.*(ANY.*ARRAY.*completed.*pending.*postponed.*cancelled|IN.*completed.*pending.*postponed.*cancelled)'
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Constraint chk_smart_completions_status is missing, not validated, or has unexpected definition';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON c.conrelid = t.oid
+    JOIN pg_namespace n ON t.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND t.relname = 'smart_routine_settings'
+      AND c.conname = 'chk_smart_settings_streak_threshold'
+      AND c.contype = 'c'
+      AND c.convalidated = true
+      AND pg_get_constraintdef(c.oid) ~* 'streak_threshold.*>=.*1.*streak_threshold.*<=.*100'
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Constraint chk_smart_settings_streak_threshold is missing, not validated, or has unexpected definition';
+  END IF;
+
+  -- 4.3 Verify both indexes exist, are valid, and match exact indexed column sequence and sort direction
+  -- idx_smart_completions_user_date_status ON smart_routine_completions (user_id ASC, date ASC, status ASC)
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON i.indexrelid = c.oid
+    JOIN pg_class t ON i.indrelid = t.oid
+    JOIN pg_namespace n ON t.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND t.relname = 'smart_routine_completions'
+      AND c.relname = 'idx_smart_completions_user_date_status'
+      AND i.indisvalid = true
+      AND i.indnatts = 3
+      AND ARRAY(
+        SELECT a.attname
+        FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+        ORDER BY k.ord
+      ) = ARRAY['user_id', 'date', 'status']::name[]
+      AND ARRAY(
+        SELECT (k.opt & 1) = 1
+        FROM unnest(i.indoption) WITH ORDINALITY AS k(opt, ord)
+        ORDER BY k.ord
+      ) = ARRAY[false, false, false]::boolean[]
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Index idx_smart_completions_user_date_status is missing, invalid, or has unexpected column/sort definition';
+  END IF;
+
+  -- idx_smart_reports_user_streak ON smart_routine_reports (user_id ASC, is_streak_qualified ASC, date DESC)
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class c ON i.indexrelid = c.oid
+    JOIN pg_class t ON i.indrelid = t.oid
+    JOIN pg_namespace n ON t.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND t.relname = 'smart_routine_reports'
+      AND c.relname = 'idx_smart_reports_user_streak'
+      AND i.indisvalid = true
+      AND i.indnatts = 3
+      AND ARRAY(
+        SELECT a.attname
+        FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+        ORDER BY k.ord
+      ) = ARRAY['user_id', 'is_streak_qualified', 'date']::name[]
+      AND ARRAY(
+        SELECT (k.opt & 1) = 1
+        FROM unnest(i.indoption) WITH ORDINALITY AS k(opt, ord)
+        ORDER BY k.ord
+      ) = ARRAY[false, false, true]::boolean[]
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Index idx_smart_reports_user_streak is missing, invalid, or has unexpected column/sort definition';
+  END IF;
+
+  -- 4.4 Verify trigger exists and is active
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger tr
+    JOIN pg_class cl ON tr.tgrelid = cl.oid
+    JOIN pg_namespace n ON cl.relnamespace = n.oid
+    JOIN pg_proc p ON tr.tgfoid = p.oid
+    WHERE n.nspname = 'public'
+      AND cl.relname = 'smart_routine_completions'
+      AND tr.tgname = 'trg_sync_smart_completion_status'
+      AND tr.tgenabled = 'O'
+      AND p.proname = 'fn_sync_smart_completion_status'
+      AND pg_get_triggerdef(tr.oid, true) ~* 'BEFORE INSERT OR UPDATE'
+      AND pg_get_triggerdef(tr.oid, true) ~* 'FOR EACH ROW'
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Trigger trg_sync_smart_completion_status is missing, disabled, or definition mismatch';
+  END IF;
+
+  -- 4.5 Verify trigger function signature, return type, fixed search_path, and execution privileges
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND p.proname = 'fn_sync_smart_completion_status'
+      AND p.pronargs = 0
+      AND p.prorettype = 'trigger'::regtype
+      AND p.proconfig IS NOT NULL
+      AND 'search_path=pg_catalog, pg_temp' = ANY(p.proconfig)
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Function fn_sync_smart_completion_status has unexpected signature, return type, or missing fixed search_path';
+  END IF;
+
+  IF (
+    SELECT COUNT(*)
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public' AND p.proname = 'fn_sync_smart_completion_status'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Multiple overloaded functions named fn_sync_smart_completion_status exist';
+  END IF;
+
+  -- Assert zero EXECUTE privileges granted to PUBLIC, anon, or authenticated on trigger function
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+    LEFT JOIN pg_roles r ON r.oid = a.grantee
+    WHERE n.nspname = 'public'
+      AND p.proname = 'fn_sync_smart_completion_status'
+      AND a.privilege_type = 'EXECUTE'
+      AND (a.grantee = 0 OR r.rolname IN ('anon', 'authenticated'))
+  ) THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Function fn_sync_smart_completion_status has unexpected EXECUTE grant to PUBLIC, anon, or authenticated';
+  END IF;
+
+  -- 4.6 Verify table privileges via raw PostgreSQL ACL inspection (aclexplode) and RLS status
+  FOR v_tbl IN
+    SELECT unnest(ARRAY[
+      'smart_routines',
+      'smart_routine_completions',
+      'smart_routine_reports',
+      'smart_routine_settings'
+    ]) AS table_name
+  LOOP
+    -- 1. Assert RLS remains enabled
+    SELECT c.relrowsecurity INTO v_rls_enabled
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = v_tbl.table_name;
+
+    IF v_rls_enabled IS NOT TRUE THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: RLS is not enabled on public.%', v_tbl.table_name;
+    END IF;
+
+    -- 2. Inspect ACL entries via aclexplode
+    WITH table_acl AS (
+      SELECT
+        CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE r.rolname END AS grantee_name,
+        a.privilege_type,
+        a.is_grantable
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl, acldefault('r', c.relowner))) a
+      LEFT JOIN pg_roles r ON r.oid = a.grantee
+      WHERE n.nspname = 'public'
+        AND c.relname = v_tbl.table_name
+    )
+    SELECT
+      ARRAY_AGG(DISTINCT privilege_type ORDER BY privilege_type) FILTER (WHERE grantee_name = 'authenticated'),
+      COUNT(*) FILTER (WHERE grantee_name = 'authenticated' AND is_grantable = true),
+      COUNT(*) FILTER (WHERE grantee_name = 'authenticated' AND privilege_type IN ('REFERENCES', 'TRIGGER', 'TRUNCATE')),
+      COUNT(*) FILTER (WHERE grantee_name IN ('anon', 'PUBLIC'))
+    INTO
+      v_auth_privileges,
+      v_grantable_count,
+      v_forbidden_count,
+      v_unauth_count
+    FROM table_acl;
+
+    -- Assert authenticated privileges are strictly [DELETE, INSERT, SELECT, UPDATE]
+    IF v_auth_privileges IS NULL OR v_auth_privileges <> ARRAY['DELETE', 'INSERT', 'SELECT', 'UPDATE']::TEXT[] THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: authenticated role privileges on public.% via ACL are % (expected exactly [DELETE, INSERT, SELECT, UPDATE])',
+        v_tbl.table_name, coalesce(array_to_string(v_auth_privileges, ','), 'NONE');
+    END IF;
+
+    -- Assert zero grantable privileges for authenticated
+    IF v_grantable_count > 0 THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: authenticated role has % grantable privilege(s) on public.%',
+        v_grantable_count, v_tbl.table_name;
+    END IF;
+
+    -- Assert absence of REFERENCES, TRIGGER, TRUNCATE
+    IF v_forbidden_count > 0 THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: authenticated retains forbidden privilege(s) on public.%',
+        v_tbl.table_name;
+    END IF;
+
+    -- Assert zero privileges granted to anon or PUBLIC
+    IF v_unauth_count > 0 THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: anon or PUBLIC retains % privilege(s) on public.% via ACL',
+        v_unauth_count, v_tbl.table_name;
+    END IF;
+
+    -- Supplement with information_schema check for redundant defense
+    SELECT COUNT(*) INTO v_unauth_count
+    FROM information_schema.role_table_grants
+    WHERE table_schema = 'public'
+      AND table_name = v_tbl.table_name
+      AND grantee IN ('anon', 'PUBLIC');
+
+    IF v_unauth_count > 0 THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: anon/PUBLIC retains % privilege(s) on public.% via role_table_grants',
+        v_unauth_count, v_tbl.table_name;
+    END IF;
+
+    -- 3. Assert exactly four policies per table
+    SELECT COUNT(*) INTO v_table_policy_count
+    FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = v_tbl.table_name;
+
+    IF v_table_policy_count <> 4 THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Expected exactly 4 policies on public.%, found %',
+        v_tbl.table_name, v_table_policy_count;
+    END IF;
+  END LOOP;
+
+  -- 4.7 Guard against unexpected policies across all four tables (fail-closed)
+  SELECT string_agg(quote_ident(policyname), ', ')
+  INTO v_unexpected_pol_names
+  FROM pg_policies
+  WHERE schemaname = 'public'
+    AND tablename IN ('smart_routines', 'smart_routine_completions', 'smart_routine_reports', 'smart_routine_settings')
+    AND policyname NOT IN (
+      'smart_routines_select_policy', 'smart_routines_insert_policy', 'smart_routines_update_policy', 'smart_routines_delete_policy',
+      'smart_completions_select_policy', 'smart_completions_insert_policy', 'smart_completions_update_policy', 'smart_completions_delete_policy',
+      'smart_reports_select_policy', 'smart_reports_insert_policy', 'smart_reports_update_policy', 'smart_reports_delete_policy',
+      'smart_settings_select_policy', 'smart_settings_insert_policy', 'smart_settings_update_policy', 'smart_settings_delete_policy'
+    );
+
+  IF v_unexpected_pol_names IS NOT NULL THEN
+    RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Unexpected policy/policies detected on Smart Lists tables: %', v_unexpected_pol_names;
+  END IF;
+
+  -- 4.8 Detailed Policy Structure and Ownership Expression Assertions on all 16 policies
+  FOR v_pol IN
+    WITH expected_policies(table_name, policy_name, command_type, check_qual, check_with_check) AS (
+      VALUES
+        ('smart_routines', 'smart_routines_select_policy', 'SELECT', true, false),
+        ('smart_routines', 'smart_routines_insert_policy', 'INSERT', false, true),
+        ('smart_routines', 'smart_routines_update_policy', 'UPDATE', true, true),
+        ('smart_routines', 'smart_routines_delete_policy', 'DELETE', true, false),
+
+        ('smart_routine_completions', 'smart_completions_select_policy', 'SELECT', true, false),
+        ('smart_routine_completions', 'smart_completions_insert_policy', 'INSERT', false, true),
+        ('smart_routine_completions', 'smart_completions_update_policy', 'UPDATE', true, true),
+        ('smart_routine_completions', 'smart_completions_delete_policy', 'DELETE', true, false),
+
+        ('smart_routine_reports', 'smart_reports_select_policy', 'SELECT', true, false),
+        ('smart_routine_reports', 'smart_reports_insert_policy', 'INSERT', false, true),
+        ('smart_routine_reports', 'smart_reports_update_policy', 'UPDATE', true, true),
+        ('smart_routine_reports', 'smart_reports_delete_policy', 'DELETE', true, false),
+
+        ('smart_routine_settings', 'smart_settings_select_policy', 'SELECT', true, false),
+        ('smart_routine_settings', 'smart_settings_insert_policy', 'INSERT', false, true),
+        ('smart_routine_settings', 'smart_settings_update_policy', 'UPDATE', true, true),
+        ('smart_routine_settings', 'smart_settings_delete_policy', 'DELETE', true, false)
+    )
+    SELECT ep.table_name, ep.policy_name, ep.command_type, ep.check_qual, ep.check_with_check,
+           p.cmd, p.permissive, p.roles, p.qual, p.with_check
+    FROM expected_policies ep
+    LEFT JOIN pg_policies p
+      ON p.schemaname = 'public'
+     AND p.tablename = ep.table_name
+     AND p.policyname = ep.policy_name
+  LOOP
+    -- 1. Assert policy existence
+    IF v_pol.cmd IS NULL THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Expected policy %.% does not exist',
+        v_pol.table_name, v_pol.policy_name;
+    END IF;
+
+    -- 2. Assert command type
+    IF v_pol.cmd <> v_pol.command_type THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% has command %, expected %',
+        v_pol.table_name, v_pol.policy_name, v_pol.cmd, v_pol.command_type;
+    END IF;
+
+    -- 3. Assert permissive mode is PERMISSIVE
+    IF v_pol.permissive <> 'PERMISSIVE' THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% permissive mode is %, expected PERMISSIVE',
+        v_pol.table_name, v_pol.policy_name, v_pol.permissive;
+    END IF;
+
+    -- 4. Assert policy applies exclusively to the authenticated role
+    IF v_pol.roles IS NULL OR v_pol.roles <> ARRAY['authenticated'::name] THEN
+      RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% target roles are %, expected {authenticated}',
+        v_pol.table_name, v_pol.policy_name, coalesce(array_to_string(v_pol.roles, ','), 'NONE');
+    END IF;
+
+    -- 5. Assert USING expression for SELECT, UPDATE, DELETE
+    IF v_pol.check_qual THEN
+      IF v_pol.qual IS NULL OR regexp_replace(lower(v_pol.qual), '["\s]', '', 'g') !~ '^(\(+auth\.uid\(\)=user_id\)+|\(+user_id=auth\.uid\(\)\)+)$' THEN
+        RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% USING expression is %, expected (auth.uid() = user_id)',
+          v_pol.table_name, v_pol.policy_name, coalesce(v_pol.qual, 'NULL');
+      END IF;
+    ELSE
+      IF v_pol.qual IS NOT NULL THEN
+        RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% has unexpected USING expression: %',
+          v_pol.table_name, v_pol.policy_name, v_pol.qual;
+      END IF;
+    END IF;
+
+    -- 6. Assert WITH CHECK expression for INSERT, UPDATE
+    IF v_pol.check_with_check THEN
+      IF v_pol.with_check IS NULL OR regexp_replace(lower(v_pol.with_check), '["\s]', '', 'g') !~ '^(\(+auth\.uid\(\)=user_id\)+|\(+user_id=auth\.uid\(\)\)+)$' THEN
+        RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% WITH CHECK expression is %, expected (auth.uid() = user_id)',
+          v_pol.table_name, v_pol.policy_name, coalesce(v_pol.with_check, 'NULL');
+      END IF;
+    ELSE
+      IF v_pol.with_check IS NOT NULL THEN
+        RAISE EXCEPTION 'POST-MIGRATION VERIFICATION FAILED: Policy %.% has unexpected WITH CHECK expression: %',
+          v_pol.table_name, v_pol.policy_name, v_pol.with_check;
+      END IF;
+    END IF;
+  END LOOP;
+
+  RAISE NOTICE 'Step 4 Post-Migration Verification Passed: All 11 columns, 2 constraints, 2 indexes, trigger, function, privileges (via ACL), RLS, and 16 policies verified successfully.';
 END $$;
 
 COMMIT;

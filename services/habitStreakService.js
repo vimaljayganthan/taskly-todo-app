@@ -75,6 +75,40 @@ function diffDays(ymdA, ymdB) {
   return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
+function getLocalYmdInTimezone(dateInput = new Date(), timeZone = 'UTC') {
+  try {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timeZone || 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(d);
+  } catch (_) {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    return isNaN(d.getTime()) ? toYmdString(new Date()) : d.toISOString().slice(0, 10);
+  }
+}
+
+function getLocalTimeInTimezone(dateInput = new Date(), timeZone = 'UTC') {
+  try {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: timeZone || 'UTC',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    return formatter.format(d);
+  } catch (_) {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    const h = String(d.getUTCHours()).padStart(2, '0');
+    const m = String(d.getUTCMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+}
+
 // ==============================================================================
 // 2. Status Validation & State Transition Machine
 // ==============================================================================
@@ -544,6 +578,8 @@ module.exports = {
   parseYmd,
   addDays,
   diffDays,
+  getLocalYmdInTimezone,
+  getLocalTimeInTimezone,
   validateStatusTransition,
   calculateDayStatistics,
   calculateStreaks,

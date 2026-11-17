@@ -18,6 +18,7 @@ const crypto = require('crypto');
 const { initializeStorage, getStorage, getScopedStorage } = require('./storage/taskStore');
 const SmartListStore = require('./storage/smartListStore');
 const HabitStreakService = require('./services/habitStreakService');
+const DailyReportScheduler = require('./services/dailyReportScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -958,6 +959,68 @@ app.delete('/api/smart-lists/reports/:id', async (req, res, next) => {
   }
 });
 
+app.post('/api/smart-lists/reports/reconcile', async (req, res, next) => {
+  try {
+    const { localDate, timezone, reportTime, forceToday } = req.body || {};
+    const result = await SmartListStore.reconcileDailyReports(req.user.id, {
+      localDate,
+      timezone,
+      reportTime,
+      forceToday: Boolean(forceToday)
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================================================
+// Vercel Cron API Endpoint - Automated Daily Routine Reports
+// ==========================================================================
+async function handleDailyReportsCron(req, res) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error('[Cron Security]: CRON_SECRET is not configured on server.');
+    return res.status(500).json({ error: 'Cron secret is not configured' });
+  }
+
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || typeof authHeader !== 'string') {
+    return res.status(401).json({ error: 'Unauthorized: Missing Authorization header' });
+  }
+
+  const parts = authHeader.split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
+    return res.status(401).json({ error: 'Unauthorized: Invalid Authorization header format' });
+  }
+
+  const token = parts[1];
+  const tokenBuf = Buffer.from(token);
+  const secretBuf = Buffer.from(cronSecret);
+  const isMatch = tokenBuf.length === secretBuf.length && crypto.timingSafeEqual(tokenBuf, secretBuf);
+
+  if (!isMatch) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid cron secret' });
+  }
+
+  try {
+    const result = await DailyReportScheduler.processTick({ now: new Date() });
+    return res.status(200).json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      processedUsersCount: result.processedUsersCount || 0,
+      reconciledReports: result.reconciledReports || 0,
+      message: 'Daily routine summary cron execution completed successfully'
+    });
+  } catch (err) {
+    console.error('[Cron Execution Error]:', err);
+    return res.status(500).json({ error: 'Cron execution failed', message: err.message });
+  }
+}
+
+app.get('/api/cron/daily-reports', handleDailyReportsCron);
+app.post('/api/cron/daily-reports', handleDailyReportsCron);
+
 // Settings (Daily summary time & toggle)
 app.get('/api/smart-lists/settings', async (req, res, next) => {
   try {
@@ -1117,6 +1180,9 @@ let server;
 
 function gracefulShutdown(signal) {
   console.log(`Received ${signal}. Shutting down gracefully...`);
+  try {
+    DailyReportScheduler.stop();
+  } catch (_) {}
   if (server) {
     server.close(() => {
       console.log('HTTP server closed. Exiting process.');
@@ -1141,6 +1207,13 @@ async function startServer() {
 
   server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`To-Do server is running on http://localhost:${PORT}`);
+    const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+    const isProduction = process.env.NODE_ENV === 'production' || isVercel;
+    if (isProduction && process.env.ENABLE_LOCAL_SCHEDULER !== 'true') {
+      console.log('[Scheduler] In-memory scheduler disabled in production/Vercel. Daily routine reports are managed via Vercel Cron at /api/cron/daily-reports.');
+    } else {
+      DailyReportScheduler.start();
+    }
   });
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));

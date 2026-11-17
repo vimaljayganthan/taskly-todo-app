@@ -50,6 +50,9 @@ describe('Taskly Notification Settings & 10 Custom Sounds Test Suite', () => {
     test('Notifications button exists in public/index.html with id="menu-notifications"', () => {
       assert.match(INDEX_HTML, /id="menu-notifications"/, 'Expected #menu-notifications in index.html');
       assert.match(INDEX_HTML, /id="profile-notifications-badge"/, 'Expected #profile-notifications-badge');
+      const labelMatch = INDEX_HTML.match(/id="menu-notifications"[\s\S]*?<span class="menu-item-label">([\s\S]*?)<\/span>/);
+      assert.ok(labelMatch, 'Expected #menu-notifications with menu-item-label');
+      assert.strictEqual(labelMatch[1].trim(), 'Notification Settings', 'Menu item label must be "Notification Settings"');
     });
 
     test('Notifications is at exact position 6 in the Profile menu list', () => {

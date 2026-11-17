@@ -778,6 +778,12 @@ if (typeof document !== 'undefined') {
       window.addEventListener('resize', updateCalendarTimelineRope);
     }
 
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && typeof SmartListsManager !== 'undefined' && typeof SmartListsManager.ensureDailyReports === 'function') {
+        SmartListsManager.ensureDailyReports().catch(() => {});
+      }
+    });
+
     // Restore the active screen/route on reload or initial visit
     restoreActiveRoute();
   });
@@ -2017,6 +2023,9 @@ const TasklyNotifications = {
               this.loadHistory();
               this.updateBadges();
               this.updateProfileBadge();
+              if (typeof SmartListsManager !== 'undefined' && typeof SmartListsManager.ensureDailyReports === 'function') {
+                SmartListsManager.ensureDailyReports().catch(() => {});
+              }
             }
           });
         }
@@ -6196,8 +6205,8 @@ const TasklyUpdateManager = {
     productionHost: 'taskly-todo-app-4z1c.vercel.app',
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
-    previewVersionName: '2.2.0',
-    previewVersionCode: 140,
+    previewVersionName: '2.3.0',
+    previewVersionCode: 150,
     expectedPackageName: 'com.taskly.app',
     autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
     storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
@@ -6206,8 +6215,8 @@ const TasklyUpdateManager = {
   state: {
     installedVersionName: '1.5.0',
     installedVersionCode: 6,
-    previewVersionName: '2.2.0',
-    previewVersionCode: 140,
+    previewVersionName: '2.3.0',
+    previewVersionCode: 150,
     isNative: false,
     platform: 'web',
     deploymentEnvironment: 'production_web',
@@ -6503,6 +6512,7 @@ const TasklyUpdateManager = {
       return rel.displayBuild || rel.buildLabel.replace(/^Build\s+/i, '');
     }
     const num = parseInt(code, 10);
+    if (num === 150) return '15';
     if (num === 140) return '14';
     if (num === 121) return '12.1';
     return String(code != null ? code : '');
@@ -6759,8 +6769,9 @@ const TasklyUpdateManager = {
     // 2. Non-native / Browser environments:
     // Do NOT expose browser preview build as an installed Android version.
     if (env === 'vercel_preview') {
-      this.state.previewVersionName = '2.2.0';
-      this.state.previewVersionCode = 140;
+      const prevManifest = this.state.manifest;
+      this.state.previewVersionName = (prevManifest && prevManifest.previewVersion) || '2.2.0';
+      this.state.previewVersionCode = (prevManifest && prevManifest.versionCode) || 140;
       this.state.installedVersionName = null;
       this.state.installedVersionCode = null;
     } else if (env === 'local_dev') {
@@ -6769,8 +6780,8 @@ const TasklyUpdateManager = {
       this.state.installedVersionName = null;
       this.state.installedVersionCode = null;
     } else if (env === 'production_web') {
-      this.state.webVersionName = '2.1.1';
-      this.state.webVersionCode = 121;
+      this.state.webVersionName = '2.3.0';
+      this.state.webVersionCode = 150;
       if (!this.state.installedVersionName) {
         this.state.installedVersionName = null;
         this.state.installedVersionCode = null;
@@ -6796,22 +6807,22 @@ const TasklyUpdateManager = {
     if (badge) {
       const env = this.detectDeploymentEnvironment();
       if (env === 'vercel_preview') {
-        badge.textContent = `v${this.state.previewVersionName || '2.2.0'} (Preview)`;
-        badge.title = 'Web Browser Preview (Build 14)';
+        badge.textContent = `v${this.state.previewVersionName || '2.3.0'} (Preview)`;
+        badge.title = 'Web Browser Preview (Build 15)';
       } else if (env === 'local_dev') {
-        badge.textContent = 'v2.2.0 (Dev)';
+        badge.textContent = 'v2.3.0 (Dev)';
         badge.title = 'Local Development Build';
       } else if (env === 'native_android') {
-        badge.textContent = `v${this.state.installedVersionName || '2.1.1'}`;
+        badge.textContent = `v${this.state.installedVersionName || '2.3.0'}`;
         badge.title = 'Android Native Application';
       } else if (env === 'production_web') {
-        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : 'v2.1.1';
+        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.0');
         badge.title = 'Taskly Production Web';
       } else if (env === 'untrusted_web') {
         badge.textContent = 'Untrusted';
         badge.title = 'Unrecognized / Unsupported Domain';
       } else {
-        badge.textContent = 'v2.1.1';
+        badge.textContent = 'v2.3.0';
         badge.title = 'Taskly Web';
       }
     }
@@ -6876,8 +6887,8 @@ const TasklyUpdateManager = {
 
   getLatestApprovedRelease() {
     const approved = this.getApprovedReleaseHistory();
-    // Exclude pre-release / preview entries so latest approved production remains strictly v2.1.1 (Build 12.1)
-    const prodApproved = approved.find(r => r.releaseStage !== 'preview' && (r.versionCode == null || parseInt(r.versionCode, 10) <= 121));
+    // Exclude pre-release / preview entries so latest approved production is the latest non-preview release
+    const prodApproved = approved.find(r => r.releaseStage !== 'preview');
     if (prodApproved) return prodApproved;
     if (approved.length > 0) return approved[0];
     return {
@@ -7358,7 +7369,7 @@ const TasklyUpdateManager = {
       if (env === 'untrusted_web') {
         msg = 'Taskly Notice:\n\nThis domain is not a recognized Taskly host.\nUpdates and downloads are permanently disabled on untrusted domains.';
       } else if (env === 'vercel_preview') {
-        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.2.0 Build 14).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
+        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.0 Build 15).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
       } else {
         msg = 'Taskly Web Notice:\n\nIn-app APK installation is available exclusively on Android native devices.\nWeb applications update automatically through deployment.';
       }
@@ -7480,10 +7491,14 @@ const TasklyUpdateManager = {
 
     if (env === 'vercel_preview') {
       if (labelInstalled) labelInstalled.textContent = 'Preview Build';
-      if (valInstalled) valInstalled.textContent = 'v2.2.0 (Build 14)';
+      const prevName = this.state.previewVersionName || '2.2.0';
+      const prevBuild = this.formatBuildNumber(this.state.previewVersionCode) || '14';
+      if (valInstalled) valInstalled.textContent = `v${prevName} (Build ${prevBuild})`;
     } else if (env === 'production_web') {
       if (labelInstalled) labelInstalled.textContent = 'Web Version';
-      if (valInstalled) valInstalled.textContent = 'v2.1.1 (Build 12.1)';
+      const webName = this.state.webVersionName || '2.3.0';
+      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15';
+      if (valInstalled) valInstalled.textContent = `v${webName} (Build ${webBuild})`;
     } else if (env === 'local_dev') {
       if (labelInstalled) labelInstalled.textContent = 'Local Build';
       if (valInstalled) valInstalled.textContent = 'v2.2.0-dev (Build 14)';
@@ -7977,14 +7992,17 @@ const SmartListsManager = {
   STORAGE_KEY_COMPLETIONS: 'taskly_smart_completions',
   STORAGE_KEY_REPORTS: 'taskly_smart_reports',
   STORAGE_KEY_SETTINGS: 'taskly_smart_settings',
+  STORAGE_KEY_DELETED_REPORTS: 'taskly_smart_deleted_reports',
 
   state: {
     routines: [],
     completions: {}, // map of `${routineId}_${date}` -> { status, completed, carriedForward, postponedToDate, cancellationReason }
     reports: [],
+    deletedReportDates: [],
     settings: {
       dailySummaryEnabled: true,
-      dailySummaryTime: '22:00'
+      dailySummaryTime: '22:00',
+      timezone: 'UTC'
     },
     streaks: {
       currentStreak: 0,
@@ -8030,6 +8048,7 @@ const SmartListsManager = {
     if (isAuthenticated()) {
       await this.syncAll().catch(err => console.warn('[SmartLists] Sync error:', err));
     }
+    await this.ensureDailyReports().catch(err => console.warn('[SmartLists] ensureDailyReports error:', err));
     await this.fetchTomorrowRoutines().catch(() => {});
     await this.scheduleDailySummaryReminder().catch(err => console.warn('[SmartLists] Reminder schedule error:', err));
     this.state.isInitialized = true;
@@ -8052,6 +8071,14 @@ const SmartListsManager = {
         }
       }
 
+      const del = localStorage.getItem(this.STORAGE_KEY_DELETED_REPORTS);
+      if (del) {
+        try {
+          const parsedDel = JSON.parse(del);
+          if (Array.isArray(parsedDel)) this.state.deletedReportDates = parsedDel;
+        } catch (_) {}
+      }
+
       const s = localStorage.getItem(this.STORAGE_KEY_SETTINGS);
       if (s) this.state.settings = JSON.parse(s);
     } catch (e) {
@@ -8065,6 +8092,7 @@ const SmartListsManager = {
       localStorage.setItem(this.STORAGE_KEY_ROUTINES, JSON.stringify(this.state.routines));
       localStorage.setItem(this.STORAGE_KEY_COMPLETIONS, JSON.stringify(this.state.completions));
       localStorage.setItem(this.STORAGE_KEY_REPORTS, JSON.stringify(this.state.reports));
+      localStorage.setItem(this.STORAGE_KEY_DELETED_REPORTS, JSON.stringify(this.state.deletedReportDates || []));
       localStorage.setItem(this.STORAGE_KEY_SETTINGS, JSON.stringify(this.state.settings));
     } catch (e) {
       console.warn('[SmartLists] Storage save error:', e);
@@ -8075,6 +8103,7 @@ const SmartListsManager = {
     this.state.routines = [];
     this.state.completions = {};
     this.state.reports = [];
+    this.state.deletedReportDates = [];
     this.state.streaks = { currentStreak: 0, longestStreak: 0, qualifyingDaysCount: 0 };
     this.state.consistency = {
       weekly: { totalDays: 0, qualifyingDays: 0, percentage: 0 },
@@ -8096,6 +8125,7 @@ const SmartListsManager = {
         localStorage.removeItem(this.STORAGE_KEY_ROUTINES);
         localStorage.removeItem(this.STORAGE_KEY_COMPLETIONS);
         localStorage.removeItem(this.STORAGE_KEY_REPORTS);
+        localStorage.removeItem(this.STORAGE_KEY_DELETED_REPORTS);
         localStorage.removeItem(this.STORAGE_KEY_SETTINGS);
       }
     } catch (_) {}
@@ -8165,8 +8195,9 @@ const SmartListsManager = {
     }
 
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = getAuthHeaders();
-      const res = await fetch('/api/smart-lists/routines', { headers });
+      const res = await fetch(`${baseUrl}/api/smart-lists/routines`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -8241,8 +8272,9 @@ const SmartListsManager = {
 
     // Backend API fallback
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-      const res = await fetch('/api/smart-lists/routines', {
+      const res = await fetch(`${baseUrl}/api/smart-lists/routines`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ title: trimmed, orderIndex: newRoutine.orderIndex })
@@ -8280,8 +8312,9 @@ const SmartListsManager = {
       } catch (_) {}
     } else {
       try {
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
         const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-        await fetch(`/api/smart-lists/routines/${id}`, {
+        await fetch(`${baseUrl}/api/smart-lists/routines/${id}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ title: trimmed })
@@ -8426,8 +8459,9 @@ const SmartListsManager = {
     }
 
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = getAuthHeaders();
-      const res = await fetch(`/api/smart-lists/completions?date=${d}`, { headers });
+      const res = await fetch(`${baseUrl}/api/smart-lists/completions?date=${d}`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -8582,9 +8616,10 @@ const SmartListsManager = {
 
     // Backend API sync
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
       if (status === 'postponed') {
-        await fetch(`/api/smart-lists/routines/${encodeURIComponent(routineId)}/postpone`, {
+        await fetch(`${baseUrl}/api/smart-lists/routines/${encodeURIComponent(routineId)}/postpone`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -8593,7 +8628,7 @@ const SmartListsManager = {
           })
         });
       } else if (status === 'cancelled') {
-        await fetch(`/api/smart-lists/routines/${encodeURIComponent(routineId)}/cancel`, {
+        await fetch(`${baseUrl}/api/smart-lists/routines/${encodeURIComponent(routineId)}/cancel`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -8602,7 +8637,7 @@ const SmartListsManager = {
           })
         });
       } else {
-        await fetch('/api/smart-lists/completions/status', {
+        await fetch(`${baseUrl}/api/smart-lists/completions/status`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
@@ -8658,11 +8693,12 @@ const SmartListsManager = {
     const d = date || this.state.activeDate;
     this.state.isLoadingStats = true;
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = getAuthHeaders();
       const [resStreaks, resDaily, resConsistency] = await Promise.all([
-        fetch(`/api/smart-lists/streaks?date=${d}`, { headers }),
-        fetch(`/api/smart-lists/statistics/daily?date=${d}`, { headers }),
-        fetch(`/api/smart-lists/statistics/consistency?date=${d}`, { headers })
+        fetch(`${baseUrl}/api/smart-lists/streaks?date=${d}`, { headers }),
+        fetch(`${baseUrl}/api/smart-lists/statistics/daily?date=${d}`, { headers }),
+        fetch(`${baseUrl}/api/smart-lists/statistics/consistency?date=${d}`, { headers })
       ]);
 
       let gotData = false;
@@ -9050,7 +9086,19 @@ const SmartListsManager = {
 
   async generateDailyReport(date) {
     const d = date || this.state.activeDate;
-    const routines = this.state.routines || [];
+    const allRoutines = this.state.routines || [];
+    // Filter routines that were created on or before date `d` and within lifecycle boundaries
+    const routines = allRoutines.filter(r => {
+      const comp = this.getCompletion ? this.getCompletion(r.id, d) : null;
+      const hasActivity = comp && (comp.completed || comp.status);
+      if (!hasActivity && d !== this.state.activeDate) {
+        const createdYmd = (r.createdAt || '').slice(0, 10);
+        if (createdYmd && createdYmd > d) return false;
+      }
+      if (r.startDate && r.startDate > d) return false;
+      if (r.endDate && r.endDate < d) return false;
+      return true;
+    });
     const total = routines.length;
 
     const completedRoutineTitles = [];
@@ -9070,8 +9118,11 @@ const SmartListsManager = {
     const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
 
     let status = 'Not Started';
-    let statusBadge = 'Not Started';
-    if (total > 0 && completedCount === total) {
+    let statusBadge = 'No Routines';
+    if (total === 0) {
+      status = 'Not Started';
+      statusBadge = 'No Routines';
+    } else if (completedCount === total) {
       status = 'Fully Completed';
       statusBadge = 'Exceptional';
     } else if (rate >= 80) {
@@ -9083,6 +9134,9 @@ const SmartListsManager = {
     } else if (completedCount > 0) {
       status = 'Partially Completed';
       statusBadge = 'Needs Focus';
+    } else {
+      status = 'Not Started';
+      statusBadge = 'Not Started';
     }
 
     let closingStatement = 'No routines scheduled for this date.';
@@ -9158,8 +9212,9 @@ const SmartListsManager = {
       } catch (_) {}
     } else {
       try {
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
         const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-        await fetch('/api/smart-lists/reports', {
+        await fetch(`${baseUrl}/api/smart-lists/reports`, {
           method: 'POST',
           headers,
           body: JSON.stringify(report)
@@ -9171,6 +9226,10 @@ const SmartListsManager = {
   },
 
   async fetchReports() {
+    let remoteReports = null;
+    const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+
+    // 1. Fetch remote reports from Supabase if configured
     if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
       try {
         const { data, error } = await supabaseClient
@@ -9179,38 +9238,72 @@ const SmartListsManager = {
           .eq('user_id', state.user.id)
           .order('date', { ascending: false });
         if (!error && Array.isArray(data)) {
-          this.state.reports = data.map(r => this.normalizeReport({
+          remoteReports = data.map(r => this.normalizeReport({
             id: r.id,
             date: r.date,
-            totalRoutines: r.total_routines,
-            completedCount: r.completed_count,
-            incompleteCount: r.incomplete_count,
-            completionRate: r.completion_rate,
+            totalRoutines: r.total_routines !== undefined ? r.total_routines : r.totalRoutines,
+            completedCount: r.completed_count !== undefined ? r.completed_count : r.completedCount,
+            incompleteCount: r.incomplete_count !== undefined ? r.incomplete_count : r.incompleteCount,
+            completionRate: r.completion_rate !== undefined ? r.completion_rate : r.completionRate,
             status: r.status,
-            completedRoutines: r.completed_routines || [],
-            incompleteRoutines: r.incomplete_routines || [],
-            carryForwardDecision: r.carry_forward_decision || 'pending',
-            createdAt: r.created_at,
-            updatedAt: r.updated_at
+            statusBadge: r.status_badge || r.statusBadge,
+            closingStatement: r.closing_statement || r.closingStatement,
+            completedRoutines: r.completed_routines || r.completedRoutines || [],
+            incompleteRoutines: r.incomplete_routines || r.incompleteRoutines || [],
+            carryForwardDecision: r.carry_forward_decision || r.carryForwardDecision || 'pending',
+            createdAt: r.created_at || r.createdAt,
+            updatedAt: r.updated_at || r.updatedAt
           })).filter(Boolean);
-          this.saveToStorage();
-          return this.state.reports;
         }
       } catch (_) {}
     }
 
-    try {
-      const headers = getAuthHeaders();
-      const res = await fetch('/api/smart-lists/reports', { headers });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          this.state.reports = data.map(r => this.normalizeReport(r)).filter(Boolean);
-          this.saveToStorage();
-          return this.state.reports;
+    // 2. Fetch remote reports from backend API fallback
+    if (!remoteReports) {
+      try {
+        const headers = getAuthHeaders();
+        const res = await fetch(`${baseUrl}/api/smart-lists/reports`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            remoteReports = data.map(r => this.normalizeReport(r)).filter(Boolean);
+          }
         }
+      } catch (_) {}
+    }
+
+    // 3. Two-way merge: Preserve offline-generated local reports and synchronize them
+    const localReports = Array.isArray(this.state.reports) ? this.state.reports : [];
+    const deletedDates = new Set(this.state.deletedReportDates || []);
+
+    if (remoteReports) {
+      const mergedMap = new Map();
+      remoteReports.forEach(r => {
+        if (r && r.date && !deletedDates.has(r.date)) {
+          mergedMap.set(r.date, r);
+        }
+      });
+
+      const offlineToUpload = [];
+      localReports.forEach(local => {
+        if (!local || !local.date || deletedDates.has(local.date)) return;
+        if (!mergedMap.has(local.date)) {
+          // Local offline report that does not exist remotely yet
+          mergedMap.set(local.date, local);
+          offlineToUpload.push(local);
+        }
+      });
+
+      this.state.reports = Array.from(mergedMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      this.saveToStorage();
+
+      // Synchronize offline reports to backend/Supabase in background
+      if (offlineToUpload.length > 0) {
+        Promise.all(offlineToUpload.map(rep => this.saveReport(rep))).catch(() => {});
       }
-    } catch (_) {}
+
+      return this.state.reports;
+    }
 
     return this.state.reports;
   },
@@ -9219,6 +9312,11 @@ const SmartListsManager = {
     const idx = this.state.reports.findIndex(r => r.id === idOrDate || r.date === idOrDate);
     if (idx === -1) return false;
     const report = this.state.reports[idx];
+    const reportDate = report.date;
+
+    if (reportDate && !this.state.deletedReportDates.includes(reportDate)) {
+      this.state.deletedReportDates.push(reportDate);
+    }
 
     this.state.reports.splice(idx, 1);
     this.saveToStorage();
@@ -9233,13 +9331,235 @@ const SmartListsManager = {
       } catch (_) {}
     } else {
       try {
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
         const headers = getAuthHeaders();
-        await fetch(`/api/smart-lists/reports/${report.id}`, { method: 'DELETE', headers });
+        await fetch(`${baseUrl}/api/smart-lists/reports/${report.id}`, { method: 'DELETE', headers });
       } catch (_) {}
     }
 
     this.renderHistoryList();
     return true;
+  },
+
+  async ensureDailyReports(options = {}) {
+    const tz = this.state.settings?.timezone || (typeof Intl !== 'undefined' && Intl.DateTimeFormat ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC') || 'UTC';
+    const nowDate = options?.now instanceof Date ? options.now : new Date();
+
+    let todayYmd;
+    let currentTime;
+    try {
+      const dtfDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+      todayYmd = dtfDate.format(nowDate);
+      const dtfTime = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+      currentTime = dtfTime.format(nowDate);
+    } catch (_) {
+      todayYmd = (typeof toYmdString === 'function') ? toYmdString(nowDate) : nowDate.toISOString().slice(0, 10);
+      currentTime = String(nowDate.getHours()).padStart(2, '0') + ':' + String(nowDate.getMinutes()).padStart(2, '0');
+    }
+
+    const scheduledTime = (this.state.settings?.dailySummaryTime || '22:00').trim();
+
+    // 1. If authenticated and backend is reachable, call reconcile API
+    if (typeof isAuthenticated === 'function' && isAuthenticated()) {
+      try {
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+        const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+        const res = await fetch(`${baseUrl}/api/smart-lists/reports/reconcile`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ timezone: tz, forceToday: Boolean(options?.forceToday) })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.reports)) {
+            this.state.reports = data.reports.map(r => this.normalizeReport(r)).filter(Boolean);
+            this.saveToStorage();
+            return this.state.reports;
+          }
+        }
+      } catch (_) {
+        // Backend not reachable, fall through to client-side reconciliation
+      }
+    }
+
+    // 2. Client-side reconciliation fallback
+    const existingMap = new Map((this.state.reports || []).map(r => [r.date, r]));
+    const deletedSet = new Set(this.state.deletedReportDates || []);
+
+    let earliestYmd = todayYmd;
+    (this.state.routines || []).forEach(r => {
+      if (r.createdAt) {
+        const ymd = r.createdAt.slice(0, 10);
+        if (ymd < earliestYmd) earliestYmd = ymd;
+      }
+    });
+
+    const maxLookback = options?.maxLookbackDays || 30;
+    const pastDate = new Date(nowDate.getTime() - maxLookback * 86400000);
+    let pastYmd;
+    try {
+      const dtf = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+      pastYmd = dtf.format(pastDate);
+    } catch (_) {
+      pastYmd = pastDate.toISOString().slice(0, 10);
+    }
+    const startYmd = earliestYmd < pastYmd ? pastYmd : earliestYmd;
+
+    const dateList = [];
+    let curDateObj = new Date(startYmd + 'T00:00:00Z');
+    const endDateObj = new Date(todayYmd + 'T00:00:00Z');
+
+    while (curDateObj <= endDateObj) {
+      dateList.push(curDateObj.toISOString().slice(0, 10));
+      curDateObj.setUTCDate(curDateObj.getUTCDate() + 1);
+    }
+
+    let createdAny = false;
+
+    for (const d of dateList) {
+      if (deletedSet.has(d)) continue;
+
+      if (d === todayYmd) {
+        const shouldGenerateToday = Boolean(options?.forceToday) || (currentTime >= scheduledTime);
+        if (!shouldGenerateToday) {
+          continue;
+        }
+        if (!existingMap.has(d) || options?.forceToday) {
+          const rep = await this.generateDailyReport(d);
+          if (rep) {
+            existingMap.set(d, rep);
+            createdAny = true;
+          }
+        }
+        continue;
+      }
+
+      // Past date (d < todayYmd):
+      if (existingMap.has(d)) {
+        continue; // Never overwrite existing historical report
+      }
+
+      const eligibleRoutines = (this.state.routines || []).filter(r => {
+        const comp = this.getCompletion ? this.getCompletion(r.id, d) : null;
+        const hasActivity = comp && (comp.completed || comp.status);
+        if (!hasActivity) {
+          const createdYmd = (r.createdAt || '').slice(0, 10);
+          if (createdYmd && createdYmd > d) return false;
+        }
+        if (r.startDate && r.startDate > d) return false;
+        if (r.endDate && r.endDate < d) return false;
+        return true;
+      });
+
+      const completedTitles = [];
+      const incompleteTitles = [];
+      eligibleRoutines.forEach(r => {
+        const comp = this.getCompletion(r.id, d);
+        if (comp.completed) {
+          completedTitles.push(r.title);
+        } else {
+          incompleteTitles.push(r.title);
+        }
+      });
+
+      const total = eligibleRoutines.length;
+      const completedCount = completedTitles.length;
+      const incompleteCount = incompleteTitles.length;
+      const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+
+      let status = 'Not Started';
+      let statusBadge = 'No Routines';
+      if (total === 0) {
+        status = 'Not Started';
+        statusBadge = 'No Routines';
+      } else if (completedCount === total) {
+        status = 'Fully Completed';
+        statusBadge = 'Exceptional';
+      } else if (rate >= 80) {
+        status = 'Partially Completed';
+        statusBadge = 'Great Job';
+      } else if (rate >= 50) {
+        status = 'Partially Completed';
+        statusBadge = 'Good Progress';
+      } else if (completedCount > 0) {
+        status = 'Partially Completed';
+        statusBadge = 'Needs Focus';
+      } else {
+        status = 'Not Started';
+        statusBadge = 'Not Started';
+      }
+
+      let closingStatement = 'No routines scheduled for this date.';
+      if (total > 0) {
+        if (completedCount === total) {
+          closingStatement = 'Outstanding work! You completed 100% of your daily routines today. All objectives achieved!';
+        } else if (rate >= 80) {
+          closingStatement = `Great job! You achieved ${rate}% routine completion today. Keep up the strong consistency tomorrow!`;
+        } else if (rate >= 50) {
+          closingStatement = `Good progress! You reached ${rate}% routine completion today. Stay focused to close out the remaining routines!`;
+        } else if (completedCount > 0) {
+          closingStatement = `Some routines completed today (${rate}%). Keep pushing forward tomorrow to build momentum!`;
+        } else {
+          closingStatement = 'No routines were completed today. Tomorrow is a fresh opportunity to start strong!';
+        }
+      }
+
+      const report = {
+        id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'rep_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        date: d,
+        totalRoutines: total,
+        completedRoutines: completedTitles,
+        completedCount,
+        incompleteRoutines: incompleteTitles,
+        incompleteCount,
+        completionRate: rate,
+        status,
+        statusBadge,
+        closingStatement,
+        completedList: completedTitles,
+        incompleteList: incompleteTitles,
+        routinesSnapshot: eligibleRoutines.map(r => ({
+          id: r.id,
+          title: r.title,
+          completed: this.getCompletion(r.id, d).completed
+        })),
+        carryForwardDecision: 'pending',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      this.state.reports.push(report);
+      existingMap.set(d, report);
+      createdAny = true;
+
+      if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+        try {
+          await supabaseClient
+            .from('smart_routine_reports')
+            .upsert({
+              id: report.id,
+              user_id: state.user.id,
+              date: d,
+              total_routines: total,
+              completed_count: completedCount,
+              incomplete_count: incompleteCount,
+              completion_rate: rate,
+              status,
+              completed_routines: completedTitles,
+              incomplete_routines: incompleteTitles,
+              carry_forward_decision: report.carryForwardDecision,
+              updated_at: report.updatedAt
+            }, { onConflict: 'user_id,date' });
+        } catch (_) {}
+      }
+    }
+
+    if (createdAny) {
+      this.state.reports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      this.saveToStorage();
+    }
+
+    return this.state.reports;
   },
 
   // --- Carry Forward ---
@@ -10271,8 +10591,9 @@ const SmartListsManager = {
   async executeStreakReset() {
     const resetTimestamp = new Date().toISOString();
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-      await fetch('/api/smart-lists/streaks/reset', {
+      await fetch(`${baseUrl}/api/smart-lists/streaks/reset`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ resetAt: resetTimestamp })
@@ -10304,8 +10625,9 @@ const SmartListsManager = {
   async undoCancelRoutine(routineId, date) {
     const d = date || this.state.activeDate;
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-      await fetch(`/api/smart-lists/routines/${routineId}/undo-cancel`, {
+      await fetch(`${baseUrl}/api/smart-lists/routines/${routineId}/undo-cancel`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ date: d })
@@ -10343,6 +10665,10 @@ const SmartListsManager = {
 
   // --- Settings & Notifications ---
   async fetchSettings() {
+    const localTz = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+      ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+      : 'UTC';
+
     if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
       try {
         const { data, error } = await supabaseClient
@@ -10354,6 +10680,7 @@ const SmartListsManager = {
           this.state.settings = {
             dailySummaryEnabled: Boolean(data.daily_summary_enabled),
             dailySummaryTime: data.daily_summary_time || '22:00',
+            timezone: data.timezone || localTz,
             streakResetAt: data.streak_reset_at || null
           };
           this.saveToStorage();
@@ -10363,29 +10690,44 @@ const SmartListsManager = {
     }
 
     try {
+      const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
       const headers = getAuthHeaders();
-      const res = await fetch('/api/smart-lists/settings', { headers });
+      const res = await fetch(`${baseUrl}/api/smart-lists/settings`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (data && typeof data.dailySummaryEnabled === 'boolean') {
-          this.state.settings = data;
+          this.state.settings = {
+            dailySummaryEnabled: data.dailySummaryEnabled,
+            dailySummaryTime: data.dailySummaryTime || '22:00',
+            timezone: data.timezone || localTz,
+            streakResetAt: data.streakResetAt || null
+          };
           this.saveToStorage();
           return this.state.settings;
         }
       }
     } catch (_) {}
 
+    if (!this.state.settings.timezone) {
+      this.state.settings.timezone = localTz;
+    }
     return this.state.settings;
   },
 
   async saveSettings(settings) {
+    const localTz = (typeof Intl !== 'undefined' && Intl.DateTimeFormat)
+      ? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+      : 'UTC';
     this.state.settings = {
       dailySummaryEnabled: typeof settings.dailySummaryEnabled === 'boolean'
         ? settings.dailySummaryEnabled
         : this.state.settings.dailySummaryEnabled,
       dailySummaryTime: typeof settings.dailySummaryTime === 'string' && settings.dailySummaryTime.trim()
         ? settings.dailySummaryTime.trim()
-        : this.state.settings.dailySummaryTime
+        : this.state.settings.dailySummaryTime,
+      timezone: typeof settings.timezone === 'string' && settings.timezone.trim()
+        ? settings.timezone.trim()
+        : (this.state.settings.timezone || localTz)
     };
     this.saveToStorage();
 
@@ -10397,13 +10739,15 @@ const SmartListsManager = {
             user_id: state.user.id,
             daily_summary_enabled: this.state.settings.dailySummaryEnabled,
             daily_summary_time: this.state.settings.dailySummaryTime,
+            timezone: this.state.settings.timezone,
             updated_at: new Date().toISOString()
           });
       } catch (_) {}
     } else {
       try {
+        const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
         const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
-        await fetch('/api/smart-lists/settings', {
+        await fetch(`${baseUrl}/api/smart-lists/settings`, {
           method: 'POST',
           headers,
           body: JSON.stringify(this.state.settings)
@@ -10489,6 +10833,7 @@ const SmartListsManager = {
     this.computeLocalStreaksAndStats(this.state.activeDate);
     this.renderStreakWidget();
     this.renderRoutines();
+    await this.ensureDailyReports().catch(() => {});
     await this.fetchStreaksAndStats(this.state.activeDate).catch(() => {});
     await this.fetchTomorrowRoutines().catch(() => {});
   },
@@ -10977,6 +11322,7 @@ const SmartListsManager = {
   },
 
   async openHistoryModal() {
+    await this.ensureDailyReports().catch(() => {});
     await this.fetchReports();
     this.renderHistoryList();
     const modal = document.getElementById('modal-smart-history');
@@ -12171,6 +12517,98 @@ function setupEventListeners() {
       if (e.target === modalAbout) closeAboutModal();
     });
   }
+
+  // Floating Customer Support Shortcut & Information Modal
+  const btnFloatingSupport = document.getElementById('btn-floating-support');
+  const modalSupportInfo = document.getElementById('modal-support-info');
+  const btnCloseSupportInfo = document.getElementById('btn-close-support-info');
+  const linkSupportEmail = document.getElementById('link-support-email');
+  const supportCopyToast = document.getElementById('support-copy-toast');
+
+  function openSupportInfoModal() {
+    if (modalSupportInfo) {
+      modalSupportInfo.classList.add('active');
+    }
+  }
+
+  function closeSupportInfoModal() {
+    if (modalSupportInfo) {
+      modalSupportInfo.classList.remove('active');
+      if (supportCopyToast) {
+        supportCopyToast.classList.remove('visible');
+      }
+    }
+  }
+
+  if (btnFloatingSupport) {
+    btnFloatingSupport.addEventListener('click', openSupportInfoModal);
+  }
+  if (btnCloseSupportInfo) {
+    btnCloseSupportInfo.addEventListener('click', closeSupportInfoModal);
+  }
+  if (modalSupportInfo) {
+    modalSupportInfo.addEventListener('click', (e) => {
+      if (e.target === modalSupportInfo) closeSupportInfoModal();
+    });
+  }
+
+  // Email click fallback: Copy to clipboard while allowing mailto: to execute
+  if (linkSupportEmail) {
+    linkSupportEmail.addEventListener('click', async () => {
+      const email = 'tasklypets@gmail.com';
+      let copied = false;
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(email);
+          copied = true;
+        } catch (_) {}
+      }
+      if (!copied && typeof document !== 'undefined') {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = email;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          copied = true;
+        } catch (_) {}
+      }
+      if (supportCopyToast) {
+        supportCopyToast.classList.add('visible');
+        setTimeout(() => {
+          if (supportCopyToast) supportCopyToast.classList.remove('visible');
+        }, 2500);
+      }
+    });
+  }
+
+  // Keyboard Escape dismissal
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (modalSupportInfo && modalSupportInfo.classList.contains('active')) {
+        closeSupportInfoModal();
+      }
+    }
+  });
+
+  // Android Capacitor hardware back-button dismissal
+  if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
+    try {
+      window.Capacitor.Plugins.App.addListener('backButton', () => {
+        if (modalSupportInfo && modalSupportInfo.classList.contains('active')) {
+          closeSupportInfoModal();
+        }
+      });
+    } catch (_) {}
+  }
+
+  // Global access for tests and headless verification
+  window.openSupportInfoModal = openSupportInfoModal;
+  window.closeSupportInfoModal = closeSupportInfoModal;
 
   // Version & Updates Modal
   const menuVersion = document.getElementById('menu-version');

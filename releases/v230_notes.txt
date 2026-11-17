@@ -1,0 +1,20 @@
+# Taskly v2.3.0 (Build 15) — Floating Customer Support & Profile Accessibility
+
+Taskly v2.3.0 introduces a dedicated floating Customer Support shortcut on the Profile screen, providing direct contact information and support access with one tap. This release includes the Taskly Support information popup with clickable email capabilities, responsive layout adaptations across compact mobile viewports, and multi-gesture popup dismissal.
+
+### What's New in Build 15
+- **Floating Customer Support Shortcut:** Circular headphones icon button at the bottom-right corner of the Profile screen with ergonomic 48px+ touch target.
+- **Informative Support Popup:** Clear guidance on how to get assistance with Taskly.
+- **Clickable Support Email:** Direct `tasklypets@gmail.com` mailto link with prefilled subject and automatic clipboard copy fallback.
+- **Responsive Layout Adaptations:** Verified responsive layout across compact 320px to tablet 768px viewports without horizontal or vertical clipping.
+- **Dismissal Controls:** Multi-gesture dismissal via close button, backdrop tap, Escape key, and Android hardware back button.
+- **Profile Navigation Polish:** Renamed "Notifications" menu item to "Notification Settings" for clarity.
+
+### Package & Integrity
+- **Version:** 2.3.0
+- **Version Code:** 150
+- **Package ID:** `com.taskly.app`
+- **File Name:** `taskly-v2.3.0.apk`
+- **File Size:** 17.8 MB (18,642,268 bytes)
+- **SHA-256:** `3a0d0c120c67e8c2f85b2d74c107813fb2ae6793fe0277e62133478605e9d6fa`
+- **Signing:** Validated Android APK Release Signature (Scheme v2)

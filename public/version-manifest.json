@@ -1,16 +1,87 @@
 {
-  "latestVersion": "2.1.1",
-  "versionCode": 121,
-  "title": "Taskly v2.1.1 (Build 12.1) – Routine Deletion & Foreign Key Integrity Hotfix",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.1.1/taskly-v2.1.1.apk",
-  "releaseNotes": "# Taskly v2.1.1 (Build 12.1) — Routine Deletion & Foreign Key Integrity Hotfix\n\nTaskly v2.1.1 (Build 12.1) addresses a critical routine deletion error on Supabase. Deleting a routine from today's list now immediately cleans up future and tomorrow occurrences. Removing tomorrow entries after parent routine deletion no longer triggers foreign key constraint violations, and orphaned completion records are safely pruned without application errors.\n\n### Bug Fixes\n- Fixed foreign key constraint violation (smart_routine_completions_routine_id_fkey) when removing routines.\n- Fixed deleted routines remaining visible in tomorrow's routine list.\n- Fixed failed remove operations when deleting tomorrow entries after parent routine is deleted.\n- Fixed orphaned completion records lingering after parent routine removal.\n\n### Reliability Improvements\n- Safe, idempotent deletion of remaining tomorrow entries without errors.\n- Verified existence check before attempting completion state updates or upserts.\n- Immediate UI synchronization across routine counts, daily summaries, and habit streaks upon deletion.",
-  "releaseDate": "2026-11-10",
+  "latestVersion": "2.3.0",
+  "versionCode": 150,
+  "displayBuild": "15",
+  "buildLabel": "Build 15",
+  "title": "Taskly v2.3.0 (Build 15) – Floating Customer Support & Profile Accessibility",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.0-b15/taskly-v2.3.0.apk",
+  "releaseNotes": "# Taskly v2.3.0 (Build 15) — Floating Customer Support & Profile Accessibility\n\nTaskly v2.3.0 introduces a dedicated floating Customer Support shortcut on the Profile screen, providing direct contact information and support access with one tap. This release includes the Taskly Support information popup with clickable email capabilities, responsive layout adaptations across compact mobile viewports, and multi-gesture popup dismissal.\n\n### New Features & Enhancements\n- Added the floating Taskly Support icon to the Profile screen.\n- Added the Taskly Support information popup.\n- Added clickable support email functionality.\n- Added responsive layout and popup dismissal improvements.\n- Renamed Notifications menu item to Notification Settings in Profile screen.",
+  "releaseDate": "2026-11-17",
   "minimumSupportedVersion": "1.0.0",
-  "fileSize": "17.7 MB",
-  "fileSizeBytes": 18574585,
-  "sha256": "c8e80b4cf9b4ada49724cd8bd1bd2ce28c7071de836689c71953bd5e9a763ee8",
+  "fileSize": "17.8 MB",
+  "fileSizeBytes": 18642268,
+  "sha256": "3a0d0c120c67e8c2f85b2d74c107813fb2ae6793fe0277e62133478605e9d6fa",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.3.0",
+      "versionName": "2.3.0",
+      "versionCode": 150,
+      "releaseDate": "2026-11-17",
+      "displayBuild": "15",
+      "buildLabel": "Build 15",
+      "title": "Taskly v2.3.0 (Build 15) – Floating Customer Support & Profile Accessibility",
+      "summary": "# Taskly v2.3.0 (Build 15) — Floating Customer Support & Profile Accessibility\n\nTaskly v2.3.0 introduces a dedicated floating Customer Support shortcut on the Profile screen, providing direct contact information and support access with one tap. This release includes the Taskly Support information popup with clickable email capabilities, responsive layout adaptations across compact mobile viewports, and multi-gesture popup dismissal.\n\n### New Features & Enhancements\n- Added the floating Taskly Support icon to the Profile screen.\n- Added the Taskly Support information popup.\n- Added clickable support email functionality.\n- Added responsive layout and popup dismissal improvements.",
+      "features": [
+        "Floating Taskly Support circular headphones icon on the Profile screen",
+        "Clean, informative Taskly Support popup with assistance guidance",
+        "Clickable support email (tasklypets@gmail.com) with pre-filled subject and automatic clipboard copy fallback",
+        "Multi-gesture modal dismissal via close button, backdrop tap, Escape key, and Android hardware back button",
+        "Full theme styling across Day, Dark, Pet, and Pastel palettes"
+      ],
+      "improvements": [
+        "Responsive layout bounds verified across compact 320px to tablet 768px viewports",
+        "Ergonomic floating touch target (52px diameter, 48px on compact screens) clearing bottom navigation and Android safe areas",
+        "Strict Profile-only button visibility ensuring zero interference with task views or navigation",
+        "Renamed Notifications menu item to Notification Settings in Profile screen"
+      ],
+      "performance": [
+        "Lightweight pure CSS modal animation with hardware acceleration",
+        "Instantaneous clipboard copy feedback toast with zero layout shift"
+      ],
+      "fixes": [
+        "Fixed text overflow on compact mobile screens with break-all email wrapping",
+        "Prevented backdrop touch events from leaking to underlying Profile controls"
+      ],
+      "security": [
+        "Cryptographically signed release APK with verified SHA-256 integrity",
+        "Safe mailto protocol handler with clipboard fallback preventing unauthorized URL execution"
+      ],
+      "apkFileName": "taskly-v2.3.0.apk",
+      "fileSize": "17.8 MB",
+      "fileSizeBytes": 18642268,
+      "sha256": "3a0d0c120c67e8c2f85b2d74c107813fb2ae6793fe0277e62133478605e9d6fa",
+      "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.0-b15/taskly-v2.3.0.apk"
+    },
+    {
+      "version": "2.2.0",
+      "versionName": "2.2.0",
+      "versionCode": 140,
+      "displayBuild": "14",
+      "buildLabel": "Build 14",
+      "releaseDate": "2026-11-10",
+      "title": "Taskly v2.2.0 (Build 14) – Productivity & Habit Tracking",
+      "summary": "# Taskly v2.2.0 (Build 14) — Productivity & Habit Tracking\n\nTaskly v2.2.0 introduces Routines & Smart Lists management, Habit tracking with dynamic streaks, and multi-theme support.",
+      "features": [
+        "Routines & Smart Lists management",
+        "Habit tracking with dynamic streaks",
+        "Pastel Light, Pet, Day, and Dark themes"
+      ],
+      "improvements": [
+        "Updated profile layout",
+        "Performance optimizations"
+      ],
+      "performance": [],
+      "fixes": [],
+      "security": [
+        "Anti-spoofing user token binding on all API endpoints"
+      ],
+      "apkFileName": "taskly-v2.2.0-b14.apk",
+      "fileSize": "17.7 MB",
+      "fileSizeBytes": 18588377,
+      "sha256": "966bed3cdbf663671fba470d0316b2de281c58f01cf61126d6d480a320192f1f",
+      "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.2.0-b14/taskly-v2.2.0-b14.apk"
+    },
     {
       "version": "2.1.1",
       "versionName": "2.1.1",
@@ -337,7 +408,5 @@
       "improvements": [],
       "fixes": []
     }
-  ],
-  "displayBuild": "12.1",
-  "buildLabel": "Build 12.1"
+  ]
 }

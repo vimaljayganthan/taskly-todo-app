@@ -1,0 +1,33 @@
+# Mobile applications
+developer-app/
+android/
+ios/
+
+# Tests & diagnostic suites
+tests/
+test/
+coverage/
+.nyc_output/
+
+# Scripts & SQL audits
+scripts/
+
+# Documentation & Markdown
+*.md
+*.log
+
+# Local temporary files & caches
+.gradle/
+*.apk
+*.aab
+.cache/
+scratch/
+.git/
+.github/
+.idea/
+.vscode/
+
+# Runtime data
+data/*.json
+!data/.gitkeep
+
