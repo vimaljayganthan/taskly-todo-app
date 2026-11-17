@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../services/api_service.dart';
-import '../services/push_notification_service.dart';
 import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -120,13 +119,6 @@ class _LoginScreenState extends State<LoginScreen> {
         password: password,
         serverUrl: serverUrl.isNotEmpty ? serverUrl : null,
       );
-
-      // Register FCM device token with Supabase for the authenticated developer
-      try {
-        await DeveloperPushNotificationService().syncTokenToSupabase();
-      } catch (err) {
-        debugPrint('[Login] Push token sync warning: $err');
-      }
 
       if (!mounted) return;
 

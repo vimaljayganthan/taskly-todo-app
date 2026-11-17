@@ -4,7 +4,8 @@ import 'constants.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/api_service.dart';
-import 'services/push_notification_service.dart';
+
+final GlobalKey<NavigatorState> developerNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,14 +18,19 @@ void main() async {
     debugPrint('Supabase initialization warning: $e');
   }
 
-  await DeveloperPushNotificationService().initialize();
+  // Fast, local-only session check (< 10ms, zero network latency)
+  final hasSession = await ApiService().hasValidCachedSession();
 
-  final hasSession = await ApiService().verifySession();
-  if (hasSession) {
-    await DeveloperPushNotificationService().syncTokenToSupabase();
-  }
-
+  // Render the initial UI frame immediately (< 50ms)
   runApp(TasklyDeveloperApp(hasSession: hasSession));
+
+  // Asynchronous non-blocking background initialization
+  if (hasSession) {
+    ApiService().verifySession().catchError((e) {
+      debugPrint('[BackgroundInit] Warning verifying session: $e');
+      return false;
+    });
+  }
 }
 
 class TasklyDeveloperApp extends StatelessWidget {

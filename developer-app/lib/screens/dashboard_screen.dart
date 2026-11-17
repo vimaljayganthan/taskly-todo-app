@@ -4,9 +4,7 @@ import '../constants.dart';
 import '../models/dashboard_stats.dart';
 import '../models/ticket.dart';
 import '../services/api_service.dart';
-import '../services/push_notification_service.dart';
 import 'login_screen.dart';
-import 'notifications_screen.dart';
 import 'ticket_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -36,7 +34,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
+    // Render cached data immediately if available (0ms delay)
+    final cachedStats = ApiService().cachedStats;
+    final cachedTickets = ApiService().cachedTickets;
+    if (cachedStats != null) {
+      _stats = cachedStats;
+      _tickets = cachedTickets ?? [];
+      _isLoading = false;
+    }
+    _loadDashboardData(isBackground: cachedStats != null);
   }
 
   @override
@@ -45,11 +51,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _loadDashboardData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  Future<void> _loadDashboardData({bool isBackground = false}) async {
+    if (!isBackground) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final statsFuture = ApiService().getStats();
@@ -65,13 +73,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _stats = results[0] as DashboardStats;
         _tickets = results[1] as List<Ticket>;
         _isLoading = false;
+        _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-        _isLoading = false;
-      });
+      if (!isBackground) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -109,7 +120,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (confirm == true) {
-      await DeveloperPushNotificationService().deactivateToken();
       await ApiService().signOut();
       if (!mounted) return;
       setState(() {
@@ -198,16 +208,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.campaign, color: AppConstants.primaryColor),
-            tooltip: 'Push Notifications',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              );
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: AppConstants.textColor),
             tooltip: 'Refresh',

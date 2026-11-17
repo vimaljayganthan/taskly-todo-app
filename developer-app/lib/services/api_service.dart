@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,6 +49,11 @@ class ApiService {
   String? _cachedServerUrl;
   http.Client? _customHttpClient;
   SupabaseClient? _customSupabaseClient;
+  DashboardStats? _cachedStats;
+  List<Ticket>? _cachedTickets;
+
+  DashboardStats? get cachedStats => _cachedStats;
+  List<Ticket>? get cachedTickets => _cachedTickets;
 
   http.Client get httpClient => _customHttpClient ??= http.Client();
   set httpClient(http.Client? client) => _customHttpClient = client;
@@ -69,6 +73,8 @@ class ApiService {
     _cachedServerUrl = null;
     _customHttpClient = null;
     _customSupabaseClient = null;
+    _cachedStats = null;
+    _cachedTickets = null;
   }
 
   Future<String> getServerUrl() async {
@@ -143,6 +149,8 @@ class ApiService {
 
   Future<void> clearSession() async {
     _cachedToken = null;
+    _cachedStats = null;
+    _cachedTickets = null;
     try {
       final client = supabaseClient;
       if (client != null) {
@@ -158,6 +166,16 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userEmailKey);
+  }
+
+  /// Fast local check for active session (zero network latency)
+  Future<bool> hasValidCachedSession() async {
+    try {
+      final token = await getToken();
+      return token != null && token.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> signOut() async {
@@ -430,10 +448,11 @@ class ApiService {
     final response = await _safeGet(url, headers: _headers(token));
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      if (data['stats'] != null) {
-        return DashboardStats.fromJson(data['stats'] as Map<String, dynamic>);
-      }
-      return DashboardStats.fromJson(data as Map<String, dynamic>);
+      final stats = data['stats'] != null
+          ? DashboardStats.fromJson(data['stats'] as Map<String, dynamic>)
+          : DashboardStats.fromJson(data as Map<String, dynamic>);
+      _cachedStats = stats;
+      return stats;
     }
     throw _mapError(response, 'Failed to load dashboard metrics');
   }
@@ -463,7 +482,11 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       final list = (data['tickets'] as List<dynamic>?) ?? [];
-      return list.map((item) => Ticket.fromJson(item as Map<String, dynamic>)).toList();
+      final tickets = list.map((item) => Ticket.fromJson(item as Map<String, dynamic>)).toList();
+      if ((status == null || status == 'all') && (search == null || search.isEmpty) && offset == 0) {
+        _cachedTickets = tickets;
+      }
+      return tickets;
     }
     throw _mapError(response, 'Failed to fetch tickets');
   }
@@ -575,126 +598,6 @@ class ApiService {
       return TicketMessage.fromJson(noteData);
     }
     throw _mapError(response, 'Failed to add internal note');
-  }
-
-  /// Register developer FCM device token on production backend
-  Future<void> registerDeviceToken({
-    required String fcmToken,
-    String appType = 'developer',
-    String devicePlatform = 'android',
-  }) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) return;
-    final baseUrl = await getServerUrl();
-    final url = Uri.parse('$baseUrl/api/notifications/tokens');
-
-    final response = await _safePost(
-      url,
-      headers: _headers(token),
-      body: json.encode({
-        'fcm_token': fcmToken,
-        'app_type': appType,
-        'device_platform': devicePlatform,
-      }),
-    );
-
-    if (response.statusCode != 200) {
-      debugPrint('[ApiService] registerDeviceToken returned ${response.statusCode}: ${response.body}');
-    }
-  }
-
-  /// Deactivate developer FCM device token on logout
-  Future<void> deactivateDeviceToken(String fcmToken) async {
-    final token = await getToken();
-    if (token == null || token.isEmpty) return;
-    final baseUrl = await getServerUrl();
-    final url = Uri.parse('$baseUrl/api/notifications/tokens');
-
-    try {
-      final response = await httpClient.delete(
-        url,
-        headers: _headers(token),
-        body: json.encode({'fcm_token': fcmToken}),
-      ).timeout(const Duration(seconds: 10));
-      if (response.statusCode != 200) {
-        debugPrint('[ApiService] deactivateDeviceToken returned ${response.statusCode}: ${response.body}');
-      }
-    } catch (e) {
-      debugPrint('[ApiService] deactivateDeviceToken warning: $e');
-    }
-  }
-
-  /// Send manual custom push notification to all or a specific customer
-  Future<Map<String, dynamic>> sendCustomNotification({
-    required String title,
-    required String body,
-    required String audience,
-    String? recipientEmail,
-    String? idempotencyKey,
-  }) async {
-    final token = await getToken();
-    final baseUrl = await getServerUrl();
-    final url = Uri.parse('$baseUrl/api/support/developer/notifications');
-
-    final payload = <String, dynamic>{
-      'title': title.trim(),
-      'body': body.trim(),
-      'audience': audience,
-      if (recipientEmail != null && recipientEmail.trim().isNotEmpty)
-        'recipient_email': recipientEmail.trim(),
-      if (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
-        'idempotency_key': idempotencyKey.trim(),
-    };
-
-    final response = await _safePost(
-      url,
-      headers: _headers(token),
-      body: json.encode(payload),
-    );
-
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      return json.decode(response.body) as Map<String, dynamic>;
-    }
-
-    throw _mapError(response, 'Failed to send notification');
-  }
-
-  /// Search or list eligible customer recipients
-  Future<List<Map<String, dynamic>>> getCustomers({String? search}) async {
-    final token = await getToken();
-    final baseUrl = await getServerUrl();
-    final uri = Uri.parse('$baseUrl/api/support/developer/customers').replace(
-      queryParameters: search != null && search.trim().isNotEmpty
-          ? {'search': search.trim()}
-          : null,
-    );
-
-    final response = await _safeGet(uri, headers: _headers(token));
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
-      final list = decoded['customers'] as List<dynamic>? ?? [];
-      return list.cast<Map<String, dynamic>>();
-    }
-
-    throw _mapError(response, 'Failed to fetch customer recipients');
-  }
-
-  /// Fetch notification history audit log
-  Future<List<Map<String, dynamic>>> getNotificationHistory({int limit = 50}) async {
-    final token = await getToken();
-    final baseUrl = await getServerUrl();
-    final uri = Uri.parse('$baseUrl/api/support/developer/notifications/history').replace(
-      queryParameters: {'limit': limit.toString()},
-    );
-
-    final response = await _safeGet(uri, headers: _headers(token));
-    if (response.statusCode == 200) {
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
-      final list = decoded['notifications'] as List<dynamic>? ?? [];
-      return list.cast<Map<String, dynamic>>();
-    }
-
-    throw _mapError(response, 'Failed to fetch notification history');
   }
 
   // --- Network Helpers ---

@@ -578,4 +578,101 @@ void main() {
       expect(await api.getToken(), isNull);
     });
   });
+
+  group('6. Fast Startup & Dashboard Caching Optimization', () {
+    setUp(() {
+      ApiService().resetForTesting();
+    });
+
+    test('6.1 hasValidCachedSession returns false when no session is cached', () async {
+      final api = ApiService();
+      await api.clearSession();
+      final hasSession = await api.hasValidCachedSession();
+      expect(hasSession, isFalse);
+    });
+
+    test('6.2 hasValidCachedSession returns true immediately when session exists without network calls', () async {
+      final api = ApiService();
+      await api.saveSession('fast-cached-token-123', 'tasklypets@gmail.com');
+
+      // Do NOT set httpClient - if network is touched, it would throw or fail
+      final stopwatch = Stopwatch()..start();
+      final hasSession = await api.hasValidCachedSession();
+      stopwatch.stop();
+
+      expect(hasSession, isTrue);
+      // Local check takes < 50ms
+      expect(stopwatch.elapsedMilliseconds, lessThan(50));
+    });
+
+    test('6.3 getStats caches stats in memory for instant dashboard display', () async {
+      final api = ApiService();
+      await api.saveSession('valid-token', 'tasklypets@gmail.com');
+      expect(api.cachedStats, isNull);
+
+      final mockHttp = MockHttpClient((request) async {
+        if (request.url.path == '/api/support/developer/stats') {
+          return http.Response(
+            json.encode({
+              'stats': {
+                'total': 15,
+                'open': 5,
+                'inProgress': 4,
+                'resolved': 4,
+                'closed': 2,
+              }
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      api.httpClient = mockHttp;
+      final stats = await api.getStats();
+      expect(stats.total, equals(15));
+      expect(api.cachedStats, isNotNull);
+      expect(api.cachedStats!.total, equals(15));
+      expect(api.cachedStats!.open, equals(5));
+    });
+
+    test('6.4 getTickets caches default ticket list in memory for instant dashboard display', () async {
+      final api = ApiService();
+      await api.saveSession('valid-token', 'tasklypets@gmail.com');
+      expect(api.cachedTickets, isNull);
+
+      final mockHttp = MockHttpClient((request) async {
+        if (request.url.path == '/api/support/developer/tickets') {
+          return http.Response(
+            json.encode({
+              'tickets': [
+                {
+                  'id': 't-101',
+                  'ticket_code': 'TICK-101',
+                  'subject': 'Push notification inquiry',
+                  'status': 'open',
+                  'priority': 'high',
+                  'category': 'technical',
+                  'user_email': 'customer@taskly.app',
+                  'created_at': '2026-11-15T12:00:00Z',
+                  'updated_at': '2026-11-15T12:00:00Z',
+                }
+              ]
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      api.httpClient = mockHttp;
+      final tickets = await api.getTickets();
+      expect(tickets.length, equals(1));
+      expect(api.cachedTickets, isNotNull);
+      expect(api.cachedTickets!.first.id, equals('t-101'));
+      expect(api.cachedTickets!.first.subject, equals('Push notification inquiry'));
+    });
+  });
 }

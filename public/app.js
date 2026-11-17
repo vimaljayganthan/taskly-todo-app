@@ -28,7 +28,7 @@ function getApiBaseUrl() {
     );
     if (isCapacitor) {
       // Production Canonical Vercel HTTPS Deployment URL
-      return 'https://taskly-developer-backend.vercel.app';
+      return 'https://taskly-todo-app-4z1c.vercel.app';
     }
   }
   // Standard web browser deployment (relative URLs)
@@ -763,18 +763,12 @@ function syncAuthSession(session) {
   updatePreviewUI();
   renderProfile();
   fetchTodos();
-  if (typeof TasklyPushNotifications !== 'undefined' && typeof TasklyPushNotifications.syncTokenToSupabase === 'function') {
-    TasklyPushNotifications.syncTokenToSupabase();
-  }
   if (typeof SmartListsManager !== 'undefined') {
     SmartListsManager.syncAll().catch(err => console.warn('[SmartLists] Session sync error:', err));
   }
 }
 
 function syncAuthSignOut() {
-  if (typeof TasklyPushNotifications !== 'undefined' && typeof TasklyPushNotifications.deactivateToken === 'function') {
-    TasklyPushNotifications.deactivateToken();
-  }
   state.userToken = null;
   state.isPreviewSession = false;
   state.todos = [];
@@ -840,9 +834,6 @@ if (typeof document !== 'undefined') {
     initialRouteFastSync();
 
     await TasklyNotifications.init();
-    if (typeof TasklyPushNotifications !== 'undefined' && typeof TasklyPushNotifications.init === 'function') {
-      await TasklyPushNotifications.init();
-    }
     await TasklyUpdateManager.init();
     renderQuickNotes();
     await initSupabaseAuth();
@@ -2946,219 +2937,6 @@ const TasklyNotifications = {
     if (typeof document === 'undefined') return;
     const modal = document.getElementById('modal-notifications');
     if (modal) modal.classList.remove('active');
-  }
-};
-
-// ==========================================================================
-// Taskly Push Notifications (Capacitor FCM & Support Tickets Channel)
-// ==========================================================================
-const TasklyPushNotifications = {
-  SUPPORT_CHANNEL_ID: 'taskly-support-tickets-v1',
-  NOTIFICATION_SOUND: 'taskly_meow.wav',
-  cachedToken: null,
-
-  isNative() {
-    return Boolean(
-      typeof window !== 'undefined' &&
-      (window.Capacitor?.isNativePlatform?.() ||
-       window.Capacitor?.getPlatform?.() === 'android' ||
-       window.Capacitor?.getPlatform?.() === 'ios') &&
-      window.Capacitor?.Plugins?.PushNotifications
-    );
-  },
-
-  getPlugin() {
-    if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.PushNotifications) {
-      return window.Capacitor.Plugins.PushNotifications;
-    }
-    return null;
-  },
-
-  async init() {
-    const plugin = this.getPlugin();
-    if (!plugin) return;
-
-    try {
-      // 1. Create dedicated channel for support tickets and announcements
-      if (typeof plugin.createChannel === 'function') {
-        await plugin.createChannel({
-          id: this.SUPPORT_CHANNEL_ID,
-          name: 'Taskly Support & Updates',
-          description: 'Support ticket replies, status updates, and announcement notifications',
-          importance: 5,
-          visibility: 1,
-          sound: this.NOTIFICATION_SOUND,
-          vibration: true,
-          lights: true,
-          lightColor: '#2563EB'
-        }).catch(err => console.warn('[PushNotifications] createChannel warning:', err));
-      }
-
-      // 2. Request permissions on Android 13+
-      let permStatus = await plugin.checkPermissions().catch(() => ({ receive: 'prompt' }));
-      if (permStatus.receive !== 'granted') {
-        permStatus = await plugin.requestPermissions().catch(err => {
-          console.warn('[PushNotifications] requestPermissions warning:', err);
-          return { receive: 'denied' };
-        });
-      }
-
-      if (permStatus.receive === 'granted') {
-        // 3. Register device with FCM
-        await plugin.register().catch(err => console.warn('[PushNotifications] register warning:', err));
-      }
-
-      // 4. Registration listener
-      plugin.addListener('registration', async (token) => {
-        if (!token || !token.value) return;
-        this.cachedToken = token.value;
-        console.log('[PushNotifications] Device registered with FCM token');
-        await this.syncTokenToSupabase(token.value);
-      });
-
-      // 5. Error listener
-      plugin.addListener('registrationError', (error) => {
-        console.warn('[PushNotifications] FCM registration error:', error);
-      });
-
-      // 6. Push notification received in foreground
-      plugin.addListener('pushNotificationReceived', (notification) => {
-        console.log('[PushNotifications] Foreground push received:', notification);
-        if (typeof TasklyNotifications !== 'undefined' && typeof TasklyNotifications.addInAppNotification === 'function') {
-          TasklyNotifications.addInAppNotification({
-            title: notification.title || 'Taskly Support Update',
-            headline: notification.title || 'Taskly Support Update',
-            description: notification.body || '',
-            type: notification.data?.notification_type || 'task_deadline',
-            largeIcon: 'notif_cat_created',
-            sourceId: notification.data?.ticket_id || 'push',
-            sourceType: 'support_ticket',
-            playSound: false
-          });
-        }
-      });
-
-      // 7. Push notification action performed (tap)
-      plugin.addListener('pushNotificationActionPerformed', (action) => {
-        console.log('[PushNotifications] Notification action performed:', action);
-        const data = action.notification?.data || {};
-        const ticketId = data.ticket_id || data.ticketId;
-        if (ticketId && typeof handleOpenSupportTicketDetails === 'function') {
-          handleOpenSupportTicketDetails(ticketId);
-        } else if (typeof TasklyNotifications !== 'undefined' && typeof TasklyNotifications.openModal === 'function') {
-          TasklyNotifications.openModal();
-        }
-      });
-    } catch (err) {
-      console.warn('[PushNotifications] Initialization error:', err);
-    }
-  },
-
-  async syncTokenToSupabase(tokenOverride) {
-    const token = tokenOverride || this.cachedToken;
-    if (!token) return;
-
-    if (!state.user || !state.user.id || !state.userToken) {
-      return;
-    }
-
-    const userEmail = (state.user.email || '').toLowerCase().trim();
-    const authToken = state.userToken;
-
-    // 1. Prefer authenticated backend token-registration endpoint
-    try {
-      const apiUrl = getApiBaseUrl();
-      const res = await fetch(`${apiUrl}/api/notifications/tokens`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify({
-          fcm_token: token,
-          app_type: 'customer',
-          device_platform: 'android'
-        })
-      });
-      if (res.ok) {
-        console.log('[PushNotifications] Customer FCM token registered via backend API');
-      } else {
-        console.warn('[PushNotifications] Backend API token registration status:', res.status);
-      }
-    } catch (apiErr) {
-      console.warn('[PushNotifications] Backend API token registration error:', apiErr?.message);
-    }
-
-    // 2. Direct Supabase sync using canonical schema as redundancy
-    if (supabaseClient && userEmail) {
-      try {
-        const { error } = await supabaseClient
-          .from('user_device_tokens')
-          .upsert({
-            user_id: state.user.id,
-            user_email: userEmail,
-            fcm_token: token,
-            app_type: 'customer',
-            device_platform: 'android',
-            is_active: true,
-            last_seen_at: new Date().toISOString()
-          }, {
-            onConflict: 'fcm_token'
-          });
-
-        if (error) {
-          console.warn('[PushNotifications] Supabase token sync error:', error.message);
-        } else {
-          console.log('[PushNotifications] Customer FCM token synced to Supabase user_device_tokens');
-        }
-      } catch (err) {
-        console.warn('[PushNotifications] Failed to sync device token to Supabase:', err?.message);
-      }
-    }
-  },
-
-  async deactivateToken() {
-    const token = this.cachedToken;
-    const authToken = (typeof state !== 'undefined' && state.userToken) ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('taskly_user_token')) ||
-      null;
-    const userId = (typeof state !== 'undefined' && state.user?.id) || null;
-
-    if (!token) return;
-
-    // 1. Deactivate via backend API
-    if (authToken) {
-      try {
-        const apiUrl = getApiBaseUrl();
-        await fetch(`${apiUrl}/api/notifications/tokens`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify({
-            fcm_token: token
-          })
-        });
-        console.log('[PushNotifications] Customer FCM token deactivated via backend API');
-      } catch (apiErr) {
-        console.warn('[PushNotifications] Backend API token deactivation warning:', apiErr?.message);
-      }
-    }
-
-    // 2. Deactivate in Supabase directly
-    if (supabaseClient && userId) {
-      try {
-        await supabaseClient
-          .from('user_device_tokens')
-          .update({ is_active: false, last_seen_at: new Date().toISOString() })
-          .eq('fcm_token', token)
-          .eq('user_id', userId);
-        console.log('[PushNotifications] Customer FCM token deactivated on sign-out in Supabase');
-      } catch (err) {
-        console.warn('[PushNotifications] Failed to deactivate token in Supabase:', err?.message);
-      }
-    }
   }
 };
 
