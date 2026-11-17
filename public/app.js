@@ -3463,7 +3463,11 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
   // Update views
   renderAll();
   if (tabName === 'smart-lists' && typeof SmartListsManager !== 'undefined') {
-    SmartListsManager.renderRoutines();
+    if (typeof SmartListsManager.onTabActivated === 'function') {
+      SmartListsManager.onTabActivated();
+    } else {
+      SmartListsManager.renderRoutines();
+    }
   }
   if (tabName === 'add') {
     initAddTaskDateTime();
@@ -6205,8 +6209,8 @@ const TasklyUpdateManager = {
     productionHost: 'taskly-todo-app-4z1c.vercel.app',
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
-    previewVersionName: '2.3.0',
-    previewVersionCode: 150,
+    previewVersionName: '2.3.1',
+    previewVersionCode: 151,
     expectedPackageName: 'com.taskly.app',
     autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
     storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
@@ -6215,8 +6219,8 @@ const TasklyUpdateManager = {
   state: {
     installedVersionName: '1.5.0',
     installedVersionCode: 6,
-    previewVersionName: '2.3.0',
-    previewVersionCode: 150,
+    previewVersionName: '2.3.1',
+    previewVersionCode: 151,
     isNative: false,
     platform: 'web',
     deploymentEnvironment: 'production_web',
@@ -6512,6 +6516,7 @@ const TasklyUpdateManager = {
       return rel.displayBuild || rel.buildLabel.replace(/^Build\s+/i, '');
     }
     const num = parseInt(code, 10);
+    if (num === 151) return '15.1';
     if (num === 150) return '15';
     if (num === 140) return '14';
     if (num === 121) return '12.1';
@@ -6780,8 +6785,8 @@ const TasklyUpdateManager = {
       this.state.installedVersionName = null;
       this.state.installedVersionCode = null;
     } else if (env === 'production_web') {
-      this.state.webVersionName = '2.3.0';
-      this.state.webVersionCode = 150;
+      this.state.webVersionName = '2.3.1';
+      this.state.webVersionCode = 151;
       if (!this.state.installedVersionName) {
         this.state.installedVersionName = null;
         this.state.installedVersionCode = null;
@@ -6807,22 +6812,22 @@ const TasklyUpdateManager = {
     if (badge) {
       const env = this.detectDeploymentEnvironment();
       if (env === 'vercel_preview') {
-        badge.textContent = `v${this.state.previewVersionName || '2.3.0'} (Preview)`;
-        badge.title = 'Web Browser Preview (Build 15)';
+        badge.textContent = `v${this.state.previewVersionName || '2.3.1'} (Preview)`;
+        badge.title = 'Web Browser Preview (Build 15.1)';
       } else if (env === 'local_dev') {
-        badge.textContent = 'v2.3.0 (Dev)';
+        badge.textContent = 'v2.3.1 (Dev)';
         badge.title = 'Local Development Build';
       } else if (env === 'native_android') {
-        badge.textContent = `v${this.state.installedVersionName || '2.3.0'}`;
+        badge.textContent = `v${this.state.installedVersionName || '2.3.1'}`;
         badge.title = 'Android Native Application';
       } else if (env === 'production_web') {
-        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.0');
+        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.1');
         badge.title = 'Taskly Production Web';
       } else if (env === 'untrusted_web') {
         badge.textContent = 'Untrusted';
         badge.title = 'Unrecognized / Unsupported Domain';
       } else {
-        badge.textContent = 'v2.3.0';
+        badge.textContent = 'v2.3.1';
         badge.title = 'Taskly Web';
       }
     }
@@ -7369,7 +7374,7 @@ const TasklyUpdateManager = {
       if (env === 'untrusted_web') {
         msg = 'Taskly Notice:\n\nThis domain is not a recognized Taskly host.\nUpdates and downloads are permanently disabled on untrusted domains.';
       } else if (env === 'vercel_preview') {
-        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.0 Build 15).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
+        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.1 Build 15.1).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
       } else {
         msg = 'Taskly Web Notice:\n\nIn-app APK installation is available exclusively on Android native devices.\nWeb applications update automatically through deployment.';
       }
@@ -7496,8 +7501,8 @@ const TasklyUpdateManager = {
       if (valInstalled) valInstalled.textContent = `v${prevName} (Build ${prevBuild})`;
     } else if (env === 'production_web') {
       if (labelInstalled) labelInstalled.textContent = 'Web Version';
-      const webName = this.state.webVersionName || '2.3.0';
-      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15';
+      const webName = this.state.webVersionName || '2.3.1';
+      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15.1';
       if (valInstalled) valInstalled.textContent = `v${webName} (Build ${webBuild})`;
     } else if (env === 'local_dev') {
       if (labelInstalled) labelInstalled.textContent = 'Local Build';
@@ -8038,13 +8043,32 @@ const SmartListsManager = {
     pendingEditTomorrowId: null,
     isUpdatingStatus: false,
     isLoadingStats: false,
+    isLoadingRoutines: false,
+    loadError: null,
+    hasInitialLoadAttempted: false,
     isInitialized: false
   },
 
+  getTodayYmd() {
+    if (typeof toYmdString === 'function') {
+      return toYmdString(new Date());
+    }
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+
   async init() {
-    this.state.activeDate = (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10);
+    this.state.activeDate = this.getTodayYmd();
     this.loadFromStorage();
     this.computeLocalStreaksAndStats(this.state.activeDate);
+    if (typeof state !== 'undefined' && state.activeTab === 'smart-lists') {
+      this.updateDateDisplay();
+      this.renderStreakWidget();
+      this.renderRoutines();
+    }
     if (isAuthenticated()) {
       await this.syncAll().catch(err => console.warn('[SmartLists] Sync error:', err));
     }
@@ -8052,13 +8076,25 @@ const SmartListsManager = {
     await this.fetchTomorrowRoutines().catch(() => {});
     await this.scheduleDailySummaryReminder().catch(err => console.warn('[SmartLists] Reminder schedule error:', err));
     this.state.isInitialized = true;
+    this.state.hasInitialLoadAttempted = true;
+    if (typeof state !== 'undefined' && state.activeTab === 'smart-lists') {
+      this.computeLocalStreaksAndStats(this.state.activeDate);
+      this.renderStreakWidget();
+      this.renderRoutines();
+      this.renderTomorrowRoutines();
+    }
   },
 
   loadFromStorage() {
     try {
       if (typeof localStorage === 'undefined') return;
       const r = localStorage.getItem(this.STORAGE_KEY_ROUTINES);
-      if (r) this.state.routines = JSON.parse(r);
+      if (r) {
+        this.state.routines = JSON.parse(r);
+        if (Array.isArray(this.state.routines) && this.state.routines.length > 0) {
+          this.state.hasInitialLoadAttempted = true;
+        }
+      }
 
       const c = localStorage.getItem(this.STORAGE_KEY_COMPLETIONS);
       if (c) this.state.completions = JSON.parse(c);
@@ -8120,6 +8156,9 @@ const SmartListsManager = {
       completionRate: 0,
       isQualified: false
     };
+    this.state.isLoadingRoutines = false;
+    this.state.loadError = null;
+    this.state.hasInitialLoadAttempted = false;
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem(this.STORAGE_KEY_ROUTINES);
@@ -8132,13 +8171,28 @@ const SmartListsManager = {
   },
 
   async syncAll() {
-    await Promise.all([
-      this.fetchRoutines(),
-      this.fetchCompletions(this.state.activeDate),
-      this.fetchReports(),
-      this.fetchSettings(),
-      this.fetchStreaksAndStats(this.state.activeDate)
-    ]);
+    this.state.isLoadingRoutines = true;
+    try {
+      await Promise.all([
+        this.fetchRoutines(),
+        this.fetchCompletions(this.state.activeDate),
+        this.fetchReports(),
+        this.fetchSettings(),
+        this.fetchStreaksAndStats(this.state.activeDate)
+      ]);
+      this.state.loadError = null;
+    } catch (err) {
+      console.warn('[SmartLists] syncAll warning:', err);
+    } finally {
+      this.state.isLoadingRoutines = false;
+      this.state.hasInitialLoadAttempted = true;
+      if (typeof state !== 'undefined' && state.activeTab === 'smart-lists') {
+        this.computeLocalStreaksAndStats(this.state.activeDate);
+        this.renderStreakWidget();
+        this.renderRoutines();
+        this.renderTomorrowRoutines();
+      }
+    }
   },
 
   // --- Routines CRUD ---
@@ -8189,6 +8243,11 @@ const SmartListsManager = {
             };
           });
           this.saveToStorage();
+          if (typeof state !== 'undefined' && state.activeTab === 'smart-lists') {
+            this.computeLocalStreaksAndStats(this.state.activeDate);
+            this.renderStreakWidget();
+            this.renderRoutines();
+          }
           return this.state.routines;
         }
       } catch (_) {}
@@ -8216,6 +8275,11 @@ const SmartListsManager = {
             };
           });
           this.saveToStorage();
+          if (typeof state !== 'undefined' && state.activeTab === 'smart-lists') {
+            this.computeLocalStreaksAndStats(this.state.activeDate);
+            this.renderStreakWidget();
+            this.renderRoutines();
+          }
           return this.state.routines;
         }
       }
@@ -8247,7 +8311,10 @@ const SmartListsManager = {
     // Optimistic local add
     this.state.routines.push(newRoutine);
     this.saveToStorage();
+    this.computeLocalStreaksAndStats(this.state.activeDate);
+    this.renderStreakWidget();
     this.renderRoutines();
+    this.fetchTomorrowRoutines().catch(() => {});
 
     // Supabase direct sync
     if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
@@ -8300,7 +8367,10 @@ const SmartListsManager = {
     routine.title = trimmed;
     routine.updatedAt = new Date().toISOString();
     this.saveToStorage();
+    this.computeLocalStreaksAndStats(this.state.activeDate);
+    this.renderStreakWidget();
     this.renderRoutines();
+    this.fetchTomorrowRoutines().catch(() => {});
 
     if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
       try {
@@ -10827,15 +10897,73 @@ const SmartListsManager = {
 
   // --- UI Operations & Rendering ---
   async openScreen() {
-    this.state.activeDate = (typeof toYmdString === 'function') ? toYmdString(new Date()) : new Date().toISOString().slice(0, 10);
+    this.state.activeDate = this.getTodayYmd();
+    if (!this.state.routines || this.state.routines.length === 0) {
+      this.loadFromStorage();
+    }
     showMainFlow('smart-lists');
     this.updateDateDisplay();
     this.computeLocalStreaksAndStats(this.state.activeDate);
     this.renderStreakWidget();
+
+    // Mark loading if memory is empty and no initial load completed
+    if ((!this.state.routines || this.state.routines.length === 0) && !this.state.hasInitialLoadAttempted) {
+      this.state.isLoadingRoutines = true;
+    }
     this.renderRoutines();
+    this.renderTomorrowRoutines();
+
+    try {
+      if (isAuthenticated()) {
+        await Promise.all([
+          this.fetchRoutines(),
+          this.fetchCompletions(this.state.activeDate)
+        ]);
+      }
+      this.state.loadError = null;
+    } catch (err) {
+      console.warn('[SmartLists] openScreen fetch error:', err);
+      if (!this.state.routines || this.state.routines.length === 0) {
+        this.state.loadError = 'Unable to load routines. Please check your connection and retry.';
+      }
+    } finally {
+      this.state.isLoadingRoutines = false;
+      this.state.hasInitialLoadAttempted = true;
+      this.computeLocalStreaksAndStats(this.state.activeDate);
+      this.renderStreakWidget();
+      this.renderRoutines();
+    }
+
+    await this.fetchTomorrowRoutines().catch(() => {});
+    this.renderTomorrowRoutines();
     await this.ensureDailyReports().catch(() => {});
     await this.fetchStreaksAndStats(this.state.activeDate).catch(() => {});
-    await this.fetchTomorrowRoutines().catch(() => {});
+    this.renderStreakWidget();
+  },
+
+  onTabActivated() {
+    this.state.activeDate = this.getTodayYmd();
+    if (!this.state.routines || this.state.routines.length === 0) {
+      this.loadFromStorage();
+    }
+    this.updateDateDisplay();
+    this.computeLocalStreaksAndStats(this.state.activeDate);
+    this.renderStreakWidget();
+    this.renderRoutines();
+    this.renderTomorrowRoutines();
+
+    if (isAuthenticated()) {
+      Promise.all([
+        this.fetchRoutines(),
+        this.fetchCompletions(this.state.activeDate),
+        this.fetchTomorrowRoutines()
+      ]).then(() => {
+        this.computeLocalStreaksAndStats(this.state.activeDate);
+        this.renderStreakWidget();
+        this.renderRoutines();
+        this.renderTomorrowRoutines();
+      }).catch(() => {});
+    }
   },
 
   updateDateDisplay() {
@@ -10851,25 +10979,41 @@ const SmartListsManager = {
   renderRoutines() {
     if (typeof document === 'undefined') return;
     const list = document.getElementById('smart-routines-list');
+    const loadingState = document.getElementById('smart-loading-state');
+    const errorState = document.getElementById('smart-error-state');
+    const errorDesc = document.getElementById('smart-error-desc');
     const emptyState = document.getElementById('smart-empty-state');
     const progressText = document.getElementById('smart-progress-text');
     const footerSub = document.getElementById('footer-summary-sub');
 
     if (!list) return;
+
+    // 1. Loading State Guard: Only show when loading AND list is currently empty
+    if (this.state.isLoadingRoutines && (!this.state.routines || this.state.routines.length === 0)) {
+      list.innerHTML = '';
+      if (loadingState) loadingState.style.display = 'flex';
+      if (errorState) errorState.style.display = 'none';
+      if (emptyState) emptyState.style.display = 'none';
+      if (progressText) progressText.textContent = 'Loading routines...';
+      return;
+    }
+    if (loadingState) loadingState.style.display = 'none';
+
+    // 2. Error State Guard: Only show if load error AND no routines available
+    if (this.state.loadError && (!this.state.routines || this.state.routines.length === 0)) {
+      list.innerHTML = '';
+      if (errorState) errorState.style.display = 'flex';
+      if (errorDesc) errorDesc.textContent = this.state.loadError;
+      if (emptyState) emptyState.style.display = 'none';
+      if (progressText) progressText.textContent = 'Error loading routines';
+      return;
+    }
+    if (errorState) errorState.style.display = 'none';
+
     list.innerHTML = '';
 
     const routines = this.state.routines || [];
-    const date = this.state.activeDate;
-
-    if (routines.length === 0) {
-      if (emptyState) emptyState.style.display = 'flex';
-      if (progressText) progressText.textContent = '0 / 0 completed';
-      if (footerSub) footerSub.textContent = 'Add your routines to generate reports';
-      this.renderStreakWidget();
-      return;
-    }
-
-    if (emptyState) emptyState.style.display = 'none';
+    const date = this.state.activeDate || this.getTodayYmd();
 
     let completedCount = 0;
     let visibleCount = 0;
@@ -11026,18 +11170,32 @@ const SmartListsManager = {
 
     if (visibleCount === 0) {
       if (emptyState) emptyState.style.display = 'flex';
+      if (progressText) progressText.textContent = '0 / 0 completed';
+      if (footerSub) footerSub.textContent = 'Add your routines to generate reports';
     } else {
       if (emptyState) emptyState.style.display = 'none';
+      const total = visibleCount;
+      const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+      if (progressText) {
+        progressText.textContent = `${completedCount} / ${total} completed • ${rate}%`;
+      }
+      if (footerSub) {
+        footerSub.textContent = `${completedCount} of ${total} routines completed today (${rate}%)`;
+      }
     }
 
-    const total = visibleCount;
-    const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
-    if (progressText) {
-      progressText.textContent = `${completedCount} / ${total} completed • ${rate}%`;
-    }
-    if (footerSub) {
-      footerSub.textContent = `${completedCount} of ${total} routines completed today (${rate}%)`;
-    }
+    // Synchronize dailyStats counters with the rendered routines
+    const pendingCount = visibleCount - completedCount;
+    this.state.dailyStats = {
+      ...(this.state.dailyStats || {}),
+      date,
+      totalCount: visibleCount,
+      completedCount,
+      pendingCount: Math.max(0, pendingCount),
+      eligibleCount: visibleCount,
+      completionRate: visibleCount > 0 ? Math.round((completedCount / visibleCount) * 100) : 0
+    };
+
     this.renderStreakWidget();
     this.renderTomorrowRoutines();
   },
@@ -12718,6 +12876,7 @@ function setupEventListeners() {
   const btnOpenSmartSummary = document.getElementById('btn-open-smart-summary');
   const btnFooterSmartSummary = document.getElementById('btn-smart-footer-summary');
   const btnOpenSmartSettings = document.getElementById('btn-open-smart-settings');
+  const btnSmartRetryLoad = document.getElementById('btn-smart-retry-load');
 
   if (menuSmartLists) menuSmartLists.addEventListener('click', () => SmartListsManager.openScreen());
   if (btnOpenSmartLists) btnOpenSmartLists.addEventListener('click', () => SmartListsManager.openScreen());
@@ -12725,6 +12884,7 @@ function setupEventListeners() {
   if (btnOpenSmartSummary) btnOpenSmartSummary.addEventListener('click', () => SmartListsManager.openSummaryModal());
   if (btnFooterSmartSummary) btnFooterSmartSummary.addEventListener('click', () => SmartListsManager.openSummaryModal());
   if (btnOpenSmartSettings) btnOpenSmartSettings.addEventListener('click', () => SmartListsManager.openSettingsModal());
+  if (btnSmartRetryLoad) btnSmartRetryLoad.addEventListener('click', () => SmartListsManager.openScreen());
 
   // Add routine triggers
   const btnToggleAddRoutine = document.getElementById('btn-toggle-add-routine');

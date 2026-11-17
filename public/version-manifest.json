@@ -1,18 +1,58 @@
 {
-  "latestVersion": "2.3.0",
-  "versionCode": 150,
-  "displayBuild": "15",
-  "buildLabel": "Build 15",
-  "title": "Taskly v2.3.0 (Build 15) – Floating Customer Support & Profile Accessibility",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.0-b15/taskly-v2.3.0.apk",
-  "releaseNotes": "# Taskly v2.3.0 (Build 15) — Floating Customer Support & Profile Accessibility\n\nTaskly v2.3.0 introduces a dedicated floating Customer Support shortcut on the Profile screen, providing direct contact information and support access with one tap. This release includes the Taskly Support information popup with clickable email capabilities, responsive layout adaptations across compact mobile viewports, and multi-gesture popup dismissal.\n\n### New Features & Enhancements\n- Added the floating Taskly Support icon to the Profile screen.\n- Added the Taskly Support information popup.\n- Added clickable support email functionality.\n- Added responsive layout and popup dismissal improvements.\n- Renamed Notifications menu item to Notification Settings in Profile screen.",
+  "latestVersion": "2.3.1",
+  "versionCode": 151,
+  "displayBuild": "15.1",
+  "buildLabel": "Build 15.1",
+  "title": "Taskly v2.3.1 (Build 15.1) – Smart Lists / Daily Routines Rendering Fix",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.1-b15.1/taskly-v2.3.1.apk",
+  "releaseNotes": "# Taskly v2.3.1 (Build 15.1) — Smart Lists / Daily Routines Rendering Fix\n\nTaskly v2.3.1 (Build 15.1) fixes an asynchronous rendering race condition in Smart Lists / Daily Routines where saved habits would intermittently fail to display upon opening the screen, prematurely showing the \"No routines yet\" empty state. This update introduces explicit loading and error states, background sync re-rendering, tab-switch refresh, and accurate Done/Pending counter synchronization.\n\n### Key Fixes & Enhancements\n- Fixed premature \"No routines yet\" empty-state rendering on initial load.\n- Added visual loading state with spinner during routine fetch.\n- Added dedicated error state with retry action.\n- Fixed Done/Pending counter chip synchronization with rendered list.\n- Fixed tomorrow routine list and counter updates.\n- Added auto-refresh when switching tabs to Smart Lists.",
   "releaseDate": "2026-11-17",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.8 MB",
-  "fileSizeBytes": 18642268,
-  "sha256": "3a0d0c120c67e8c2f85b2d74c107813fb2ae6793fe0277e62133478605e9d6fa",
+  "fileSizeBytes": 18644269,
+  "sha256": "07bc03bc11c1cfaf4492c781e98a2b2611babb2d13283f2f4050a83130f79e05",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.3.1",
+      "versionName": "2.3.1",
+      "versionCode": 151,
+      "releaseDate": "2026-11-17",
+      "displayBuild": "15.1",
+      "buildLabel": "Build 15.1",
+      "title": "Taskly v2.3.1 (Build 15.1) – Smart Lists / Daily Routines Rendering Fix",
+      "summary": "# Taskly v2.3.1 (Build 15.1) — Smart Lists / Daily Routines Rendering Fix\n\nTaskly v2.3.1 (Build 15.1) fixes an asynchronous rendering race condition in Smart Lists / Daily Routines where saved habits would intermittently fail to display upon opening the screen, prematurely showing the \"No routines yet\" empty state. This update introduces explicit loading and error states, background sync re-rendering, tab-switch refresh, and accurate Done/Pending counter synchronization.\n\n### Key Fixes & Enhancements\n- Fixed premature \"No routines yet\" empty-state rendering on initial load.\n- Added visual loading state with spinner during routine fetch.\n- Added dedicated error state with retry action.\n- Fixed Done/Pending counter chip synchronization with rendered list.\n- Fixed tomorrow routine list and counter updates.\n- Added auto-refresh when switching tabs to Smart Lists.",
+      "features": [
+        "Visual loading spinner while routines and daily summaries load asynchronously",
+        "Error state banner with retry button on sync failures",
+        "Tab activation auto-refresh when navigating back to Smart Lists",
+        "Direct counter synchronization between Done/Pending chips and rendered routines",
+        "Tomorrow routine refresh and active date synchronization"
+      ],
+      "improvements": [
+        "Eliminated race condition causing premature \"No routines yet\" empty state",
+        "Preserved historical routine summaries and habit streaks",
+        "Seamless background sync re-rendering across network state changes",
+        "Retained floating Taskly Customer Support popup and Profile improvements from Build 15"
+      ],
+      "performance": [
+        "Instant DOM updates for routine completion toggles",
+        "Optimized streak computation and summary caching"
+      ],
+      "fixes": [
+        "Fixed empty state displaying before asynchronous routine loading completes",
+        "Fixed Done and Pending counters drifting out of sync with checklist"
+      ],
+      "security": [
+        "Cryptographically signed release APK with verified SHA-256 integrity",
+        "User token validation on all routine retrieval and sync endpoints"
+      ],
+      "apkFileName": "taskly-v2.3.1.apk",
+      "fileSize": "17.8 MB",
+      "fileSizeBytes": 18644269,
+      "sha256": "07bc03bc11c1cfaf4492c781e98a2b2611babb2d13283f2f4050a83130f79e05",
+      "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.1-b15.1/taskly-v2.3.1.apk"
+    },
     {
       "version": "2.3.0",
       "versionName": "2.3.0",

@@ -150,61 +150,61 @@ describe('Taskly v1.8.0 Build 9 - Critical Bug Fixes and Data Consistency Suite'
   // =========================================================================
   describe('Part 1: Release History and What\'s New Authoritative Manifest & Sorting', () => {
 
-    test('1. Production manifests releases/version-manifest.json and public/version-manifest.json are identical and v2.3.0 Build 15', () => {
-      assert.strictEqual(PROD_MANIFEST.latestVersion, '2.3.0');
-      assert.strictEqual(PROD_MANIFEST.versionCode, 150);
-      assert.strictEqual(PUBLIC_MANIFEST.latestVersion, '2.3.0');
-      assert.strictEqual(PUBLIC_MANIFEST.versionCode, 150);
+    test('1. Production manifests releases/version-manifest.json and public/version-manifest.json are identical and v2.3.1 Build 15.1', () => {
+      assert.strictEqual(PROD_MANIFEST.latestVersion, '2.3.1');
+      assert.strictEqual(PROD_MANIFEST.versionCode, 151);
+      assert.strictEqual(PUBLIC_MANIFEST.latestVersion, '2.3.1');
+      assert.strictEqual(PUBLIC_MANIFEST.versionCode, 151);
       assert.deepStrictEqual(PROD_MANIFEST, PUBLIC_MANIFEST);
     });
 
-    test('2. Manifest contains all 13 published releases in descending order', () => {
+    test('2. Manifest contains all 14 published releases in descending order', () => {
       assert.ok(Array.isArray(PROD_MANIFEST.history));
-      assert.strictEqual(PROD_MANIFEST.history.length, 13);
+      assert.strictEqual(PROD_MANIFEST.history.length, 14);
       const codes = PROD_MANIFEST.history.map(r => r.versionCode);
-      assert.deepStrictEqual(codes, [150, 140, 121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1]);
+      assert.deepStrictEqual(codes, [151, 150, 140, 121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1]);
     });
 
-    test('3. TasklyUpdateManager loads authoritative manifest and reports v2.3.0 Build 15 as latest approved', () => {
+    test('3. TasklyUpdateManager loads authoritative manifest and reports v2.3.1 Build 15.1 as latest approved', () => {
       TasklyUpdateManager.setCachedManifest(PROD_MANIFEST);
-      assert.strictEqual(TasklyUpdateManager.state.latestVersionName, '2.3.0');
-      assert.strictEqual(TasklyUpdateManager.state.latestVersionCode, 150);
+      assert.strictEqual(TasklyUpdateManager.state.latestVersionName, '2.3.1');
+      assert.strictEqual(TasklyUpdateManager.state.latestVersionCode, 151);
 
       const history = TasklyUpdateManager.getReleaseHistory();
-      assert.strictEqual(history.length, 13);
-      assert.strictEqual(history[0].versionCode, 150);
-      assert.strictEqual(history[0].versionName, '2.3.0');
-      assert.strictEqual(history[1].versionCode, 140);
-      assert.strictEqual(history[2].versionCode, 121);
+      assert.strictEqual(history.length, 14);
+      assert.strictEqual(history[0].versionCode, 151);
+      assert.strictEqual(history[0].versionName, '2.3.1');
+      assert.strictEqual(history[1].versionCode, 150);
+      assert.strictEqual(history[2].versionCode, 140);
     });
 
-    test('4. openWhatsNew defaults to latest approved release (v2.3.0 Build 15) when no parameter is passed', () => {
+    test('4. openWhatsNew defaults to latest approved release (v2.3.1 Build 15.1) when no parameter is passed', () => {
       TasklyUpdateManager.setCachedManifest(PROD_MANIFEST);
-      TasklyUpdateManager.state.installedVersionCode = 150;
-      TasklyUpdateManager.state.installedVersionName = '2.3.0';
+      TasklyUpdateManager.state.installedVersionCode = 151;
+      TasklyUpdateManager.state.installedVersionName = '2.3.1';
       TasklyUpdateManager.state.activeWhatsNewVersionCode = null;
 
       TasklyUpdateManager.openWhatsNew();
-      assert.strictEqual(TasklyUpdateManager.state.activeWhatsNewVersionCode, 150);
+      assert.strictEqual(TasklyUpdateManager.state.activeWhatsNewVersionCode, 151);
     });
 
-    test('5. What\'s New version selector populates all 13 releases descending with v2.3.0 at top', () => {
+    test('5. What\'s New version selector populates all 14 releases descending with v2.3.1 at top', () => {
       TasklyUpdateManager.setCachedManifest(PROD_MANIFEST);
-      TasklyUpdateManager.state.installedVersionCode = 150;
-      TasklyUpdateManager.state.installedVersionName = '2.3.0';
-      TasklyUpdateManager.state.activeWhatsNewVersionCode = 150;
+      TasklyUpdateManager.state.installedVersionCode = 151;
+      TasklyUpdateManager.state.installedVersionName = '2.3.1';
+      TasklyUpdateManager.state.activeWhatsNewVersionCode = 151;
 
       const select = global.document.getElementById('select-whats-new-version');
       TasklyUpdateManager.populateWhatsNewVersionSelect();
 
-      assert.strictEqual(select.options.length, 13);
-      assert.strictEqual(select.options[0].value, '150');
+      assert.strictEqual(select.options.length, 14);
+      assert.strictEqual(select.options[0].value, '151');
       assert.ok(select.options[0].textContent.includes('Latest'));
     });
 
     test('6. Anti-stale cache logic: newer manifest updates cache, older manifest is rejected', () => {
-      TasklyUpdateManager.setCachedManifest(PROD_MANIFEST); // code 150
-      assert.strictEqual(TasklyUpdateManager.state.latestVersionCode, 150);
+      TasklyUpdateManager.setCachedManifest(PROD_MANIFEST); // code 151
+      assert.strictEqual(TasklyUpdateManager.state.latestVersionCode, 151);
 
       // Attempt to overwrite with stale v1.8.0 manifest (code 9)
       const staleManifest = {
@@ -213,8 +213,8 @@ describe('Taskly v1.8.0 Build 9 - Critical Bug Fixes and Data Consistency Suite'
         history: [{ version: '1.8.0', versionCode: 9 }]
       };
       TasklyUpdateManager.setCachedManifest(staleManifest);
-      // Must remain at code 150!
-      assert.strictEqual(TasklyUpdateManager.state.latestVersionCode, 150);
+      // Must remain at code 151!
+      assert.strictEqual(TasklyUpdateManager.state.latestVersionCode, 151);
     });
 
     test('7. Future-proofing: Simulating future Build 16 (code 160) manifest automatically makes it top entry without UI code modification', () => {
@@ -449,8 +449,8 @@ describe('Taskly v1.8.0 Build 9 - Critical Bug Fixes and Data Consistency Suite'
   describe('Part 5: Production-Ready Android Build Preparation Configuration', () => {
 
     test('1. android/app/build.gradle specifies versionCode 9 or higher and valid production candidate versionName', () => {
-      assert.match(BUILD_GRADLE, /versionCode\s+(?:9|10|11|12|121|140|150)/);
-      assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.8\.0|1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1|2\.2\.0|2\.3\.0)["']/);
+      assert.match(BUILD_GRADLE, /versionCode\s+(?:9|10|11|12|121|140|150|151)/);
+      assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.8\.0|1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1|2\.2\.0|2\.3\.0|2\.3\.1)["']/);
     });
 
     test('2. public/styles.css includes .workload-custom for Yellow #FACC15 calendar day styling', () => {

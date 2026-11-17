@@ -1,0 +1,21 @@
+# Taskly v2.3.1 (Build 15.1) — Smart Lists / Daily Routines Rendering Fix
+
+Taskly v2.3.1 (Build 15.1) fixes an asynchronous rendering race condition in Smart Lists / Daily Routines where saved habits would occasionally fail to display upon opening the screen, prematurely showing the "No routines yet" empty state. This update introduces explicit loading and error states, background sync re-rendering, tab-switch refresh, and accurate Done/Pending counter synchronization.
+
+### What's New in Build 15.1
+- **Eliminated False Empty-State:** Screen now waits for routine data to load before evaluating whether the list is empty, preventing premature "No routines yet" banners.
+- **Dedicated Loading & Error Feedback:** Added a clean loading spinner during asynchronous fetch and an error banner with a Retry button if network sync fails.
+- **Done / Pending Counter Synchronization:** Counter chips now directly reflect currently rendered routines, ensuring metrics match the routine list at all times.
+- **Tab Activation Auto-Refresh:** Switching back to Smart Lists from other tabs immediately checks and refreshes routine state and daily summaries.
+- **Tomorrow's Routines Consistency:** Immediate list and count updates when managing tomorrow's routines or transitioning dates.
+- **Support & Profile Continuity:** Preserves the floating Taskly Customer Support popup and Notification Settings menu introduced in Build 15.
+
+### Package & Integrity
+- **Version:** 2.3.1
+- **Version Code:** 151
+- **Display Build:** Build 15.1
+- **Package ID:** `com.taskly.app`
+- **File Name:** `taskly-v2.3.1.apk`
+- **File Size:** 17.8 MB (18,644,269 bytes)
+- **SHA-256:** `07bc03bc11c1cfaf4492c781e98a2b2611babb2d13283f2f4050a83130f79e05`
+- **Signing:** Validated Android APK Release Signature (Scheme v2)

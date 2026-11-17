@@ -949,7 +949,7 @@
                     <span class="menu-item-label">Version</span>
                   </div>
                   <div class="menu-item-right-wrap">
-                    <span class="menu-item-val" id="profile-version-badge">v2.3.0</span>
+                    <span class="menu-item-val" id="profile-version-badge">v2.3.1</span>
                     <span class="menu-chevron">›</span>
                   </div>
                 </button>
@@ -1129,6 +1129,20 @@
               <!-- Routine Checklist Items -->
               <div class="smart-routines-list" id="smart-routines-list">
                 <!-- Rendered dynamically -->
+              </div>
+
+              <!-- Loading State -->
+              <div class="smart-loading-state" id="smart-loading-state" style="display: none;">
+                <div class="smart-loading-spinner" aria-hidden="true"></div>
+                <p class="smart-loading-text">Loading your daily routines...</p>
+              </div>
+
+              <!-- Error State -->
+              <div class="smart-error-state" id="smart-error-state" style="display: none;">
+                <div class="smart-error-icon">⚠️</div>
+                <h4 class="smart-error-title">Unable to load routines</h4>
+                <p class="smart-error-desc" id="smart-error-desc">There was a problem loading your routines.</p>
+                <button type="button" class="btn-smart-retry" id="btn-smart-retry-load">↻ Retry</button>
               </div>
 
               <!-- Empty State -->
