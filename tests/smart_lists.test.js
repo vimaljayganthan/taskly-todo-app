@@ -119,9 +119,9 @@ const app = require('../public/app');
 // =============================================================================
 describe('Part 1: Static Architecture and Gradle Configuration', () => {
 
-  test('1. android/app/build.gradle is configured for v2.3.1 Build 15.1 (or v2.3.0, v2.2.0, v2.1.1)', () => {
-    assert.match(BUILD_GRADLE, /versionCode\s+(?:10|11|12|121|140|150|151)/);
-    assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1|2\.2\.0|2\.3\.0|2\.3\.1)["']/);
+  test('1. android/app/build.gradle is configured for v2.3.2 Build 15.2 (or v2.3.1, v2.3.0, v2.2.0, v2.1.1)', () => {
+    assert.match(BUILD_GRADLE, /versionCode\s+(?:10|11|12|121|140|150|151|152)/);
+    assert.match(BUILD_GRADLE, /versionName\s+["'](?:1\.9\.0|2\.0\.0|2\.1\.0|2\.1\.1|2\.2\.0|2\.3\.0|2\.3\.1|2\.3\.2)["']/);
     assert.match(BUILD_GRADLE, /applicationId\s+["']com\.taskly\.app["']/);
   });
 
@@ -783,48 +783,50 @@ describe('Part 10: Build 10 Current Version History & What\'s New Integration Su
     updateMgr.state.latestVersionCode = null;
     updateMgr.state.latestVersionName = null;
     updateMgr.setCachedManifest(PROD_MANIFEST);
-    updateMgr.state.installedVersionName = '2.3.1';
-    updateMgr.state.installedVersionCode = 151;
+    updateMgr.state.installedVersionName = '2.3.2';
+    updateMgr.state.installedVersionCode = 152;
     updateMgr.state.activeWhatsNewVersionCode = null;
     updateMgr.state.updateStatus = 'idle';
   });
 
-  test('1. Production manifests releases/version-manifest.json and public/version-manifest.json are published to v2.3.1 Build 15.1', () => {
-    assert.strictEqual(PROD_MANIFEST.latestVersion, '2.3.1');
-    assert.strictEqual(PROD_MANIFEST.versionCode, 151);
-    assert.strictEqual(PUBLIC_MANIFEST.latestVersion, '2.3.1');
-    assert.strictEqual(PUBLIC_MANIFEST.versionCode, 151);
+  test('1. Production manifests releases/version-manifest.json and public/version-manifest.json are published to v2.3.2 Build 15.2', () => {
+    assert.strictEqual(PROD_MANIFEST.latestVersion, '2.3.2');
+    assert.strictEqual(PROD_MANIFEST.versionCode, 152);
+    assert.strictEqual(PUBLIC_MANIFEST.latestVersion, '2.3.2');
+    assert.strictEqual(PUBLIC_MANIFEST.versionCode, 152);
     assert.deepStrictEqual(PROD_MANIFEST, PUBLIC_MANIFEST);
   });
 
-  test('2. android/app/build.gradle configures versionName 2.3.1 (or 2.3.0, 2.2.0, 2.1.1) and versionCode 151 (or 150, 140, 121)', () => {
-    assert.ok(/versionCode\s+(?:121|140|150|151)\b/.test(BUILD_GRADLE), 'build.gradle defines versionCode 151, 150, 140 or 121');
-    assert.ok(/versionName\s+["'](?:2\.1\.1|2\.2\.0|2\.3\.0|2\.3\.1)["']/.test(BUILD_GRADLE), 'build.gradle defines versionName');
+  test('2. android/app/build.gradle configures versionName 2.3.2 (or 2.3.1, 2.3.0, 2.2.0, 2.1.1) and versionCode 152 (or 151, 150, 140, 121)', () => {
+    assert.ok(/versionCode\s+(?:121|140|150|151|152)\b/.test(BUILD_GRADLE), 'build.gradle defines versionCode 152, 151, 150, 140 or 121');
+    assert.ok(/versionName\s+["'](?:2\.1\.1|2\.2\.0|2\.3\.0|2\.3\.1|2\.3\.2)["']/.test(BUILD_GRADLE), 'build.gradle defines versionName');
   });
 
-  test('3. Decoupling: getApprovedReleaseHistory() strictly returns approved releases from manifest (14 releases, top is v2.3.1)', () => {
+  test('3. Decoupling: getApprovedReleaseHistory() strictly returns approved releases from manifest (15 releases, top is v2.3.2)', () => {
     const approved = updateMgr.getApprovedReleaseHistory();
-    assert.strictEqual(approved.length, 14);
-    assert.strictEqual(approved[0].versionCode, 151);
-    assert.strictEqual(approved[0].versionName, '2.3.1');
+    assert.strictEqual(approved.length, 15);
+    assert.strictEqual(approved[0].versionCode, 152);
+    assert.strictEqual(approved[0].versionName, '2.3.2');
   });
 
-  test('4. Decoupling: getLatestApprovedRelease() strictly returns v2.3.1 Build 15.1', () => {
+  test('4. Decoupling: getLatestApprovedRelease() strictly returns v2.3.2 Build 15.2', () => {
     const latestApproved = updateMgr.getLatestApprovedRelease();
-    assert.strictEqual(latestApproved.versionCode, 151);
-    assert.strictEqual(latestApproved.versionName, '2.3.1');
-    assert.ok(latestApproved.title.includes('Taskly v2.3.1 (Build 15.1)'));
+    assert.strictEqual(latestApproved.versionCode, 152);
+    assert.strictEqual(latestApproved.versionName, '2.3.2');
+    assert.ok(latestApproved.title.includes('Taskly v2.3.2 (Build 15.2)'));
   });
 
-  test('5. getReleaseHistory() returns all 14 releases without duplicates when installed is Build 15.1', () => {
-    updateMgr.state.installedVersionCode = 151;
-    updateMgr.state.installedVersionName = '2.3.1';
+  test('5. getReleaseHistory() returns all 15 releases without duplicates when installed is Build 15.2', () => {
+    updateMgr.state.installedVersionCode = 152;
+    updateMgr.state.installedVersionName = '2.3.2';
     const history = updateMgr.getReleaseHistory();
-    assert.strictEqual(history.length, 14, 'History contains 14 official releases');
-    assert.strictEqual(history[0].versionCode, 151);
-    assert.strictEqual(history[0].versionName, '2.3.1');
-    assert.strictEqual(history[1].versionCode, 150);
-    assert.strictEqual(history[1].versionName, '2.3.0');
+    assert.strictEqual(history.length, 15, 'History contains 15 official releases');
+    assert.strictEqual(history[0].versionCode, 152);
+    assert.strictEqual(history[0].versionName, '2.3.2');
+    assert.strictEqual(history[1].versionCode, 151);
+    assert.strictEqual(history[1].versionName, '2.3.1');
+    assert.strictEqual(history[2].versionCode, 150);
+    assert.strictEqual(history[2].versionName, '2.3.0');
   });
 
   test('6. localInstalledRelease contains complete Smart Lists metadata and feature highlights', () => {
@@ -859,76 +861,76 @@ describe('Part 10: Build 10 Current Version History & What\'s New Integration Su
     assert.ok(Array.isArray(rel.security) && rel.security.length > 0);
   });
 
-  test('7. renderUI() displays v2.3.1 (Build 15.1) as Installed and v2.3.1 (Build 15.1) as Latest Approved', () => {
-    updateMgr.state.installedVersionCode = 151;
-    updateMgr.state.installedVersionName = '2.3.1';
+  test('7. renderUI() displays v2.3.2 (Build 15.2) as Installed and v2.3.2 (Build 15.2) as Latest Approved', () => {
+    updateMgr.state.installedVersionCode = 152;
+    updateMgr.state.installedVersionName = '2.3.2';
     const valInstalled = getMockElement('val-installed-version');
     const valLatest = getMockElement('val-latest-version');
     const whatsNewSub = getMockElement('whats-new-banner-subtitle');
 
     updateMgr.renderUI();
 
-    assert.strictEqual(valInstalled.textContent, 'v2.3.1 (Build 15.1)', 'Installed version is v2.3.1 (Build 15.1)');
-    assert.strictEqual(valLatest.textContent, 'v2.3.1 (Build 15.1)', 'Latest approved is v2.3.1 (Build 15.1)');
-    assert.ok(whatsNewSub.textContent.includes('v2.3.1'));
+    assert.strictEqual(valInstalled.textContent, 'v2.3.2 (Build 15.2)', 'Installed version is v2.3.2 (Build 15.2)');
+    assert.strictEqual(valLatest.textContent, 'v2.3.2 (Build 15.2)', 'Latest approved is v2.3.2 (Build 15.2)');
+    assert.ok(whatsNewSub.textContent.includes('v2.3.2'));
   });
 
-  test('8. Release History rendering labels Build 15.1 as "🌟 Latest & Installed" and lists all 14 releases', () => {
-    updateMgr.state.installedVersionCode = 151;
-    updateMgr.state.installedVersionName = '2.3.1';
+  test('8. Release History rendering labels Build 15.2 as "🌟 Latest & Installed" and lists all 15 releases', () => {
+    updateMgr.state.installedVersionCode = 152;
+    updateMgr.state.installedVersionName = '2.3.2';
     updateMgr.state.historyExpanded = true;
     const historyList = getMockElement('version-history-list');
 
     updateMgr.renderUI();
 
-    assert.strictEqual(historyList.children.length, 14, 'History renders 14 items');
-    const itemBuild151 = historyList.children[0];
-    const itemBuild15 = historyList.children[1];
+    assert.strictEqual(historyList.children.length, 15, 'History renders 15 items');
+    const itemBuild152 = historyList.children[0];
+    const itemBuild151 = historyList.children[1];
+
+    // Build 15.2 checks
+    assert.ok(itemBuild152.classList.contains('history-item-latest'));
+    assert.ok(itemBuild152.deepText.includes('v2.3.2 (Build 15.2)'));
+    assert.ok(itemBuild152.deepText.includes('🌟 Latest & Installed'));
 
     // Build 15.1 checks
-    assert.ok(itemBuild151.classList.contains('history-item-latest'));
+    assert.ok(!itemBuild151.classList.contains('history-item-latest'));
+    assert.ok(!itemBuild151.classList.contains('history-item-current-installed'));
     assert.ok(itemBuild151.deepText.includes('v2.3.1 (Build 15.1)'));
-    assert.ok(itemBuild151.deepText.includes('🌟 Latest & Installed'));
-
-    // Build 15 checks
-    assert.ok(!itemBuild15.classList.contains('history-item-latest'));
-    assert.ok(!itemBuild15.classList.contains('history-item-current-installed'));
-    assert.ok(itemBuild15.deepText.includes('v2.3.0 (Build 15)'));
   });
 
-  test('9. openWhatsNew() defaults to v2.3.1 Build 15.1 and renders release notes', () => {
-    updateMgr.state.installedVersionCode = 151;
-    updateMgr.state.installedVersionName = '2.3.1';
+  test('9. openWhatsNew() defaults to v2.3.2 Build 15.2 and renders release notes', () => {
+    updateMgr.state.installedVersionCode = 152;
+    updateMgr.state.installedVersionName = '2.3.2';
     updateMgr.openWhatsNew();
-    assert.strictEqual(updateMgr.state.activeWhatsNewVersionCode, 151);
+    assert.strictEqual(updateMgr.state.activeWhatsNewVersionCode, 152);
 
     const heroPill = getMockElement('whats-new-hero-version-pill');
     const heroTitle = getMockElement('whats-new-hero-title');
     const heroSummary = getMockElement('whats-new-hero-summary');
     const diffText = getMockElement('whats-new-diff-text');
 
-    assert.strictEqual(heroPill.textContent, 'Version 2.3.1 (Build 15.1)');
+    assert.strictEqual(heroPill.textContent, 'Version 2.3.2 (Build 15.2)');
     assert.ok(heroTitle.textContent.includes('Smart Lists') || heroTitle.textContent.includes('Routine'));
     assert.ok(heroSummary.textContent.includes('Smart Lists') || heroSummary.textContent.includes('Routine'));
-    assert.ok(diffText.innerHTML.includes('You are running <strong>v2.3.1 (Build 15.1)</strong>'));
+    assert.ok(diffText.innerHTML.includes('You are running <strong>v2.3.2 (Build 15.2)</strong>'));
   });
 
-  test('10. populateWhatsNewVersionSelect() labels Build 15.1 as "Latest & Installed" and lists all 14 releases', () => {
-    updateMgr.state.installedVersionCode = 151;
-    updateMgr.state.installedVersionName = '2.3.1';
+  test('10. populateWhatsNewVersionSelect() labels Build 15.2 as "Latest & Installed" and lists all 15 releases', () => {
+    updateMgr.state.installedVersionCode = 152;
+    updateMgr.state.installedVersionName = '2.3.2';
     const select = getMockElement('select-whats-new-version');
     updateMgr.populateWhatsNewVersionSelect();
 
-    assert.strictEqual(select.children.length, 14, 'Select has 14 options');
-    assert.strictEqual(select.children[0].value, '151');
-    assert.ok(select.children[0].textContent.includes('v2.3.1 (Build 15.1) — Latest & Installed'));
-    assert.strictEqual(select.children[1].value, '150');
-    assert.ok(select.children[1].textContent.includes('v2.3.0 (Build 15)'));
+    assert.strictEqual(select.children.length, 15, 'Select has 15 options');
+    assert.strictEqual(select.children[0].value, '152');
+    assert.ok(select.children[0].textContent.includes('v2.3.2 (Build 15.2) — Latest & Installed'));
+    assert.strictEqual(select.children[1].value, '151');
+    assert.ok(select.children[1].textContent.includes('v2.3.1 (Build 15.1)'));
   });
 
   test('11. What\'s New navigation: user can switch from latest build to Build 9 and view v1.8.0 notes', () => {
     updateMgr.openWhatsNew();
-    assert.strictEqual(updateMgr.state.activeWhatsNewVersionCode, 151);
+    assert.strictEqual(updateMgr.state.activeWhatsNewVersionCode, 152);
 
     // Switch to Build 9
     updateMgr.renderWhatsNew(9);
@@ -976,15 +978,15 @@ describe('Part 10: Build 10 Current Version History & What\'s New Integration Su
     const history = updateMgr.getReleaseHistory();
     const futureEntries = history.filter(r => parseInt(r.versionCode, 10) === 160);
     assert.strictEqual(futureEntries.length, 1, 'Exactly one future entry exists (no duplicate)');
-    assert.strictEqual(history.length, 15);
+    assert.strictEqual(history.length, 16);
   });
 
-  test('14. Update check safety: isUpdateAvailable(151, 151) returns false and app reports up to date', () => {
-    const hasUpdate = updateMgr.isUpdateAvailable(151, 151);
-    assert.strictEqual(hasUpdate, false, 'No update available since installed 151 == remote 151');
+  test('14. Update check safety: isUpdateAvailable(152, 152) returns false and app reports up to date', () => {
+    const hasUpdate = updateMgr.isUpdateAvailable(152, 152);
+    assert.strictEqual(hasUpdate, false, 'No update available since installed 152 == remote 152');
 
-    updateMgr.state.installedVersionCode = 151;
-    updateMgr.state.latestVersionCode = 151;
+    updateMgr.state.installedVersionCode = 152;
+    updateMgr.state.latestVersionCode = 152;
     updateMgr.setCachedManifest(PROD_MANIFEST);
 
     // Mock fetch for local update check

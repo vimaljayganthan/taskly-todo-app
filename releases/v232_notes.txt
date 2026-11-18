@@ -1,0 +1,27 @@
+# Taskly v2.3.2 (Build 15.2) — Smart Lists Responsive UI/UX & Cross-Device Improvements
+
+Taskly v2.3.2 (Build 15.2) delivers a comprehensive responsive UI/UX optimization for Smart Lists / Daily Routines, ensuring seamless usability across compact phones, standard displays, flagships, foldables, and tablets.
+
+### What's New in Build 15.2
+- **Optimized Smart Lists Layout:** Refined empty-state layout, card padding, and vertical spacing for compact, standard and large screens.
+- **Eliminated Duplicate Actions:** Removed redundant Add Routine trigger when zero routines exist, preserving a single focused call to action.
+- **Optimized Streak & Statistics:** Improved metric alignment, habit target wrap, and streak card proportions across viewports.
+- **Improved Tomorrow's Routines:** Balanced section margins, compact cards, and responsive checklist layout.
+- **Bottom Navigation Clearance:** Guaranteed safe clearance over Android 3-button and gesture navigation bars.
+- **Android Safe-Area Handling:** Full support for display cutouts, camera punch holes, dynamic notches, and Android 14/15 edge-to-edge guidelines.
+- **Responsive Routine Cards:** Enhanced long routine name wrapping and multi-column action layout resilience.
+- **Header & Title Card Wrapping:** Added adaptive wrapping to prevent button clipping under high font scaling.
+- **Landscape & Foldable Support:** Compact paddings and full-width navigation matching foldable and landscape displays.
+- **Accessibility & 200% Font Scaling:** Certified full layout resilience and zero text clipping up to 200% system font scaling.
+- **Multi-Theme Compatibility:** Seamless contrast and design consistency across Day, Dark, Pet, and Pastel themes.
+- **Preserved Productivity Core:** Retains all routine management, productivity streak analytics, Taskly Support popup, and Notification Settings functionality.
+
+### Package & Integrity
+- **Version:** 2.3.2
+- **Version Code:** 152
+- **Display Build:** Build 15.2
+- **Package ID:** `com.taskly.app`
+- **File Name:** `taskly-v2.3.2.apk`
+- **File Size:** 17.8 MB (18,645,252 bytes)
+- **SHA-256:** `bb5c1a0e2801b55f6f67f9e621711c3f4d313310a0ef4221cf5611c9ab8346a5`
+- **Signing:** Validated Android APK Release Signature (Scheme v2)

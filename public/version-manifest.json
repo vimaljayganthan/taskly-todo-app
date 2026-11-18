@@ -1,18 +1,58 @@
 {
-  "latestVersion": "2.3.1",
-  "versionCode": 151,
-  "displayBuild": "15.1",
-  "buildLabel": "Build 15.1",
-  "title": "Taskly v2.3.1 (Build 15.1) – Smart Lists / Daily Routines Rendering Fix",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.1-b15.1/taskly-v2.3.1.apk",
-  "releaseNotes": "# Taskly v2.3.1 (Build 15.1) — Smart Lists / Daily Routines Rendering Fix\n\nTaskly v2.3.1 (Build 15.1) fixes an asynchronous rendering race condition in Smart Lists / Daily Routines where saved habits would intermittently fail to display upon opening the screen, prematurely showing the \"No routines yet\" empty state. This update introduces explicit loading and error states, background sync re-rendering, tab-switch refresh, and accurate Done/Pending counter synchronization.\n\n### Key Fixes & Enhancements\n- Fixed premature \"No routines yet\" empty-state rendering on initial load.\n- Added visual loading state with spinner during routine fetch.\n- Added dedicated error state with retry action.\n- Fixed Done/Pending counter chip synchronization with rendered list.\n- Fixed tomorrow routine list and counter updates.\n- Added auto-refresh when switching tabs to Smart Lists.",
-  "releaseDate": "2026-11-17",
+  "latestVersion": "2.3.2",
+  "versionCode": 152,
+  "displayBuild": "15.2",
+  "buildLabel": "Build 15.2",
+  "title": "Taskly v2.3.2 (Build 15.2) – Smart Lists Responsive UI/UX & Cross-Device Improvements",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.2-b15.2/taskly-v2.3.2.apk",
+  "releaseNotes": "# Taskly v2.3.2 (Build 15.2) — Smart Lists Responsive UI/UX & Cross-Device Improvements\n\nTaskly v2.3.2 (Build 15.2) delivers a comprehensive responsive UI/UX optimization for Smart Lists / Daily Routines, ensuring seamless usability across compact phones, standard displays, flagships, foldables, and tablets.\n\n### Key Enhancements & Fixes\n- Optimized Smart Lists for compact, standard and large screens.\n- Improved empty-state layout and routine creation experience.\n- Reduced excessive spacing and improved card alignment.\n- Fixed bottom navigation and Android safe-area clearance.\n- Improved routine cards and long-text wrapping.\n- Improved landscape, foldable and tablet layouts.\n- Improved accessibility and large font scaling.\n- Improved compatibility across all four Taskly themes.\n- Preserved existing routine management and productivity functionality.",
+  "releaseDate": "2026-11-18",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.8 MB",
-  "fileSizeBytes": 18644269,
-  "sha256": "07bc03bc11c1cfaf4492c781e98a2b2611babb2d13283f2f4050a83130f79e05",
+  "fileSizeBytes": 18645252,
+  "sha256": "bb5c1a0e2801b55f6f67f9e621711c3f4d313310a0ef4221cf5611c9ab8346a5",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.3.2",
+      "versionName": "2.3.2",
+      "versionCode": 152,
+      "releaseDate": "2026-11-18",
+      "displayBuild": "15.2",
+      "buildLabel": "Build 15.2",
+      "title": "Taskly v2.3.2 (Build 15.2) – Smart Lists Responsive UI/UX & Cross-Device Improvements",
+      "summary": "# Taskly v2.3.2 (Build 15.2) — Smart Lists Responsive UI/UX & Cross-Device Improvements\n\nTaskly v2.3.2 (Build 15.2) delivers a comprehensive responsive UI/UX optimization for Smart Lists / Daily Routines, ensuring seamless usability across compact phones, standard displays, flagships, foldables, and tablets.\n\n### Key Enhancements & Fixes\n- Optimized Smart Lists for compact, standard and large screens.\n- Improved empty-state layout and routine creation experience.\n- Reduced excessive spacing and improved card alignment.\n- Fixed bottom navigation and Android safe-area clearance.\n- Improved routine cards and long-text wrapping.\n- Improved landscape, foldable and tablet layouts.\n- Improved accessibility and large font scaling.\n- Improved compatibility across all four Taskly themes.\n- Preserved existing routine management and productivity functionality.",
+      "features": [
+        "Optimized Smart Lists for compact, standard and large screens",
+        "Improved empty-state layout and routine creation experience",
+        "Eliminated duplicate Add Routine actions when zero routines exist",
+        "Responsive routine cards with resilient multi-line text wrapping",
+        "Full compatibility across Day, Dark, Pet, and Pastel themes"
+      ],
+      "improvements": [
+        "Reduced excessive spacing and improved card alignment across all devices",
+        "Adaptive header wrapping under high accessibility font scaling",
+        "Responsive layouts for landscape orientation and foldable displays",
+        "Preserved existing routine management and productivity functionality"
+      ],
+      "performance": [
+        "Ultra-lightweight CSS flexbox and grid layouts without layout thrashing",
+        "Instant responsive breakpoint reflow with zero horizontal scrollbars"
+      ],
+      "fixes": [
+        "Fixed bottom navigation and Android safe-area clearance across 3-button and gesture navigation",
+        "Eliminated horizontal card clipping under 200% font scaling on narrow viewports"
+      ],
+      "security": [
+        "Cryptographically signed release APK with verified SHA-256 integrity",
+        "End-to-end token validation preserved across all routine operations"
+      ],
+      "apkFileName": "taskly-v2.3.2.apk",
+      "fileSize": "17.8 MB",
+      "fileSizeBytes": 18645252,
+      "sha256": "bb5c1a0e2801b55f6f67f9e621711c3f4d313310a0ef4221cf5611c9ab8346a5",
+      "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.2-b15.2/taskly-v2.3.2.apk"
+    },
     {
       "version": "2.3.1",
       "versionName": "2.3.1",

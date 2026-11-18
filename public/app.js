@@ -6209,8 +6209,8 @@ const TasklyUpdateManager = {
     productionHost: 'taskly-todo-app-4z1c.vercel.app',
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
-    previewVersionName: '2.3.1',
-    previewVersionCode: 151,
+    previewVersionName: '2.3.2',
+    previewVersionCode: 152,
     expectedPackageName: 'com.taskly.app',
     autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
     storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
@@ -6219,8 +6219,8 @@ const TasklyUpdateManager = {
   state: {
     installedVersionName: '1.5.0',
     installedVersionCode: 6,
-    previewVersionName: '2.3.1',
-    previewVersionCode: 151,
+    previewVersionName: '2.3.2',
+    previewVersionCode: 152,
     isNative: false,
     platform: 'web',
     deploymentEnvironment: 'production_web',
@@ -6516,6 +6516,7 @@ const TasklyUpdateManager = {
       return rel.displayBuild || rel.buildLabel.replace(/^Build\s+/i, '');
     }
     const num = parseInt(code, 10);
+    if (num === 152) return '15.2';
     if (num === 151) return '15.1';
     if (num === 150) return '15';
     if (num === 140) return '14';
@@ -6785,8 +6786,8 @@ const TasklyUpdateManager = {
       this.state.installedVersionName = null;
       this.state.installedVersionCode = null;
     } else if (env === 'production_web') {
-      this.state.webVersionName = '2.3.1';
-      this.state.webVersionCode = 151;
+      this.state.webVersionName = '2.3.2';
+      this.state.webVersionCode = 152;
       if (!this.state.installedVersionName) {
         this.state.installedVersionName = null;
         this.state.installedVersionCode = null;
@@ -6812,22 +6813,22 @@ const TasklyUpdateManager = {
     if (badge) {
       const env = this.detectDeploymentEnvironment();
       if (env === 'vercel_preview') {
-        badge.textContent = `v${this.state.previewVersionName || '2.3.1'} (Preview)`;
-        badge.title = 'Web Browser Preview (Build 15.1)';
+        badge.textContent = `v${this.state.previewVersionName || '2.3.2'} (Preview)`;
+        badge.title = 'Web Browser Preview (Build 15.2)';
       } else if (env === 'local_dev') {
-        badge.textContent = 'v2.3.1 (Dev)';
+        badge.textContent = 'v2.3.2 (Dev)';
         badge.title = 'Local Development Build';
       } else if (env === 'native_android') {
-        badge.textContent = `v${this.state.installedVersionName || '2.3.1'}`;
+        badge.textContent = `v${this.state.installedVersionName || '2.3.2'}`;
         badge.title = 'Android Native Application';
       } else if (env === 'production_web') {
-        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.1');
+        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.2');
         badge.title = 'Taskly Production Web';
       } else if (env === 'untrusted_web') {
         badge.textContent = 'Untrusted';
         badge.title = 'Unrecognized / Unsupported Domain';
       } else {
-        badge.textContent = 'v2.3.1';
+        badge.textContent = 'v2.3.2';
         badge.title = 'Taskly Web';
       }
     }
@@ -7374,7 +7375,7 @@ const TasklyUpdateManager = {
       if (env === 'untrusted_web') {
         msg = 'Taskly Notice:\n\nThis domain is not a recognized Taskly host.\nUpdates and downloads are permanently disabled on untrusted domains.';
       } else if (env === 'vercel_preview') {
-        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.1 Build 15.1).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
+        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.2 Build 15.2).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
       } else {
         msg = 'Taskly Web Notice:\n\nIn-app APK installation is available exclusively on Android native devices.\nWeb applications update automatically through deployment.';
       }
@@ -7501,8 +7502,8 @@ const TasklyUpdateManager = {
       if (valInstalled) valInstalled.textContent = `v${prevName} (Build ${prevBuild})`;
     } else if (env === 'production_web') {
       if (labelInstalled) labelInstalled.textContent = 'Web Version';
-      const webName = this.state.webVersionName || '2.3.1';
-      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15.1';
+      const webName = this.state.webVersionName || '2.3.2';
+      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15.2';
       if (valInstalled) valInstalled.textContent = `v${webName} (Build ${webBuild})`;
     } else if (env === 'local_dev') {
       if (labelInstalled) labelInstalled.textContent = 'Local Build';
@@ -11168,12 +11169,29 @@ const SmartListsManager = {
       list.appendChild(card);
     });
 
+    const addBox = document.getElementById('smart-add-routine-box');
+    const formAddRoutine = document.getElementById('form-smart-add-routine');
+    const btnToggleAdd = document.getElementById('btn-toggle-add-routine');
+
     if (visibleCount === 0) {
       if (emptyState) emptyState.style.display = 'flex';
       if (progressText) progressText.textContent = '0 / 0 completed';
       if (footerSub) footerSub.textContent = 'Add your routines to generate reports';
+      // When 0 routines exist: avoid redundant "+ Add Routine" action above empty state
+      if (addBox) {
+        if (formAddRoutine && formAddRoutine.style.display === 'flex') {
+          addBox.style.display = 'block';
+          if (btnToggleAdd) btnToggleAdd.style.display = 'none';
+        } else {
+          addBox.style.display = 'none';
+        }
+      }
     } else {
       if (emptyState) emptyState.style.display = 'none';
+      if (addBox) addBox.style.display = 'block';
+      if (btnToggleAdd && (!formAddRoutine || formAddRoutine.style.display !== 'flex')) {
+        btnToggleAdd.style.display = 'flex';
+      }
       const total = visibleCount;
       const rate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
       if (progressText) {
@@ -12892,9 +12910,11 @@ function setupEventListeners() {
   const btnCancelAddRoutine = document.getElementById('btn-cancel-add-routine');
   const formAddRoutine = document.getElementById('form-smart-add-routine');
   const inputAddRoutine = document.getElementById('input-smart-routine-title');
+  const addRoutineBox = document.getElementById('smart-add-routine-box');
 
   if (btnToggleAddRoutine) {
     btnToggleAddRoutine.addEventListener('click', () => {
+      if (addRoutineBox) addRoutineBox.style.display = 'block';
       if (formAddRoutine) {
         formAddRoutine.style.display = 'flex';
         btnToggleAddRoutine.style.display = 'none';
@@ -12904,6 +12924,7 @@ function setupEventListeners() {
   }
   if (btnEmptyAddRoutine) {
     btnEmptyAddRoutine.addEventListener('click', () => {
+      if (addRoutineBox) addRoutineBox.style.display = 'block';
       if (formAddRoutine) {
         formAddRoutine.style.display = 'flex';
         if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'none';
@@ -12917,7 +12938,13 @@ function setupEventListeners() {
         formAddRoutine.style.display = 'none';
         formAddRoutine.reset();
       }
-      if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'flex';
+      const routines = (SmartListsManager && SmartListsManager.state && SmartListsManager.state.routines) || [];
+      if (routines.length === 0) {
+        if (addRoutineBox) addRoutineBox.style.display = 'none';
+      } else {
+        if (addRoutineBox) addRoutineBox.style.display = 'block';
+        if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'flex';
+      }
     });
   }
   if (formAddRoutine) {
@@ -12929,6 +12956,7 @@ function setupEventListeners() {
         formAddRoutine.style.display = 'none';
         formAddRoutine.reset();
       }
+      if (addRoutineBox) addRoutineBox.style.display = 'block';
       if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'flex';
     });
   }
