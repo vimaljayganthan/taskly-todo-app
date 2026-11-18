@@ -9,6 +9,12 @@
   color-scheme: light;
   --theme-name: "Light Mode";
 
+  /* Dynamic Viewport & OEM Compatibility Variables */
+  --app-height: 100vh;
+  --vh: 1vh;
+  --font-scale-factor: 1;
+  --oem-bottom-inset-extra: 0px;
+
   /* Light Mode Palette */
   --app-bg: #F0F9FF;
   --bg-page: #F8FAFC;
@@ -602,6 +608,7 @@ body.keyboard-open #main-flow {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  touch-action: pan-y;
   animation: fadeIn 0.22s ease;
 }
 
@@ -3372,6 +3379,7 @@ body.onboarding-active .desktop-header,
   max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   background: var(--surface);
   border-radius: var(--radius-xl);
   padding: 24px;
@@ -9822,7 +9830,7 @@ html {
   min-height: 100%;
   width: 100%;
   box-sizing: border-box;
-  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -9835,6 +9843,7 @@ html {
   gap: 10px;
   box-sizing: border-box;
   min-width: 0;
+  touch-action: pan-y;
 }
 
 /* Smart Lists Header Navigation */
@@ -14282,6 +14291,122 @@ html {
 [data-theme="pastel"] .support-modal-closing {
   color: #6D28D9 !important;
 }
+
+/* ==========================================================================
+   Universal Android Device-Adaptive UI Compatibility Layer
+   ========================================================================== */
+
+/* 1. OnePlus / OPPO / realme (ColorOS & OxygenOS) */
+[data-device-oem="oneplus"],
+[data-device-oem="oppo"],
+[data-device-oem="realme"] {
+  -webkit-overflow-scrolling: touch;
+}
+[data-device-oem="oneplus"] .smart-lists-wrapper,
+[data-device-oem="oppo"] .smart-lists-wrapper,
+[data-device-oem="realme"] .smart-lists-wrapper {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+[data-device-oem="oneplus"] #tab-smart-lists,
+[data-device-oem="oppo"] #tab-smart-lists,
+[data-device-oem="realme"] #tab-smart-lists {
+  padding-bottom: calc(114px + env(safe-area-inset-bottom, 0px));
+}
+[data-device-oem="oneplus"] .bottom-nav,
+[data-device-oem="oppo"] .bottom-nav,
+[data-device-oem="realme"] .bottom-nav {
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+}
+
+/* 2. Xiaomi / Redmi / POCO (MIUI & HyperOS) */
+[data-device-oem="xiaomi"],
+[data-device-oem="redmi"],
+[data-device-oem="poco"] {
+  /* Prevent MIUI dark mode force inversion on Light/Day theme */
+  color-scheme: light !important;
+}
+[data-device-oem="xiaomi"] .smart-routine-card,
+[data-device-oem="redmi"] .smart-routine-card,
+[data-device-oem="poco"] .smart-routine-card,
+[data-device-oem="xiaomi"] .smart-habit-streak-card,
+[data-device-oem="redmi"] .smart-habit-streak-card,
+[data-device-oem="poco"] .smart-habit-streak-card {
+  /* Prevent subpixel text blurriness during MIUI WebView hardware compositing */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* 3. Samsung (One UI) */
+[data-device-oem="samsung"] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 4. Vivo (Funtouch / OriginOS) */
+[data-device-oem="vivo"] .smart-lists-header-bar {
+  padding-top: max(4px, env(safe-area-inset-top, 0px));
+}
+
+/* 5. Motorola (My UX) */
+[data-device-oem="motorola"] .bottom-nav {
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+
+/* 6. Universal Responsive Fluid Layout Rules (Prioritized over OEM overrides) */
+[data-viewport-category="compact"] .smart-lists-title-card {
+  padding: 10px 12px;
+  gap: 8px;
+}
+[data-viewport-category="compact"] .smart-lists-heading {
+  font-size: 1.1rem;
+}
+[data-viewport-category="compact"] .smart-habit-metrics-grid {
+  gap: 6px;
+  padding: 6px 4px;
+}
+[data-viewport-category="compact"] .routine-title {
+  font-size: 0.8125rem;
+}
+
+/* Large and X-Large Font Scale adaptations (150% - 200%) */
+[data-font-scale="large"] .smart-lists-header-bar,
+[data-font-scale="xlarge"] .smart-lists-header-bar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+[data-font-scale="large"] .smart-lists-title-row,
+[data-font-scale="xlarge"] .smart-lists-title-row {
+  flex-wrap: wrap;
+}
+[data-font-scale="large"] .streak-hero-row,
+[data-font-scale="xlarge"] .streak-hero-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+[data-font-scale="large"] .streak-flame-stat,
+[data-font-scale="xlarge"] .streak-flame-stat {
+  flex: 1 1 100%;
+}
+[data-font-scale="large"] .smart-habit-metrics-grid,
+[data-font-scale="xlarge"] .smart-habit-metrics-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+[data-font-scale="large"] .smart-habit-metrics-grid .habit-metric-box:last-child,
+[data-font-scale="xlarge"] .smart-habit-metrics-grid .habit-metric-box:last-child {
+  grid-column: span 2;
+}
+[data-font-scale="xlarge"] .smart-routine-card {
+  flex-wrap: wrap;
+  padding: 10px;
+}
+[data-font-scale="xlarge"] .smart-routine-actions {
+  width: 100%;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
 
 
 

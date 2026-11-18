@@ -752,7 +752,13 @@ function formatDateFriendly(dateStr) {
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', async () => {
     loadStoredPreferences();
-    applyTheme(state.theme);
+    ThemeManager.init();
+
+    try {
+      const deviceProfile = await DeviceInfoService.getProfile();
+      ResponsiveLayoutManager.init(deviceProfile);
+    } catch (_) {}
+
     setupEventListeners();
     setupAndroidKeyboardAndViewportHandlers();
     initAddTaskDateTime();
@@ -1238,6 +1244,444 @@ function applyTheme(theme = 'light') {
     localStorage.setItem('taskly_theme', normalized);
   } catch (_) {}
 }
+
+// ==========================================================================
+// ThemeManager: Encapsulated & Decoupled Theme System
+// Guarantees user theme preference is never altered by OEM/device detection
+// ==========================================================================
+const ThemeManager = {
+  validThemes: ['light', 'day', 'dark', 'pet', 'pastel'],
+
+  getTheme() {
+    return state.theme || 'light';
+  },
+
+  setTheme(theme) {
+    return applyTheme(theme);
+  },
+
+  getAvailableThemes() {
+    return [...this.validThemes];
+  },
+
+  init() {
+    loadStoredPreferences();
+    applyTheme(state.theme);
+  },
+
+  /**
+   * Validate that device detection or OEM properties NEVER alter the active theme.
+   */
+  assertThemeIntegrity(expectedTheme) {
+    const currentTheme = this.getTheme();
+    const docTheme = typeof document !== 'undefined' ? document.documentElement.getAttribute('data-theme') : null;
+    return (currentTheme === expectedTheme) && (!docTheme || docTheme === expectedTheme);
+  }
+};
+
+// ==========================================================================
+// DeviceInfoService: Centralized Android & Cross-Platform Device Detection
+// ==========================================================================
+const DeviceInfoService = {
+  _cachedProfile: null,
+  _mockNativeProfile: null,
+
+  setMockNativeProfile(profile) {
+    this._mockNativeProfile = profile;
+    this._cachedProfile = null;
+  },
+
+  clearCache() {
+    this._cachedProfile = null;
+    this._mockNativeProfile = null;
+  },
+
+  /**
+   * Detect device profile via native Capacitor bridge or browser/WebView fallback.
+   * @param {boolean} forceRefresh - If true, re-queries native bridge and recalculates.
+   * @returns {Promise<Object>} DeviceProfile
+   */
+  async getProfile(forceRefresh = false) {
+    if (this._cachedProfile && !forceRefresh) {
+      this.updateViewportMetrics(this._cachedProfile);
+      return this._cachedProfile;
+    }
+
+    let nativeProfile = this._mockNativeProfile;
+    const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor?.Plugins);
+
+    if (!nativeProfile && isCapacitor && window.Capacitor.Plugins.DeviceCompat?.getDeviceProfile) {
+      try {
+        nativeProfile = await window.Capacitor.Plugins.DeviceCompat.getDeviceProfile();
+      } catch (err) {
+        // Fallback gracefully to web/UA heuristics
+      }
+    }
+
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+    const platformStr = (typeof navigator !== 'undefined' && (navigator.userAgentData?.platform || navigator.platform)) || '';
+
+    // 1. Operating System detection
+    let os = 'unknown';
+    if (/android/i.test(ua) || (nativeProfile && nativeProfile.platform === 'android')) {
+      os = 'android';
+    } else if (/iphone|ipad|ipod/i.test(ua)) {
+      os = 'ios';
+    } else if (/macintosh|mac os x/i.test(ua) || /mac/i.test(platformStr)) {
+      os = 'macos';
+    } else if (/windows/i.test(ua) || /win/i.test(platformStr)) {
+      os = 'windows';
+    } else if (/linux/i.test(ua) || /linux/i.test(platformStr)) {
+      os = 'linux';
+    }
+
+    // 2. Manufacturer & Model detection
+    const rawManufacturer = nativeProfile?.manufacturer || this.detectManufacturerFromUA(ua) || 'Generic';
+    const rawBrand = nativeProfile?.brand || rawManufacturer;
+    const model = nativeProfile?.model || this.detectModelFromUA(ua) || 'Standard Device';
+
+    // 3. Normalized OEM Key
+    const normalizedOEM = this.normalizeOEM(rawManufacturer, rawBrand, model);
+
+    // 4. Android Version and SDK
+    const androidVersion = nativeProfile?.androidVersion || this.detectAndroidVersionFromUA(ua) || null;
+    const sdkInt = nativeProfile?.sdkInt || (androidVersion ? parseInt(androidVersion, 10) + 20 : null);
+
+    // 5. Viewport and Display Metrics
+    const screenWidth = typeof window !== 'undefined' && window.screen ? window.screen.width : (nativeProfile?.screenWidthPixels || 390);
+    const screenHeight = typeof window !== 'undefined' && window.screen ? window.screen.height : (nativeProfile?.screenHeightPixels || 844);
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 390;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 844;
+    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : (nativeProfile?.density || 1);
+
+    // 6. Font Scale estimation
+    const fontScale = this.estimateFontScale();
+
+    // 7. Orientation
+    const orientation = viewportWidth > viewportHeight ? 'landscape' : 'portrait';
+
+    // 8. Safe-Area Insets
+    const safeAreaInsets = this.measureSafeAreaInsets();
+
+    const isNativeAndroid = (isCapacitor || (nativeProfile && nativeProfile.platform === 'android')) && (os === 'android');
+
+    const profile = {
+      manufacturer: normalizedOEM,
+      rawManufacturer,
+      brand: rawBrand,
+      model,
+      product: nativeProfile?.product || 'taskly',
+      androidVersion,
+      sdkInt,
+      os,
+      platform: isNativeAndroid ? 'native_android' : 'web',
+      screenWidth,
+      screenHeight,
+      viewportWidth,
+      viewportHeight,
+      devicePixelRatio: dpr,
+      fontScale,
+      orientation,
+      safeAreaInsets
+    };
+
+    this._cachedProfile = profile;
+    return profile;
+  },
+
+  /**
+   * Synchronous getter for current cached profile or instant fallback.
+   */
+  getProfileSync() {
+    if (this._cachedProfile) {
+      this.updateViewportMetrics(this._cachedProfile);
+      return this._cachedProfile;
+    }
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+    const raw = this._mockNativeProfile?.manufacturer || this.detectManufacturerFromUA(ua);
+    const brand = this._mockNativeProfile?.brand || raw;
+    const model = this._mockNativeProfile?.model || this.detectModelFromUA(ua) || 'Standard Device';
+    const normalizedOEM = this.normalizeOEM(raw, brand, model);
+    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 390;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 844;
+    const isCapacitor = typeof window !== 'undefined' && !!(window.Capacitor?.Plugins);
+
+    return {
+      manufacturer: normalizedOEM,
+      rawManufacturer: raw || 'Generic',
+      brand: brand || 'Generic',
+      model,
+      product: this._mockNativeProfile?.product || 'taskly',
+      androidVersion: this._mockNativeProfile?.androidVersion || this.detectAndroidVersionFromUA(ua),
+      sdkInt: this._mockNativeProfile?.sdkInt || null,
+      os: /android/i.test(ua) ? 'android' : 'web',
+      platform: isCapacitor ? 'native_android' : 'web',
+      screenWidth: typeof window !== 'undefined' && window.screen ? window.screen.width : 390,
+      screenHeight: typeof window !== 'undefined' && window.screen ? window.screen.height : 844,
+      viewportWidth,
+      viewportHeight,
+      devicePixelRatio: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+      fontScale: this.estimateFontScale(),
+      orientation: viewportWidth > viewportHeight ? 'landscape' : 'portrait',
+      safeAreaInsets: this.measureSafeAreaInsets()
+    };
+  },
+
+  detectManufacturerFromUA(ua) {
+    if (!ua) return 'Generic';
+    if (/oneplus|one\s*plus/i.test(ua)) return 'OnePlus';
+    if (/realme/i.test(ua)) return 'realme';
+    if (/poco\b/i.test(ua)) return 'POCO';
+    if (/redmi\b/i.test(ua)) return 'Redmi';
+    if (/xiaomi|miui|\bmi\s/i.test(ua)) return 'Xiaomi';
+    if (/samsung|sm-[a-z0-9]+/i.test(ua)) return 'Samsung';
+    if (/vivo\b/i.test(ua)) return 'Vivo';
+    if (/oppo\b/i.test(ua)) return 'OPPO';
+    if (/motorola|moto\s/i.test(ua)) return 'Motorola';
+    if (/pixel/i.test(ua)) return 'Google';
+    return 'Generic';
+  },
+
+  detectModelFromUA(ua) {
+    if (!ua) return 'Standard Device';
+    const match = ua.match(/\(([^;)]+;\s*[^;)]+;?\s*)([^)]+)\)/);
+    if (match && match[2]) {
+      const parts = match[2].split(';').map(s => s.trim());
+      const modelPart = parts.find(p => /Build\//i.test(p) || /SM-|CPH|RMX|M20|M21|221|231|Moto|Pixel/i.test(p));
+      if (modelPart) return modelPart.replace(/Build\/.*$/, '').trim();
+    }
+    return 'Standard Device';
+  },
+
+  detectAndroidVersionFromUA(ua) {
+    if (!ua) return null;
+    const match = ua.match(/Android\s+([0-9.]+)/i);
+    return match ? match[1] : null;
+  },
+
+  normalizeOEM(manufacturer, brand, model) {
+    const combined = `${manufacturer || ''} ${brand || ''} ${model || ''}`.toLowerCase();
+    if (/oneplus|one\s*plus/i.test(combined)) return 'oneplus';
+    if (/realme|rmx/i.test(combined)) return 'realme';
+    if (/poco/i.test(combined)) return 'poco';
+    if (/redmi/i.test(combined)) return 'redmi';
+    if (/xiaomi|miui|\bmi\b/i.test(combined)) return 'xiaomi';
+    if (/samsung|galaxy|sm-[a-z0-9]+/i.test(combined)) return 'samsung';
+    if (/vivo/i.test(combined)) return 'vivo';
+    if (/oppo|cph/i.test(combined)) return 'oppo';
+    if (/motorola|moto\b|xt[0-9]+/i.test(combined)) return 'motorola';
+    if (/pixel|google/i.test(combined)) return 'google';
+    return 'generic';
+  },
+
+  estimateFontScale() {
+    if (typeof document === 'undefined' || !document.documentElement) return 1.0;
+    try {
+      if (typeof window !== 'undefined' && window.getComputedStyle) {
+        const computed = parseFloat(window.getComputedStyle(document.documentElement).fontSize);
+        if (computed && !isNaN(computed)) {
+          return Math.round((computed / 16) * 100) / 100;
+        }
+      }
+    } catch (_) {}
+    return 1.0;
+  },
+
+  measureSafeAreaInsets() {
+    return { top: 0, bottom: 0, left: 0, right: 0 };
+  },
+
+  updateViewportMetrics(profile) {
+    if (typeof window === 'undefined') return;
+    profile.viewportWidth = window.innerWidth;
+    profile.viewportHeight = window.innerHeight;
+    profile.orientation = window.innerWidth > window.innerHeight ? 'landscape' : 'portrait';
+    profile.fontScale = this.estimateFontScale();
+  }
+};
+
+// ==========================================================================
+// ResponsiveLayoutManager: Dynamic Fluid Viewport & Orientation Engine
+// ==========================================================================
+const ResponsiveLayoutManager = {
+  _isInitialized: false,
+  _debounceTimer: null,
+
+  init(profile) {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const currentProfile = profile || DeviceInfoService.getProfileSync();
+    this.applyLayout(currentProfile);
+
+    if (!this._isInitialized) {
+      this._isInitialized = true;
+      const handleResize = () => {
+        if (this._debounceTimer) clearTimeout(this._debounceTimer);
+        this._debounceTimer = setTimeout(() => {
+          const updated = DeviceInfoService.getProfileSync();
+          this.applyLayout(updated);
+        }, 50);
+      };
+
+      window.addEventListener('resize', handleResize, { passive: true });
+      window.addEventListener('orientationchange', handleResize, { passive: true });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleResize, { passive: true });
+      }
+    }
+  },
+
+  calculateViewportCategory(width) {
+    if (width < 360) return 'compact';
+    if (width <= 480) return 'standard';
+    if (width <= 768) return 'tablet';
+    return 'desktop';
+  },
+
+  calculateFontScaleCategory(scale) {
+    if (scale <= 1.15) return 'normal';
+    if (scale <= 1.40) return 'medium';
+    if (scale <= 1.70) return 'large';
+    return 'xlarge';
+  },
+
+  applyLayout(profile) {
+    if (typeof document === 'undefined') return;
+    const width = profile.viewportWidth || (typeof window !== 'undefined' ? window.innerWidth : 390);
+    const height = profile.viewportHeight || (typeof window !== 'undefined' ? window.innerHeight : 844);
+    const category = this.calculateViewportCategory(width);
+    const fontCat = this.calculateFontScaleCategory(profile.fontScale || 1.0);
+    const orientation = profile.orientation || (width > height ? 'landscape' : 'portrait');
+
+    const root = document.documentElement;
+    const body = document.body;
+
+    // Apply root data attributes
+    root.setAttribute('data-device-oem', profile.manufacturer || 'generic');
+    root.setAttribute('data-device-platform', profile.platform || 'web');
+    root.setAttribute('data-viewport-category', category);
+    root.setAttribute('data-orientation', orientation);
+    root.setAttribute('data-font-scale', fontCat);
+
+    if (body) {
+      body.setAttribute('data-device-oem', profile.manufacturer || 'generic');
+      body.setAttribute('data-device-platform', profile.platform || 'web');
+      body.setAttribute('data-viewport-category', category);
+      body.setAttribute('data-orientation', orientation);
+      body.setAttribute('data-font-scale', fontCat);
+    }
+
+    // Set CSS custom variables
+    root.style.setProperty('--app-height', `${height}px`);
+    root.style.setProperty('--vh', `${height * 0.01}px`);
+    root.style.setProperty('--font-scale-factor', `${profile.fontScale || 1.0}`);
+
+    // Notify OEM compatibility layer
+    if (typeof OEMCompatibilityManager !== 'undefined') {
+      OEMCompatibilityManager.applyOEMAdjustments(profile);
+    }
+  }
+};
+
+// ==========================================================================
+// OEMCompatibilityManager: Centralized Registry of Verified OEM Corrections
+// Universal responsive rules ALWAYS take precedence over OEM overrides
+// ==========================================================================
+const OEMCompatibilityManager = {
+  configs: {
+    universal: {
+      name: 'Universal Android',
+      safeAreaBottomExtra: 0,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: false
+    },
+    oneplus: {
+      name: 'OnePlus (OxygenOS)',
+      safeAreaBottomExtra: 4,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: true,
+      touchAction: 'pan-y'
+    },
+    realme: {
+      name: 'realme (realme UI)',
+      safeAreaBottomExtra: 4,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: true,
+      touchAction: 'pan-y'
+    },
+    oppo: {
+      name: 'OPPO (ColorOS)',
+      safeAreaBottomExtra: 4,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: true,
+      touchAction: 'pan-y'
+    },
+    xiaomi: {
+      name: 'Xiaomi (MIUI / HyperOS)',
+      safeAreaBottomExtra: 2,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: true,
+      enforceLightColorScheme: true
+    },
+    redmi: {
+      name: 'Redmi (MIUI / HyperOS)',
+      safeAreaBottomExtra: 2,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: true,
+      enforceLightColorScheme: true
+    },
+    poco: {
+      name: 'POCO (MIUI / HyperOS)',
+      safeAreaBottomExtra: 2,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: true,
+      enforceLightColorScheme: true
+    },
+    samsung: {
+      name: 'Samsung (One UI)',
+      safeAreaBottomExtra: 0,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: false,
+      optimizeLegibility: true
+    },
+    vivo: {
+      name: 'Vivo (Funtouch / OriginOS)',
+      safeAreaBottomExtra: 2,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: false
+    },
+    motorola: {
+      name: 'Motorola (My UX)',
+      safeAreaBottomExtra: 2,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: false
+    },
+    generic: {
+      name: 'Generic Android / Web',
+      safeAreaBottomExtra: 0,
+      fontSmoothing: 'antialiased',
+      forceHardwareCompositing: false
+    }
+  },
+
+  getOEMConfig(oemKey) {
+    return this.configs[oemKey] || this.configs.generic;
+  },
+
+  getVerifiedOEMList() {
+    return ['oneplus', 'realme', 'xiaomi', 'redmi', 'poco', 'samsung', 'vivo', 'oppo', 'motorola', 'generic'];
+  },
+
+  applyOEMAdjustments(profile) {
+    if (typeof document === 'undefined') return;
+    const config = this.getOEMConfig(profile?.manufacturer);
+    const root = document.documentElement;
+    if (config.safeAreaBottomExtra > 0) {
+      root.style.setProperty('--oem-bottom-inset-extra', `${config.safeAreaBottomExtra}px`);
+    } else {
+      root.style.removeProperty('--oem-bottom-inset-extra');
+    }
+  }
+};
 
 // ==========================================================================
 // Time & Deadline Helpers for Notifications
@@ -2636,6 +3080,11 @@ const TasklyNotifications = {
 
     if (notification?.id === 990001 || extra?.type === 'smart_lists_summary') {
       showMainFlow('smart-lists');
+    try {
+      if (typeof window !== 'undefined') window.scrollTo(0, 0);
+      const slTab = document.getElementById('tab-smart-lists');
+      if (slTab && slTab.scrollTop) slTab.scrollTop = 0;
+    } catch (_) {}
       if (typeof SmartListsManager !== 'undefined') {
         SmartListsManager.openSummaryModal();
       }
@@ -3449,6 +3898,17 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.classList.toggle('active', t === tabName);
   });
+
+  // Ensure window scroll starts from top on tab transition to avoid carryover offset traps
+  try {
+    if (typeof window !== 'undefined') {
+      window.scrollTo(0, 0);
+    }
+    const targetTabEl = document.getElementById(`tab-${tabName}`);
+    if (targetTabEl && targetTabEl.scrollTop) {
+      targetTabEl.scrollTop = 0;
+    }
+  } catch (_) {}
 
   // Switch bottom navigation active state
   document.querySelectorAll('.nav-tab').forEach(btn => {
@@ -6209,8 +6669,8 @@ const TasklyUpdateManager = {
     productionHost: 'taskly-todo-app-4z1c.vercel.app',
     fallbackVersionName: '1.5.0',
     fallbackVersionCode: 6,
-    previewVersionName: '2.3.2',
-    previewVersionCode: 152,
+    previewVersionName: '2.3.3',
+    previewVersionCode: 153,
     expectedPackageName: 'com.taskly.app',
     autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
     storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
@@ -6219,8 +6679,8 @@ const TasklyUpdateManager = {
   state: {
     installedVersionName: '1.5.0',
     installedVersionCode: 6,
-    previewVersionName: '2.3.2',
-    previewVersionCode: 152,
+    previewVersionName: '2.3.3',
+    previewVersionCode: 153,
     isNative: false,
     platform: 'web',
     deploymentEnvironment: 'production_web',
@@ -6516,6 +6976,7 @@ const TasklyUpdateManager = {
       return rel.displayBuild || rel.buildLabel.replace(/^Build\s+/i, '');
     }
     const num = parseInt(code, 10);
+    if (num === 153) return '15.3';
     if (num === 152) return '15.2';
     if (num === 151) return '15.1';
     if (num === 150) return '15';
@@ -6786,8 +7247,8 @@ const TasklyUpdateManager = {
       this.state.installedVersionName = null;
       this.state.installedVersionCode = null;
     } else if (env === 'production_web') {
-      this.state.webVersionName = '2.3.2';
-      this.state.webVersionCode = 152;
+      this.state.webVersionName = '2.3.3';
+      this.state.webVersionCode = 153;
       if (!this.state.installedVersionName) {
         this.state.installedVersionName = null;
         this.state.installedVersionCode = null;
@@ -6813,22 +7274,22 @@ const TasklyUpdateManager = {
     if (badge) {
       const env = this.detectDeploymentEnvironment();
       if (env === 'vercel_preview') {
-        badge.textContent = `v${this.state.previewVersionName || '2.3.2'} (Preview)`;
-        badge.title = 'Web Browser Preview (Build 15.2)';
+        badge.textContent = `v${this.state.previewVersionName || '2.3.3'} (Preview)`;
+        badge.title = 'Web Browser Preview (Build 15.3)';
       } else if (env === 'local_dev') {
-        badge.textContent = 'v2.3.2 (Dev)';
+        badge.textContent = 'v2.3.3 (Dev)';
         badge.title = 'Local Development Build';
       } else if (env === 'native_android') {
-        badge.textContent = `v${this.state.installedVersionName || '2.3.2'}`;
+        badge.textContent = `v${this.state.installedVersionName || '2.3.3'}`;
         badge.title = 'Android Native Application';
       } else if (env === 'production_web') {
-        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.2');
+        badge.textContent = this.state.installedVersionName ? `v${this.state.installedVersionName.replace(/^v/i, '')}` : (this.state.webVersionName ? `v${this.state.webVersionName}` : 'v2.3.3');
         badge.title = 'Taskly Production Web';
       } else if (env === 'untrusted_web') {
         badge.textContent = 'Untrusted';
         badge.title = 'Unrecognized / Unsupported Domain';
       } else {
-        badge.textContent = 'v2.3.2';
+        badge.textContent = 'v2.3.3';
         badge.title = 'Taskly Web';
       }
     }
@@ -7375,7 +7836,7 @@ const TasklyUpdateManager = {
       if (env === 'untrusted_web') {
         msg = 'Taskly Notice:\n\nThis domain is not a recognized Taskly host.\nUpdates and downloads are permanently disabled on untrusted domains.';
       } else if (env === 'vercel_preview') {
-        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.2 Build 15.2).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
+        msg = 'Taskly Web Preview Notice:\n\nYou are viewing Taskly in a web browser preview (v2.3.3 Build 15.3).\nIn-app APK installation is available exclusively on Android native devices.\nWeb preview deployments update automatically.';
       } else {
         msg = 'Taskly Web Notice:\n\nIn-app APK installation is available exclusively on Android native devices.\nWeb applications update automatically through deployment.';
       }
@@ -7502,8 +7963,8 @@ const TasklyUpdateManager = {
       if (valInstalled) valInstalled.textContent = `v${prevName} (Build ${prevBuild})`;
     } else if (env === 'production_web') {
       if (labelInstalled) labelInstalled.textContent = 'Web Version';
-      const webName = this.state.webVersionName || '2.3.2';
-      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15.2';
+      const webName = this.state.webVersionName || '2.3.3';
+      const webBuild = this.formatBuildNumber(this.state.webVersionCode) || '15.3';
       if (valInstalled) valInstalled.textContent = `v${webName} (Build ${webBuild})`;
     } else if (env === 'local_dev') {
       if (labelInstalled) labelInstalled.textContent = 'Local Build';
@@ -10903,6 +11364,11 @@ const SmartListsManager = {
       this.loadFromStorage();
     }
     showMainFlow('smart-lists');
+    try {
+      if (typeof window !== 'undefined') window.scrollTo(0, 0);
+      const slTab = document.getElementById('tab-smart-lists');
+      if (slTab && slTab.scrollTop) slTab.scrollTop = 0;
+    } catch (_) {}
     this.updateDateDisplay();
     this.computeLocalStreaksAndStats(this.state.activeDate);
     this.renderStreakWidget();
@@ -13593,6 +14059,10 @@ if (typeof module !== 'undefined' && module.exports) {
     wirePasswordToggle,
     TasklyUpdateManager,
     SmartListsManager,
+    DeviceInfoService,
+    ResponsiveLayoutManager,
+    OEMCompatibilityManager,
+    ThemeManager,
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };

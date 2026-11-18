@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ApkInstallerPlugin.class);
+        registerPlugin(DeviceCompatPlugin.class);
         super.onCreate(savedInstanceState);
         try {
             WebView webView = this.bridge.getWebView();
