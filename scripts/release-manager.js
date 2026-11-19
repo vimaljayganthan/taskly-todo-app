@@ -120,8 +120,14 @@ function verifyApkSigning(apkPath, expectedFingerprint = EXPECTED_PROD_FINGERPRI
 
   let verifyOutput = '';
   try {
+    const childEnv = {
+      ...process.env,
+      JAVA_HOME: process.env.JAVA_HOME || '/opt/homebrew/opt/openjdk@21',
+      PATH: `/opt/homebrew/opt/openjdk@21/bin:${process.env.PATH || ''}`
+    };
     verifyOutput = execSync(`"${apksignerBin}" verify --verbose --print-certs "${apkPath}"`, {
       encoding: 'utf8',
+      env: childEnv,
       stdio: ['pipe', 'pipe', 'pipe']
     });
   } catch (err) {
