@@ -1,0 +1,24 @@
+# Taskly v2.4.0 (Build 16) — THE BIRTHDAY UPDATE 🎂
+
+Taskly Build 16 introduces The Birthday Update with comprehensive application-wide stability improvements, zero reproducible bugs, optimized responsiveness, refined Smart Lists routines, and birthday-themed release celebrations.
+
+### Key Enhancements & Fixes
+- **Application Stability:** Comprehensive application-wide stability audit with zero reproducible bugs. Fixed seven identified bugs across core application functionality, error handling, state consistency, user data isolation, and session cleanup.
+- **Task Management:** Improved task synchronization and rollback handling. Better reliability during task updates, completion, and deletion.
+- **Notification Navigation:** Tapping "View Task" on deadline notifications now reliably navigates to the exact task using unique task ID, scrolls into center, and highlights the card with a smooth pulse animation. Completed and deleted tasks are handled gracefully with clear user guidance.
+- **Smart Lists Routines:** Improved routine completion data normalization. Preserved independent daily routine occurrences. Simplified routine deletion with two clear options (delete occurrence vs delete entire routine).
+- **Smart Lists UI Refinements:** Refined horizontal flex spacing between Back, Summary, and Settings controls. Centered the streak Reset button icon and text, with normalized baseline and line-height. Added 12px vertical separation below navigation controls.
+- **Navigation & Compatibility:** Improved Android hardware back-button handling. Improved modal dismissal and navigation behavior. Defensive handling for date operations.
+- **Performance & Reliability:** Highly responsive UI operations, atomic file persistence improvements, and expanded regression test coverage.
+- **Quality Verification:** Certified with 1,100 passing automated tests across 282 test suites.
+
+### Release Identity
+- **Version:** 2.4.0
+- **Display Build:** Build 16
+- **Version Code:** 160
+- **Package ID:** `com.taskly.app`
+- **Release Name:** THE BIRTHDAY UPDATE
+- **File Name:** `taskly-v2.4.0.apk`
+- **File Size:** 17.8 MB (18,662,704 bytes)
+- **SHA-256:** `11de8a3d0d344e8addcdf3c036a28c31aca04ef2d7c45335f57ab0068934f0a9`
+- **Signature:** Production Keystore (`taskly.jks`, APK Signature Scheme v2)

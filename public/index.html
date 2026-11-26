@@ -1793,11 +1793,11 @@
               <div class="version-meta-grid">
                 <div class="version-meta-item">
                   <span class="version-meta-label" id="label-installed-version">Installed Version</span>
-                  <span class="version-meta-value" id="val-installed-version">v2.2.0 (Build 14)</span>
+                  <span class="version-meta-value" id="val-installed-version">v2.4.0 (Build 16)</span>
                 </div>
                 <div class="version-meta-item">
                   <span class="version-meta-label">Latest Approved</span>
-                  <span class="version-meta-value" id="val-latest-version">v2.1.1 (Build 12.1)</span>
+                  <span class="version-meta-value" id="val-latest-version">v2.4.0 (Build 16)</span>
                 </div>
               </div>
 
@@ -1886,7 +1886,7 @@
               </div>
               <div class="whats-new-banner-text-col">
                 <h4 class="whats-new-banner-title">Feature Highlights & Release Notes</h4>
-                <p class="whats-new-banner-sub" id="whats-new-banner-subtitle">Explore everything introduced in recent updates.</p>
+                <p class="whats-new-banner-sub" id="whats-new-banner-subtitle">🎂 THE BIRTHDAY UPDATE — Taskly v2.4.0 (Build 16)</p>
               </div>
               <button type="button" class="btn-primary-compact btn-whats-new-launch" id="btn-open-whats-new-modal">
                 <span>View</span>
@@ -1966,7 +1966,13 @@
           </div>
 
           <div class="modal-actions whats-new-modal-actions">
-            <button type="button" class="btn-secondary-compact" id="btn-whats-new-back-version">Back to Updates</button>
+            <button type="button" class="btn-secondary-compact btn-whats-new-back" id="btn-whats-new-back-version" aria-label="Back to Updates">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+              </svg>
+              <span>Back to Updates</span>
+            </button>
             <button type="button" class="btn-primary-compact" id="btn-whats-new-dismiss">Got It</button>
           </div>
         </div>
@@ -3017,6 +3023,24 @@
           </div>
           <div class="modal-confirm-body">
             <p id="smart-delete-confirm-message">Are you sure you want to delete this item?</p>
+            <div id="smart-delete-scope-container" class="smart-delete-scope-container" style="display: none; margin-top: 12px;">
+              <div class="smart-delete-scope-options">
+                <label class="smart-delete-scope-option active">
+                  <input type="radio" name="routine-delete-scope" value="occurrence" checked>
+                  <span class="scope-text-wrap">
+                    <span class="scope-label">Delete this occurrence only</span>
+                    <span class="scope-desc">Tomorrow's routine and future instances remain scheduled.</span>
+                  </span>
+                </label>
+                <label class="smart-delete-scope-option">
+                  <input type="radio" name="routine-delete-scope" value="entire">
+                  <span class="scope-text-wrap">
+                    <span class="scope-label">Delete entire routine</span>
+                    <span class="scope-desc">Permanently removes this routine from all days.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
           <div class="modal-actions modal-actions-confirm">
             <button type="button" class="btn-modal-cancel" id="btn-cancel-smart-delete">Cancel</button>

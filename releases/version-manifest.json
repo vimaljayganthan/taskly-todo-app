@@ -1,18 +1,118 @@
 {
-  "latestVersion": "2.3.3",
-  "versionCode": 153,
-  "displayBuild": "15.3",
-  "buildLabel": "Build 15.3",
-  "title": "Taskly v2.3.3 (Build 15.3) – Universal Device-Adaptive UI Compatibility & Vertical Scrolling Fix",
-  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.3-b15.3/taskly-v2.3.3.apk",
-  "releaseNotes": "# Taskly v2.3.3 (Build 15.3) — Universal Device-Adaptive UI Compatibility & Vertical Scrolling Fix\n\nTaskly v2.3.3 (Build 15.3) brings the complete, production-grade Universal Android Device-Adaptive UI Compatibility System along with physical-device-tested vertical scrolling and touch-action improvements across all major Android manufacturers.\n\n### Key Enhancements & Fixes\n- Universal Android Device-Adaptive UI Compatibility System with native hardware detection.\n- Centralized OEMCompatibilityManager covering OnePlus, realme, Xiaomi, Redmi, POCO, Samsung, Vivo, OPPO, and Motorola.\n- Restored smooth vertical finger scrolling across Smart Lists and all main screens by eliminating conflicting overscroll containment on full-screen containers.\n- Implemented touch-action: pan-y across all views and wrappers for instant hardware-composited touch panning without gesture dead-zones.\n- Automatically resets scroll position to the top upon screen transitions, preventing midway scroll traps when navigating from long screens.\n- Guaranteed bottom navigation clearance ensuring Tomorrow's Routines and the Daily Routine Summary card are 100% accessible.\n- Retained isolated overscroll containment strictly on modal dialogs and overlays to preserve background scroll protection.\n- Certified with 1,053 passing automated tests across 268 test suites and 15 cross-device render matrix simulations.",
-  "releaseDate": "2026-11-18",
+  "latestVersion": "2.4.0",
+  "versionCode": 160,
+  "displayBuild": "16",
+  "buildLabel": "Build 16",
+  "title": "Taskly v2.4.0 (Build 16) – The BIRTHDAY Update 🎂",
+  "apkDownloadUrl": "https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.4.0-b16/taskly-v2.4.0.apk",
+  "releaseNotes": "# Taskly v2.4.0 (Build 16) — The BIRTHDAY Update 🎂\n\nTaskly Build 16 introduces The Birthday Update with comprehensive application-wide stability improvements, zero reproducible bugs, optimized responsiveness, and refined Smart Lists routines.\n\n### Application Stability\n- Comprehensive application-wide stability improvements.\n- Fixed seven identified bugs across application functionality.\n- Improved error handling and state consistency.\n- Improved user data isolation and session cleanup.\n\n### Task Management\n- Improved task synchronization and rollback handling.\n- Better reliability during task updates and deletion.\n\n### Smart Lists\n- Improved routine completion data normalization.\n- Preserved independent daily routine occurrences.\n- Simplified routine deletion with two clear options.\n- Improved daily history reliability and retention.\n\n### Navigation and Compatibility\n- Improved Android hardware back-button handling.\n- Improved modal dismissal and navigation behavior.\n- Additional defensive handling for date operations.\n\n### Performance and Reliability\n- Improved application responsiveness.\n- Atomic file persistence improvements.\n- Expanded automated regression coverage.\n\n### Quality Verification\n- 1,073 automated tests passed in the reported test run.\n- Seven identified bugs fixed.",
+  "releaseDate": "2026-11-25",
   "minimumSupportedVersion": "1.0.0",
   "fileSize": "17.8 MB",
-  "fileSizeBytes": 18650326,
-  "sha256": "a4e2ccacb7c8bc3d3147628624e426d55667a09c01d10d7cbef32eba665d6817",
+  "fileSizeBytes": 18662704,
+  "sha256": "11de8a3d0d344e8addcdf3c036a28c31aca04ef2d7c45335f57ab0068934f0a9",
   "mandatoryUpdate": false,
   "history": [
+    {
+      "version": "2.4.0",
+      "versionName": "2.4.0",
+      "versionCode": 160,
+      "releaseDate": "2026-11-25",
+      "displayBuild": "16",
+      "buildLabel": "Build 16",
+      "title": "Taskly v2.4.0 (Build 16) – The BIRTHDAY Update 🎂",
+      "releaseName": "THE BIRTHDAY UPDATE",
+      "isBirthdayRelease": true,
+      "summary": "Taskly Build 16: The Birthday Update delivers comprehensive application-wide stability, 7 critical bug fixes, improved task synchronization, 2-option routine deletion, and verified 1,073 automated test coverage.",
+      "features": [
+        "Comprehensive application-wide stability improvements.",
+        "Fixed seven identified bugs across application functionality.",
+        "Improved error handling and state consistency.",
+        "Improved user data isolation and session cleanup."
+      ],
+      "improvements": [
+        "Improved task synchronization and rollback handling.",
+        "Better reliability during task updates and deletion.",
+        "Improved Android hardware back-button handling.",
+        "Improved modal dismissal and navigation behavior.",
+        "Additional defensive handling for date operations."
+      ],
+      "performance": [
+        "Improved application responsiveness.",
+        "Atomic file persistence improvements.",
+        "Expanded automated regression coverage."
+      ],
+      "fixes": [
+        "Improved routine completion data normalization.",
+        "Preserved independent daily routine occurrences.",
+        "Simplified routine deletion with two clear options.",
+        "Improved daily history reliability and retention."
+      ],
+      "security": [
+        "1,073 automated tests passed in the reported test run.",
+        "Seven identified bugs fixed."
+      ],
+      "sections": [
+        {
+          "title": "Application Stability",
+          "icon": "shield",
+          "items": [
+            "Comprehensive application-wide stability improvements.",
+            "Fixed seven identified bugs across application functionality.",
+            "Improved error handling and state consistency.",
+            "Improved user data isolation and session cleanup."
+          ]
+        },
+        {
+          "title": "Task Management",
+          "icon": "check-square",
+          "items": [
+            "Improved task synchronization and rollback handling.",
+            "Better reliability during task updates and deletion."
+          ]
+        },
+        {
+          "title": "Smart Lists",
+          "icon": "layers",
+          "items": [
+            "Improved routine completion data normalization.",
+            "Preserved independent daily routine occurrences.",
+            "Simplified routine deletion with two clear options.",
+            "Improved daily history reliability and retention."
+          ]
+        },
+        {
+          "title": "Navigation and Compatibility",
+          "icon": "send",
+          "items": [
+            "Improved Android hardware back-button handling.",
+            "Improved modal dismissal and navigation behavior.",
+            "Additional defensive handling for date operations."
+          ]
+        },
+        {
+          "title": "Performance and Reliability",
+          "icon": "speedometer",
+          "items": [
+            "Improved application responsiveness.",
+            "Atomic file persistence improvements.",
+            "Expanded automated regression coverage."
+          ]
+        },
+        {
+          "title": "Quality Verification",
+          "icon": "medal",
+          "items": [
+            "1,073 automated tests passed in the reported test run.",
+            "Seven identified bugs fixed."
+          ]
+        }
+      ],
+      "apkFileName": "taskly-v2.4.0.apk",
+      "fileSize": "17.8 MB",
+      "fileSizeBytes": 18662704,
+      "sha256": "11de8a3d0d344e8addcdf3c036a28c31aca04ef2d7c45335f57ab0068934f0a9"
+    },
     {
       "version": "2.3.3",
       "versionName": "2.3.3",

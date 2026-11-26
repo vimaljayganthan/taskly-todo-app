@@ -302,26 +302,26 @@ describe('Taskly v2.0.0 Build 11 — Productivity Analytics & Version History Su
       });
     });
 
-    test('getApprovedReleaseHistory strictly preserves all approved production releases including Build 15.3 (code 153), Build 15.2 (code 152) and Build 15.1 (code 151)', () => {
+    test('getApprovedReleaseHistory strictly preserves all approved production releases including Build 16 (code 160), Build 15.3 (code 153), Build 15.2 (code 152) and Build 15.1 (code 151)', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
       const approved = updateMgr.getApprovedReleaseHistory();
-      assert.strictEqual(approved.length, 16, 'Must preserve Build 15.3 + Build 15.2 + Build 15.1 + Build 15 + Build 14 + Build 12.1 + all 10 previous releases');
+      assert.strictEqual(approved.length, 17, 'Must preserve Build 16 + Build 15.3 + Build 15.2 + Build 15.1 + Build 15 + Build 14 + Build 12.1 + all 10 previous releases');
 
-      const expectedVersionCodes = [153, 152, 151, 150, 140, 121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1];
+      const expectedVersionCodes = [160, 153, 152, 151, 150, 140, 121, 12, 11, 10, 9, 8, 7, 6, 5, 3, 1];
       const actualCodes = approved.map(r => parseInt(r.versionCode, 10));
       assert.deepStrictEqual(actualCodes, expectedVersionCodes);
     });
 
-    test('getReleaseHistory cleanly prepends v2.3.3 Build 15.3 when installed is 153 without duplicating', () => {
+    test('getReleaseHistory cleanly prepends v2.4.0 Build 16 when installed is 160 without duplicating', () => {
       const updateMgr = clientApp.TasklyUpdateManager;
-      updateMgr.state.installedVersionCode = 153;
-      updateMgr.state.installedVersionName = '2.3.3';
+      updateMgr.state.installedVersionCode = 160;
+      updateMgr.state.installedVersionName = '2.4.0';
 
       const history = updateMgr.getReleaseHistory();
-      assert.strictEqual(history.length, 16, 'History includes Build 15.3 + Build 15.2 + Build 15.1 + Build 15 + Build 14 + Build 12.1 + 10 previous releases');
-      assert.strictEqual(history[0].versionCode, 153);
-      assert.strictEqual(history[1].versionCode, 152);
-      assert.strictEqual(history[2].versionCode, 151);
+      assert.strictEqual(history.length, 17, 'History includes Build 16 + Build 15.3 + Build 15.2 + Build 15.1 + Build 15 + Build 14 + Build 12.1 + 10 previous releases');
+      assert.strictEqual(history[0].versionCode, 160);
+      assert.strictEqual(history[1].versionCode, 153);
+      assert.strictEqual(history[2].versionCode, 152);
     });
   });
 

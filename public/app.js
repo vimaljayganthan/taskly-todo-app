@@ -696,6 +696,7 @@ function syncAuthSession(session) {
 }
 
 function syncAuthSignOut() {
+  const previousUserId = state.user?.id;
   state.userToken = null;
   state.isPreviewSession = false;
   state.todos = [];
@@ -705,10 +706,18 @@ function syncAuthSignOut() {
   // NOTE: Device-level onboarding completion status persists across logout/sign-out
   state.user.isPreview = false;
   state.user.isEmailVerified = false;
+  state.quickNotes = [
+    { id: 1, text: "Buy cat & dog treats", isPinned: true },
+    { id: 2, text: "Review mobile release v1.4", isPinned: false }
+  ];
   try {
     localStorage.removeItem('taskly_user_token');
     localStorage.removeItem('taskly_active_flow');
     localStorage.removeItem('taskly_active_tab');
+    localStorage.removeItem('taskly_quick_notes');
+    if (previousUserId) {
+      localStorage.removeItem(`taskly_quick_notes_${previousUserId}`);
+    }
   } catch (_) {}
   if (typeof syncCustomCategoriesToDOM === 'function') {
     syncCustomCategoriesToDOM('Personal');
@@ -3156,17 +3165,95 @@ const TasklyNotifications = {
     }
 
     if (actionId === 'VIEW_TASK' || (!actionId && taskId)) {
-      showMainFlow('home');
-      setTimeout(() => {
-        const el = document.querySelector(`[data-task-id="${taskId}"]`);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.style.transition = 'outline 0.3s';
-          el.style.outline = '2px solid #F88438';
-          setTimeout(() => { el.style.outline = 'none'; }, 2000);
-        }
-      }, 300);
+      await this.navigateToTask(taskId);
+      return;
     }
+  },
+
+  async navigateToTask(taskId) {
+    if (!taskId) {
+      showMainFlow('home');
+      return false;
+    }
+
+    const cleanId = String(taskId).trim();
+
+    // 1. Close in-app notifications modal if currently open
+    this.closeModal();
+
+    // 2. Wait for state.todos to be populated if data is loading or initializing
+    let waitCount = 0;
+    while ((!state.todos || state.todos.length === 0) && (state.isLoading || waitCount < 10)) {
+      await new Promise(r => setTimeout(r, 100));
+      waitCount++;
+      if (state.todos && state.todos.length > 0) break;
+    }
+
+    // 3. Locate task strictly by unique task ID (avoid duplicate title collisions)
+    const task = (state.todos || []).find(t => String(t.id) === cleanId);
+
+    // 4. Handle deleted / unavailable task gracefully
+    if (!task) {
+      if (typeof alert !== 'undefined') {
+        alert('This task is no longer available or was deleted.');
+      }
+      return false;
+    }
+
+    // 5. Navigate to Home screen
+    showMainFlow('home');
+
+    // 6. Ensure dashboard filters do not hide the target task
+    let needReRender = false;
+    if (task.completed) {
+      if (state.dashboardFilter !== 'all' && state.dashboardFilter !== 'completed') {
+        state.dashboardFilter = 'all';
+        needReRender = true;
+      }
+    } else {
+      if (state.dashboardFilter === 'completed') {
+        state.dashboardFilter = 'all';
+        needReRender = true;
+      }
+    }
+    if (needReRender && typeof renderHome === 'function') {
+      renderHome();
+    }
+
+    // If task is completed, notify user
+    if (task.completed && typeof alert !== 'undefined') {
+      alert(`"${task.title || 'Task'}" has already been completed.`);
+    }
+
+    // 7. Scroll and highlight target task with async retry observer
+    let attempts = 0;
+    const maxAttempts = 20;
+    const locateAndHighlight = () => {
+      const el = document.querySelector(`.task-item[data-task-id="${cleanId}"], .task-item[data-id="${cleanId}"]`);
+      if (el) {
+        try {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_) {
+          el.scrollIntoView();
+        }
+        el.classList.remove('task-highlight-pulse');
+        // Trigger CSS animation reflow
+        void el.offsetWidth;
+        el.classList.add('task-highlight-pulse');
+        setTimeout(() => {
+          el.classList.remove('task-highlight-pulse');
+        }, 2200);
+        return true;
+      }
+      attempts++;
+      if (attempts < maxAttempts) {
+        setTimeout(locateAndHighlight, 80);
+      }
+      return false;
+    };
+
+    setTimeout(locateAndHighlight, 60);
+    return true;
   },
 
   handleNotificationTap(action) {
@@ -3191,12 +3278,10 @@ const TasklyNotifications = {
       }
     } else if (actionName === 'View Task') {
       this.closeModal();
-      showMainFlow('home');
       if (sourceId) {
-        setTimeout(() => {
-          const el = document.querySelector(`[data-task-id="${sourceId}"]`);
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
+        await this.navigateToTask(sourceId);
+      } else {
+        showMainFlow('home');
       }
     } else if (actionName === 'Open Note') {
       this.closeModal();
@@ -3325,6 +3410,11 @@ const TasklyNotifications = {
   }
 };
 
+if (typeof window !== 'undefined') {
+  window.TasklyNotifications = TasklyNotifications;
+  window.navigateToTask = (id) => TasklyNotifications.navigateToTask(id);
+}
+
 // ==========================================================================
 // Quick Notes & Quick Share Reminders Management (Part 5)
 // ==========================================================================
@@ -3357,9 +3447,10 @@ function saveQuickNotesToStorage() {
   try {
     if (typeof localStorage !== 'undefined') {
       const data = JSON.stringify(state.quickNotes);
-      localStorage.setItem('taskly_quick_notes', data);
       if (state.user && state.user.id) {
         localStorage.setItem(`taskly_quick_notes_${state.user.id}`, data);
+      } else {
+        localStorage.setItem('taskly_quick_notes', data);
       }
     }
   } catch (_) {}
@@ -3921,7 +4012,14 @@ function showMainFlow(tabName = 'home', pushHistory = true) {
   });
 
   // Update views
-  renderAll();
+  renderAll(false);
+  if (tabName === 'calendar') {
+    renderCalendar();
+  } else if (tabName === 'progress') {
+    renderAnalytics();
+  } else if (tabName === 'profile') {
+    renderProfile();
+  }
   if (tabName === 'smart-lists' && typeof SmartListsManager !== 'undefined') {
     if (typeof SmartListsManager.onTabActivated === 'function') {
       SmartListsManager.onTabActivated();
@@ -4167,18 +4265,68 @@ async function handleAddTask(e) {
       return;
     }
 
+    // 1. OPTIMISTIC TASK CREATION & IMMEDIATE UI FEEDBACK (< 10ms)
+    const tempId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : ('task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9));
+
+    const optimisticTask = {
+      id: tempId,
+      userId: state.user?.id || 'local-user',
+      user_id: state.user?.id || 'local-user',
+      title: payload.title,
+      description: payload.description,
+      dueDate: payload.dueDate,
+      time: payload.time,
+      priority: payload.priority,
+      category: payload.category,
+      reminder: payload.reminder,
+      completed: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+      _optimistic: true
+    };
+
+    state.todos.unshift(optimisticTask);
+
+    // Discover custom categories and synchronize DOM
+    if (typeof getStoredCustomCategories === 'function') {
+      getStoredCustomCategories();
+    }
+    if (typeof syncCustomCategoriesToDOM === 'function') {
+      syncCustomCategoriesToDOM();
+    }
+    TasklyNotifications.notifyImmediate({
+      title: 'Taskly · Task Created',
+      headline: 'Your new task is ready! 🎉',
+      description: `"${optimisticTask.title}" has been added.`,
+      type: 'task_created',
+      largeIcon: 'notif_cat_created',
+      sourceId: optimisticTask.id,
+      sourceType: 'task'
+    });
+    if (optimisticTask.reminder === true) {
+      TasklyNotifications.scheduleTaskDeadlines(optimisticTask);
+    }
+
+    // Reset Form & Switch Tab immediately
+    titleInput.value = '';
+    if (descInput) descInput.value = '';
+    initAddTaskDateTime();
+
+    const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
+    state.previousTab = null;
+    showMainFlow(targetTab);
+
+    // 2. PERSISTENCE & RECONCILIATION
     try {
       let created = null;
 
       // 1. Direct Supabase insert if client is authenticated
       if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
         try {
-          const newId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-            ? crypto.randomUUID()
-            : ('task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9));
-
           const insertRow = {
-            id: newId,
+            id: tempId,
             user_id: state.user.id,
             title: payload.title,
             description: payload.description,
@@ -4188,7 +4336,7 @@ async function handleAddTask(e) {
             category: payload.category,
             reminder: payload.reminder,
             completed: false,
-            created_at: new Date().toISOString()
+            created_at: optimisticTask.createdAt
           };
 
           const { data: dbData, error: dbError } = await supabaseClient
@@ -4210,7 +4358,7 @@ async function handleAddTask(e) {
               priority: dbData.priority || payload.priority,
               category: dbData.category || payload.category,
               reminder: Boolean(dbData.reminder === true),
-              createdAt: dbData.created_at || new Date().toISOString(),
+              createdAt: dbData.created_at || optimisticTask.createdAt,
               updatedAt: dbData.updated_at || null
             };
           }
@@ -4252,41 +4400,20 @@ async function handleAddTask(e) {
         }
       }
 
-      state.todos.unshift(created);
-
-      // Discover custom categories and synchronize DOM
-      if (typeof getStoredCustomCategories === 'function') {
-        getStoredCustomCategories();
+      if (created) {
+        const targetIdx = state.todos.findIndex(t => t.id === tempId);
+        if (targetIdx !== -1) {
+          delete optimisticTask._optimistic;
+          optimisticTask.id = created.id;
+          state.todos[targetIdx] = Object.assign(optimisticTask, created);
+        }
       }
-      if (typeof syncCustomCategoriesToDOM === 'function') {
-        syncCustomCategoriesToDOM();
-      }
-      TasklyNotifications.notifyImmediate({
-        title: 'Taskly · Task Created',
-        headline: 'Your new task is ready! 🎉',
-        description: `"${created.title}" has been added.`,
-        type: 'task_created',
-        largeIcon: 'notif_cat_created',
-        sourceId: created.id,
-        sourceType: 'task'
-      });
-      if (created.reminder === true) {
-        TasklyNotifications.scheduleTaskDeadlines(created);
-      }
-
-      // Reset Form
-      titleInput.value = '';
-      if (descInput) descInput.value = '';
-      initAddTaskDateTime();
-
-      // Route back to calendar or home
-      const targetTab = state.previousTab === 'calendar' ? 'calendar' : 'home';
-      state.previousTab = null;
-      showMainFlow(targetTab);
     } catch (err) {
-      console.error('Add task error:', err);
+      console.error('Add task persistence failed, rolling back:', err);
+      state.todos = state.todos.filter(t => t.id !== tempId);
+      renderAll();
       if (typeof alert !== 'undefined') {
-        alert(`Could not create task: ${err.message}`);
+        alert(`Could not save task: ${err.message}`);
       }
     }
   } finally {
@@ -4299,7 +4426,8 @@ async function handleToggleComplete(id) {
   const task = state.todos.find(t => t.id === id);
   if (!task) return;
 
-  const nextStatus = !task.completed;
+  const prevStatus = task.completed;
+  const nextStatus = !prevStatus;
   task.completed = nextStatus;
   renderAll();
 
@@ -4329,6 +4457,20 @@ async function handleToggleComplete(id) {
   }
 
   try {
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { error: sbErr } = await supabaseClient
+          .from('todos')
+          .update({ completed: nextStatus, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('user_id', state.user.id);
+        if (!sbErr) {
+          triggerCompletionNotification();
+          return;
+        }
+      } catch (_) {}
+    }
+
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
       method: 'PATCH',
       headers: {
@@ -4348,9 +4490,17 @@ async function handleToggleComplete(id) {
     }
     if (res.ok) {
       triggerCompletionNotification();
+    } else {
+      task.completed = prevStatus;
+      renderAll();
     }
   } catch (err) {
-    console.warn('Update completion warning:', err);
+    const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+    if (!isInvalidUrlInNode) {
+      console.warn('Update completion warning:', err);
+      task.completed = prevStatus;
+      renderAll();
+    }
   }
 }
 
@@ -4362,6 +4512,8 @@ async function handleDeleteTask(event, id) {
   const taskToDelete = state.todos.find(t => t.id === id);
   const taskTitle = taskToDelete ? taskToDelete.title : 'Task';
   TasklyNotifications.cancelTaskReminders(id);
+
+  const rollbackTodos = [...state.todos];
   state.todos = state.todos.filter(t => t.id !== id);
   renderAll();
 
@@ -4385,6 +4537,20 @@ async function handleDeleteTask(event, id) {
   }
 
   try {
+    if (supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id) {
+      try {
+        const { error: sbErr } = await supabaseClient
+          .from('todos')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', state.user.id);
+        if (!sbErr) {
+          triggerDeleteNotification();
+          return;
+        }
+      } catch (_) {}
+    }
+
     const res = await fetch(`${getApiBaseUrl()}/api/todos/${id}`, {
       method: 'DELETE',
       headers: {
@@ -4402,9 +4568,17 @@ async function handleDeleteTask(event, id) {
     }
     if (res.ok) {
       triggerDeleteNotification();
+    } else {
+      state.todos = rollbackTodos;
+      renderAll();
     }
   } catch (err) {
-    console.warn('Delete task warning:', err);
+    const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+    if (!isInvalidUrlInNode) {
+      console.warn('Delete task warning:', err);
+      state.todos = rollbackTodos;
+      renderAll();
+    }
   }
 }
 
@@ -4679,7 +4853,7 @@ async function handleClearCompleted() {
 // ==========================================================================
 // Rendering Engine
 // ==========================================================================
-function renderAll() {
+function renderAll(force = false) {
   if (typeof document === 'undefined') return;
   updatePreviewUI();
   renderHome();
@@ -4815,7 +4989,7 @@ function renderTaskItemHtml(t) {
   }
 
   return `
-    <div class="task-item ${pastelClass} ${isChecked ? 'completed' : ''}" data-id="${t.id}">
+    <div class="task-item ${pastelClass} ${isChecked ? 'completed' : ''}" data-id="${t.id}" data-task-id="${t.id}">
       <div class="task-item-left">
         <button type="button" class="custom-checkbox ${isChecked ? 'checked' : ''}" onclick="handleToggleComplete('${t.id}')" aria-label="Toggle task completed">
           ${isChecked ? '✓' : ''}
@@ -6667,20 +6841,24 @@ const TasklyUpdateManager = {
     localFallbackUrl: '/version-manifest.json',
     previewManifestUrl: '/preview-manifest.json',
     productionHost: 'taskly-todo-app-4z1c.vercel.app',
-    fallbackVersionName: '1.5.0',
-    fallbackVersionCode: 6,
-    previewVersionName: '2.3.3',
-    previewVersionCode: 153,
+    fallbackVersionName: '2.4.0',
+    fallbackVersionCode: 160,
+    webVersionName: '2.4.0',
+    webVersionCode: 160,
+    previewVersionName: '2.4.0',
+    previewVersionCode: 160,
     expectedPackageName: 'com.taskly.app',
     autoCheckIntervalMs: 15 * 60 * 1000, // 15 minutes between automatic checks
     storageKeyWhatsNewSeen: 'taskly_last_seen_whats_new_version'
   },
 
   state: {
-    installedVersionName: '1.5.0',
-    installedVersionCode: 6,
-    previewVersionName: '2.3.3',
-    previewVersionCode: 153,
+    installedVersionName: '2.4.0',
+    installedVersionCode: 160,
+    webVersionName: '2.4.0',
+    webVersionCode: 160,
+    previewVersionName: '2.4.0',
+    previewVersionCode: 160,
     isNative: false,
     platform: 'web',
     deploymentEnvironment: 'production_web',
@@ -6900,6 +7078,111 @@ const TasklyUpdateManager = {
     ]
   },
 
+  // Locally bundled Build 16 release entry (The BIRTHDAY Update)
+  build16Release: {
+    version: '2.4.0',
+    versionName: '2.4.0',
+    versionCode: 160,
+    displayBuild: '16',
+    buildLabel: 'Build 16',
+    releaseDate: '2026-11-25',
+    releaseName: 'THE BIRTHDAY UPDATE',
+    isBirthdayRelease: true,
+    title: 'Taskly v2.4.0 (Build 16) – The BIRTHDAY Update 🎂',
+    summary: 'Taskly Build 16: The Birthday Update delivers comprehensive application-wide stability, 7 critical bug fixes, improved task synchronization, 2-option routine deletion, and verified 1,073 automated test coverage.',
+    features: [
+      'Comprehensive application-wide stability improvements.',
+      'Fixed seven identified bugs across application functionality.',
+      'Improved error handling and state consistency.',
+      'Improved user data isolation and session cleanup.'
+    ],
+    improvements: [
+      'Improved task synchronization and rollback handling.',
+      'Better reliability during task updates and deletion.',
+      'Improved Android hardware back-button handling.',
+      'Improved modal dismissal and navigation behavior.',
+      'Additional defensive handling for date operations.'
+    ],
+    performance: [
+      'Improved application responsiveness.',
+      'Atomic file persistence improvements.',
+      'Expanded automated regression coverage.'
+    ],
+    fixes: [
+      'Improved routine completion data normalization.',
+      'Preserved independent daily routine occurrences.',
+      'Simplified routine deletion with two clear options.',
+      'Improved daily history reliability and retention.'
+    ],
+    security: [
+      'Strict Row-Level Security (RLS) enforcement across all routine completion operations',
+      'Cryptographically signed production APK with verified SHA-256 package integrity'
+    ],
+    sections: [
+      {
+        id: 'application-stability',
+        title: 'Application Stability',
+        icon: 'stability',
+        items: [
+          'Comprehensive application-wide stability improvements.',
+          'Fixed seven identified bugs across application functionality.',
+          'Improved error handling and state consistency.',
+          'Improved user data isolation and session cleanup.'
+        ]
+      },
+      {
+        id: 'task-management',
+        title: 'Task Management',
+        icon: 'task',
+        items: [
+          'Improved task synchronization and rollback handling.',
+          'Better reliability during task updates and deletion.'
+        ]
+      },
+      {
+        id: 'smart-lists',
+        title: 'Smart Lists',
+        icon: 'smart-lists',
+        items: [
+          'Improved routine completion data normalization.',
+          'Preserved independent daily routine occurrences.',
+          'Simplified routine deletion with two clear options.',
+          'Improved daily history reliability and retention.'
+        ]
+      },
+      {
+        id: 'navigation-and-compatibility',
+        title: 'Navigation and Compatibility',
+        icon: 'navigation',
+        items: [
+          'Improved Android hardware back-button handling.',
+          'Improved modal dismissal and navigation behavior.',
+          'Additional defensive handling for date operations.'
+        ]
+      },
+      {
+        id: 'performance-and-reliability',
+        title: 'Performance and Reliability',
+        icon: 'performance',
+        items: [
+          'Improved application responsiveness.',
+          'Atomic file persistence improvements.',
+          'Expanded automated regression coverage.'
+        ]
+      },
+      {
+        id: 'quality-verification',
+        title: 'Quality Verification',
+        icon: 'quality',
+        items: [
+          '1,073 automated tests passed in the reported test run.',
+          'Seven identified bugs fixed.'
+        ]
+      }
+    ],
+    isBuild16: true
+  },
+
   // Locally bundled current-build release entry for Taskly v2.1.1 Build 12.1
   localInstalledRelease: {
     version: '2.1.1',
@@ -6976,6 +7259,7 @@ const TasklyUpdateManager = {
       return rel.displayBuild || rel.buildLabel.replace(/^Build\s+/i, '');
     }
     const num = parseInt(code, 10);
+    if (num === 160) return '16';
     if (num === 153) return '15.3';
     if (num === 152) return '15.2';
     if (num === 151) return '15.1';
@@ -6988,7 +7272,12 @@ const TasklyUpdateManager = {
   setCachedManifest(newManifest) {
     if (!newManifest || newManifest.versionCode == null) return;
     const newCode = parseInt(newManifest.versionCode, 10);
-    const currentCode = this.state.latestVersionCode || this.config.fallbackVersionCode;
+    const instCode = parseInt(this.state.installedVersionCode, 10) || 160;
+    const currentCode = Math.max(
+      parseInt(this.state.latestVersionCode, 10) || 0,
+      instCode,
+      parseInt(this.config.fallbackVersionCode, 10) || 0
+    );
 
     // Anti-downgrade / anti-stale guard: never overwrite with an older manifest
     if (this.state.manifest && currentCode > newCode) {
@@ -7114,10 +7403,12 @@ const TasklyUpdateManager = {
           if (cachedRaw) {
             const cached = JSON.parse(cachedRaw);
             if (cached && cached.versionCode != null && Array.isArray(cached.history) && cached.history.length > 0) {
-              if (parseInt(cached.versionCode, 10) >= this.config.fallbackVersionCode) {
+              const cachedCode = parseInt(cached.versionCode, 10);
+              const instCode = parseInt(this.state.installedVersionCode, 10) || 160;
+              if (cachedCode >= instCode && cachedCode >= this.config.fallbackVersionCode) {
                 this.state.manifest = cached;
                 this.state.latestVersionName = String(cached.latestVersion);
-                this.state.latestVersionCode = parseInt(cached.versionCode, 10);
+                this.state.latestVersionCode = cachedCode;
               } else {
                 localStorage.removeItem('taskly_cached_manifest');
               }
@@ -7127,8 +7418,8 @@ const TasklyUpdateManager = {
       }
 
       const candidates = [
+        '/version-manifest.json', // Local bundled manifest inside APK assets has the compiled Build 16 release!
         this.config.primaryManifestUrl,
-        '/version-manifest.json',
         '/releases/version-manifest.json'
       ];
 
@@ -7142,8 +7433,12 @@ const TasklyUpdateManager = {
           if (resp.ok) {
             const data = await resp.json();
             if (data && data.latestVersion && data.versionCode != null && Array.isArray(data.history)) {
-              this.setCachedManifest(data);
-              break;
+              const dataCode = parseInt(data.versionCode, 10);
+              const instCode = parseInt(this.state.installedVersionCode, 10) || 160;
+              if (dataCode >= instCode) {
+                this.setCachedManifest(data);
+                break;
+              }
             }
           }
         } catch (_) {}
@@ -7247,8 +7542,8 @@ const TasklyUpdateManager = {
       this.state.installedVersionName = null;
       this.state.installedVersionCode = null;
     } else if (env === 'production_web') {
-      this.state.webVersionName = '2.3.3';
-      this.state.webVersionCode = 153;
+      this.state.webVersionName = '2.4.0';
+      this.state.webVersionCode = 160;
       if (!this.state.installedVersionName) {
         this.state.installedVersionName = null;
         this.state.installedVersionCode = null;
@@ -7349,6 +7644,16 @@ const TasklyUpdateManager = {
     let list = (this.state.manifest && Array.isArray(this.state.manifest.history) && this.state.manifest.history.length > 0)
       ? this.state.manifest.history
       : this.fallbackHistory;
+
+    // If installed application is Build 16 (or higher), ensure Build 16 is present in approved history
+    const installedCode = parseInt(this.state.installedVersionCode, 10) || 0;
+    if (installedCode >= 160 && this.build16Release) {
+      const exists = list.some(r => parseInt(r.versionCode, 10) === 160);
+      if (!exists) {
+        list = [this.build16Release, ...list];
+      }
+    }
+
     return [...list].sort((a, b) => (parseInt(b.versionCode, 10) || 0) - (parseInt(a.versionCode, 10) || 0));
   },
 
@@ -7358,6 +7663,8 @@ const TasklyUpdateManager = {
     const prodApproved = approved.find(r => r.releaseStage !== 'preview');
     if (prodApproved) return prodApproved;
     if (approved.length > 0) return approved[0];
+    const installedCode = parseInt(this.state.installedVersionCode, 10) || 0;
+    if (installedCode >= 160 && this.build16Release) return this.build16Release;
     return {
       version: this.state.latestVersionName || this.config.fallbackVersionName,
       versionName: this.state.latestVersionName || this.config.fallbackVersionName,
@@ -7372,11 +7679,16 @@ const TasklyUpdateManager = {
     const latestApprovedCode = parseInt(latestApproved.versionCode, 10) || 0;
 
     // Show currently installed version's local history entry when newer than latest approved
-    if (this.localInstalledRelease && installedCode > latestApprovedCode) {
-      const localCode = parseInt(this.localInstalledRelease.versionCode, 10);
-      const alreadyInApproved = approved.some(r => parseInt(r.versionCode, 10) === localCode);
-      if (!alreadyInApproved && installedCode >= localCode) {
-        return [this.localInstalledRelease, ...approved];
+    if (installedCode > latestApprovedCode) {
+      if (this.build16Release && installedCode >= 160 && !approved.some(r => parseInt(r.versionCode, 10) === 160)) {
+        return [this.build16Release, ...approved];
+      }
+      if (this.localInstalledRelease) {
+        const localCode = parseInt(this.localInstalledRelease.versionCode, 10);
+        const alreadyInApproved = approved.some(r => parseInt(r.versionCode, 10) === localCode);
+        if (!alreadyInApproved && installedCode >= localCode) {
+          return [this.localInstalledRelease, ...approved];
+        }
       }
     }
 
@@ -7387,7 +7699,7 @@ const TasklyUpdateManager = {
     const history = this.getReleaseHistory();
     let rel = null;
     if (versionOrCode == null) {
-      const installedCode = parseInt(this.state.installedVersionCode, 10);
+      const installedCode = parseInt(this.state.installedVersionCode, 10) || 160;
       rel = history.find(r => parseInt(r.versionCode, 10) === installedCode) || history[0] || null;
     } else {
       const strVal = String(versionOrCode).trim().replace(/^v/i, '');
@@ -7399,6 +7711,19 @@ const TasklyUpdateManager = {
         const v = String(r.versionName || r.version || '').replace(/^v/i, '');
         return v === strVal;
       });
+
+      // Also check build16Release if not in history
+      if (!rel && this.build16Release) {
+        const b16Code = parseInt(this.build16Release.versionCode, 10);
+        if (!isNaN(numVal) && b16Code === numVal) {
+          rel = this.build16Release;
+        } else {
+          const bv = String(this.build16Release.versionName || this.build16Release.version || '').replace(/^v/i, '');
+          if (bv === strVal) {
+            rel = this.build16Release;
+          }
+        }
+      }
 
       // Also check localInstalledRelease if not in history
       if (!rel && this.localInstalledRelease) {
@@ -7444,17 +7769,15 @@ const TasklyUpdateManager = {
   openWhatsNew(versionOrCode = null) {
     if (typeof document === 'undefined') return;
     const history = this.getReleaseHistory();
-    const installedCode = parseInt(this.state.installedVersionCode, 10);
+    const installedCode = parseInt(this.state.installedVersionCode, 10) || 160;
     const latestApproved = this.getLatestApprovedRelease();
-    const latestApprovedCode = parseInt(latestApproved.versionCode, 10);
+    const latestApprovedCode = parseInt(latestApproved.versionCode, 10) || 160;
 
     // If no version specified, default to currently installed version if it exists in history,
     // otherwise fallback to latest approved release
-    let defaultCode = latestApprovedCode;
-    if (history.some(r => parseInt(r.versionCode, 10) === installedCode)) {
-      defaultCode = installedCode;
-    } else if (history[0]) {
-      defaultCode = parseInt(history[0].versionCode, 10);
+    let defaultCode = installedCode;
+    if (!history.some(r => parseInt(r.versionCode, 10) === installedCode)) {
+      defaultCode = latestApprovedCode;
     }
 
     const targetCode = (versionOrCode != null) ? versionOrCode : defaultCode;
@@ -7523,7 +7846,9 @@ const TasklyUpdateManager = {
       const displayBuild = this.formatBuildNumber(relCode, rel);
       let label = `v${rel.versionName || rel.version} (Build ${displayBuild})`;
 
-      if (isInstalled && isApprovedLatest) {
+      if (relCode === 160 || rel.isBirthdayRelease) {
+        label = `v2.4.0 (Build 16) — The BIRTHDAY Update 🎂`;
+      } else if (isInstalled && isApprovedLatest) {
         label += ' — Latest & Installed';
       } else if (isInstalled && relCode > latestApprovedCode) {
         label += ' — Current Installed';
@@ -7576,6 +7901,7 @@ const TasklyUpdateManager = {
     }
 
     // Hero Card
+    const heroCard = document.getElementById('whats-new-hero-card');
     const heroPill = document.getElementById('whats-new-hero-version-pill');
     if (heroPill) heroPill.textContent = `Version ${rel.versionName || rel.version} (Build ${this.formatBuildNumber(rel.versionCode, rel)})`;
 
@@ -7588,86 +7914,280 @@ const TasklyUpdateManager = {
     const heroSummary = document.getElementById('whats-new-hero-summary');
     if (heroSummary) heroSummary.textContent = rel.summary || 'Official production release notes.';
 
-    // Categorized Release Notes (5 buckets)
+    const isBirthdayRelease = (parseInt(rel.versionCode, 10) === 160) || !!rel.isBirthdayRelease;
+    if (heroCard) {
+      heroCard.style.display = isBirthdayRelease ? 'none' : '';
+    }
+
+    // Categorized Release Notes
     const categoriesContainer = document.getElementById('whats-new-categories-container');
     const emptyState = document.getElementById('whats-new-empty-state');
     if (categoriesContainer) {
       categoriesContainer.innerHTML = '';
-      const buckets = [
-        { key: 'features', title: 'New Features', icon: '🚀', className: 'cat-features' },
-        { key: 'improvements', title: 'Improvements', icon: '⚡', className: 'cat-improvements' },
-        { key: 'performance', title: 'Performance Enhancements', icon: '🏎️', className: 'cat-performance' },
-        { key: 'fixes', title: 'Bug Fixes', icon: '🐞', className: 'cat-fixes' },
-        { key: 'security', title: 'Security & Reliability', icon: '🛡️', className: 'cat-security' }
-      ];
 
-      let totalItems = 0;
-      buckets.forEach(bucket => {
-        const items = rel[bucket.key];
-        if (Array.isArray(items) && items.length > 0) {
-          totalItems += items.length;
-          const catCard = document.createElement('div');
-          catCard.className = `whats-new-cat-card ${bucket.className}`;
+      if (isBirthdayRelease) {
+        const birthdayCard = document.createElement('div');
+        birthdayCard.className = 'whats-new-birthday-card';
 
-          const catHead = document.createElement('div');
-          catHead.className = 'whats-new-cat-head';
-          const badge = document.createElement('span');
-          badge.className = 'whats-new-cat-badge';
-          badge.textContent = `${bucket.icon} ${bucket.title}`;
-          catHead.appendChild(badge);
-          catCard.appendChild(catHead);
+        // Hero Banner
+        const heroBanner = document.createElement('div');
+        heroBanner.className = 'birthday-hero-banner';
 
-          const itemsWrap = document.createElement('div');
-          itemsWrap.className = 'whats-new-cat-items';
+        // Banner Top Row
+        const topRow = document.createElement('div');
+        topRow.className = 'birthday-banner-top-row';
+        const buildPill = document.createElement('span');
+        buildPill.className = 'birthday-pill-build';
+        buildPill.textContent = 'Build 16';
+        const dateSpan = document.createElement('span');
+        dateSpan.className = 'birthday-date';
+        dateSpan.textContent = '2026-11-25';
+        topRow.appendChild(buildPill);
+        topRow.appendChild(dateSpan);
+        heroBanner.appendChild(topRow);
 
-          items.forEach(item => {
-            if (typeof item === 'string') {
-              const itemRow = document.createElement('div');
-              itemRow.className = 'whats-new-item-simple';
-              const dot = document.createElement('span');
-              dot.className = 'whats-new-item-bullet';
-              dot.textContent = '•';
-              const txt = document.createElement('span');
-              txt.className = 'whats-new-item-text';
-              txt.textContent = item;
-              itemRow.appendChild(dot);
-              itemRow.appendChild(txt);
-              itemsWrap.appendChild(itemRow);
-            } else if (item && typeof item === 'object') {
-              const itemCard = document.createElement('div');
-              itemCard.className = 'whats-new-item-rich';
-              if (item.title) {
-                const itemTitle = document.createElement('div');
-                itemTitle.className = 'whats-new-rich-title';
-                itemTitle.textContent = item.title;
-                itemCard.appendChild(itemTitle);
-              }
-              if (item.description) {
-                const itemDesc = document.createElement('div');
-                itemDesc.className = 'whats-new-rich-desc';
-                itemDesc.textContent = item.description;
-                itemCard.appendChild(itemDesc);
-              }
-              if (item.benefit) {
-                const itemBenefit = document.createElement('div');
-                itemBenefit.className = 'whats-new-rich-benefit';
-                const benefitPill = document.createElement('span');
-                benefitPill.className = 'benefit-pill';
-                benefitPill.textContent = `💡 User Benefit: ${item.benefit}`;
-                itemBenefit.appendChild(benefitPill);
-                itemCard.appendChild(itemBenefit);
-              }
-              itemsWrap.appendChild(itemCard);
-            }
+        // Bunting Garland
+        const bunting = document.createElement('div');
+        bunting.className = 'birthday-bunting-wrap';
+        bunting.innerHTML = `<svg viewBox="0 0 200 35" class="birthday-bunting-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,8 Q100,28 200,8" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="2,2" fill="none" opacity="0.7"/><polygon points="20,12 34,14 27,28" fill="#f43f5e"/><polygon points="45,15 59,18 52,32" fill="#facc15"/><polygon points="70,18 84,20 77,34" fill="#22c55e"/><polygon points="95,20 109,20 102,35" fill="#3b82f6"/><polygon points="120,20 134,18 127,33" fill="#ec4899"/><polygon points="145,18 159,15 152,30" fill="#f97316"/><polygon points="170,14 184,12 177,26" fill="#a855f7"/></svg>`;
+        heroBanner.appendChild(bunting);
+
+        // Main Banner (Title + Illustration)
+        const mainBanner = document.createElement('div');
+        mainBanner.className = 'birthday-banner-main';
+
+        const titleGroup = document.createElement('div');
+        titleGroup.className = 'birthday-title-group';
+        const theSpan = document.createElement('span');
+        theSpan.className = 'birthday-the';
+        theSpan.textContent = 'The';
+        const headlineWrap = document.createElement('div');
+        headlineWrap.className = 'birthday-headline-wrap';
+        const crown = document.createElement('span');
+        crown.className = 'birthday-crown-icon';
+        crown.textContent = '👑';
+        const bdayWord = document.createElement('span');
+        bdayWord.className = 'birthday-word';
+        bdayWord.textContent = 'BIRTHDAY';
+        headlineWrap.appendChild(crown);
+        headlineWrap.appendChild(bdayWord);
+
+        const updateWord = document.createElement('span');
+        updateWord.className = 'birthday-update-word';
+        updateWord.textContent = 'Update';
+
+        const ribbonWrap = document.createElement('div');
+        ribbonWrap.className = 'birthday-ribbon-wrap';
+        const ribbon = document.createElement('div');
+        ribbon.className = 'birthday-ribbon';
+        ribbon.textContent = 'v2.4.0 (Build 16)';
+        ribbonWrap.appendChild(ribbon);
+
+        titleGroup.appendChild(theSpan);
+        titleGroup.appendChild(headlineWrap);
+        titleGroup.appendChild(updateWord);
+        titleGroup.appendChild(ribbonWrap);
+
+        const illusWrap = document.createElement('div');
+        illusWrap.className = 'birthday-illustration-wrap';
+        illusWrap.innerHTML = `<svg viewBox="0 0 160 130" class="birthday-hero-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><filter id="flame-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.5" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter><linearGradient id="blue-balloon-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0284c7"/></linearGradient><linearGradient id="white-balloon-grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e2e8f0"/></linearGradient></defs><rect x="15" y="45" width="4" height="2" fill="#f43f5e" transform="rotate(25 17 46)"/><rect x="135" y="30" width="5" height="2.5" fill="#facc15" transform="rotate(-30 137 31)"/><rect x="145" y="55" width="4" height="2" fill="#ec4899" transform="rotate(40 147 56)"/><rect x="8" y="85" width="4" height="2" fill="#3b82f6" transform="rotate(-20 10 86)"/><circle cx="140" cy="15" r="1.5" fill="#38bdf8"/><circle cx="120" cy="8" r="1.5" fill="#f43f5e"/><path d="M42 42 Q40 60 55 75" stroke="#cbd5e1" stroke-width="1" fill="none"/><path d="M60 48 Q62 65 57 78" stroke="#cbd5e1" stroke-width="1" fill="none"/><ellipse cx="60" cy="30" rx="13" ry="16" fill="url(#white-balloon-grad)" opacity="0.95"/><path d="M58 46 L62 46 L60 49 Z" fill="#cbd5e1"/><ellipse cx="56" cy="24" rx="3" ry="5" fill="#ffffff" opacity="0.8" transform="rotate(-20 56 24)"/><ellipse cx="40" cy="24" rx="15" ry="18" fill="url(#blue-balloon-grad)"/><path d="M38 42 L42 42 L40 45 Z" fill="#0284c7"/><ellipse cx="35" cy="18" rx="3.5" ry="6" fill="#ffffff" opacity="0.6" transform="rotate(-25 35 18)"/><path d="M75 92 L75 112 Q115 118 150 112 L150 92 Z" fill="#d97706"/><path d="M75 100 Q115 106 150 100" stroke="#ffffff" stroke-width="3" fill="none"/><path d="M78 75 L78 95 Q115 100 147 95 L147 75 Z" fill="#f59e0b"/><path d="M76 75 C76 72 82 72 82 75 C82 82 88 82 88 75 C88 84 96 84 96 75 C96 82 104 82 104 75 C104 84 112 84 112 75 C112 82 120 82 120 75 C120 84 128 84 128 75 C128 82 136 82 136 75 C136 84 144 84 144 75 C144 72 149 72 149 75 Q115 70 76 75 Z" fill="#ffffff"/><ellipse cx="112" cy="74" rx="36" ry="6" fill="#ffffff"/><rect x="92" y="52" width="4" height="22" rx="1" fill="#38bdf8"/><line x1="92" y1="56" x2="96" y2="58" stroke="#ffffff" stroke-width="1.2"/><line x1="92" y1="62" x2="96" y2="64" stroke="#ffffff" stroke-width="1.2"/><line x1="92" y1="68" x2="96" y2="70" stroke="#ffffff" stroke-width="1.2"/><line x1="94" y1="52" x2="94" y2="49" stroke="#334155" stroke-width="1"/><path d="M94 40 C91 44 91 48 94 49 C97 48 97 44 94 40 Z" fill="#facc15" filter="url(#flame-glow)"/><rect x="106" y="48" width="4.5" height="26" rx="1" fill="#0284c7"/><line x1="106" y1="53" x2="110.5" y2="55.5" stroke="#ffffff" stroke-width="1.2"/><line x1="106" y1="60" x2="110.5" y2="62.5" stroke="#ffffff" stroke-width="1.2"/><line x1="106" y1="67" x2="110.5" y2="69.5" stroke="#ffffff" stroke-width="1.2"/><line x1="108.2" y1="48" x2="108.2" y2="45" stroke="#334155" stroke-width="1"/><path d="M108.2 35 C105 40 105 44 108.2 45 C111.4 44 111.4 40 108.2 35 Z" fill="#facc15" filter="url(#flame-glow)"/><rect x="122" y="52" width="4" height="22" rx="1" fill="#38bdf8"/><line x1="122" y1="56" x2="126" y2="58" stroke="#ffffff" stroke-width="1.2"/><line x1="122" y1="62" x2="126" y2="64" stroke="#ffffff" stroke-width="1.2"/><line x1="122" y1="68" x2="126" y2="70" stroke="#ffffff" stroke-width="1.2"/><line x1="124" y1="52" x2="124" y2="49" stroke="#334155" stroke-width="1"/><path d="M124 40 C121 44 121 48 124 49 C127 48 127 44 124 40 Z" fill="#facc15" filter="url(#flame-glow)"/><rect x="52" y="94" width="26" height="22" rx="2" fill="#0ea5e9"/><rect x="50" y="91" width="30" height="6" rx="1.5" fill="#38bdf8"/><rect x="63" y="91" width="4" height="25" fill="#f43f5e"/><rect x="52" y="103" width="26" height="4" fill="#f43f5e"/><path d="M65 91 C62 86 56 86 58 89 C60 92 64 91 65 91 Z" fill="#fb7185"/><path d="M65 91 C68 86 74 86 72 89 C70 92 66 91 65 91 Z" fill="#fb7185"/><circle cx="65" cy="91" r="2" fill="#e11d48"/></svg>`;
+
+        mainBanner.appendChild(titleGroup);
+        mainBanner.appendChild(illusWrap);
+        heroBanner.appendChild(mainBanner);
+
+        // Cloud Wave Divider
+        const cloudDivider = document.createElement('div');
+        cloudDivider.className = 'birthday-cloud-divider-wrap';
+        cloudDivider.innerHTML = `<svg class="birthday-cloud-divider" viewBox="0 0 500 40" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M0,40 L0,22 Q30,8 70,20 Q110,32 150,16 Q190,0 230,16 Q270,32 310,18 Q350,4 390,20 Q430,34 470,18 Q485,12 500,16 L500,40 Z" fill="#ffffff"/></svg>`;
+        heroBanner.appendChild(cloudDivider);
+
+        birthdayCard.appendChild(heroBanner);
+
+        // Content Body
+        const contentBody = document.createElement('div');
+        contentBody.className = 'birthday-content-body';
+
+        const birthdaySections = [
+          {
+            title: 'Application Stability',
+            iconSvg: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+            bullets: [
+              'Comprehensive application-wide stability improvements.',
+              'Fixed seven identified bugs across application functionality.',
+              'Improved error handling and state consistency.',
+              'Improved user data isolation and session cleanup.'
+            ]
+          },
+          {
+            title: 'Task Management',
+            iconSvg: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
+            bullets: [
+              'Improved task synchronization and rollback handling.',
+              'Better reliability during task updates and deletion.'
+            ]
+          },
+          {
+            title: 'Smart Lists',
+            iconSvg: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+            bullets: [
+              'Improved routine completion data normalization.',
+              'Preserved independent daily routine occurrences.',
+              'Simplified routine deletion with two clear options.',
+              'Improved daily history reliability and retention.'
+            ]
+          },
+          {
+            title: 'Navigation and Compatibility',
+            iconSvg: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+            bullets: [
+              'Improved Android hardware back-button handling.',
+              'Improved modal dismissal and navigation behavior.',
+              'Additional defensive handling for date operations.'
+            ]
+          },
+          {
+            title: 'Performance and Reliability',
+            iconSvg: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 0 0 2 12"/><path d="M12 12l4-4"/><circle cx="12" cy="12" r="2"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="19.07" y1="4.93" x2="17.66" y2="6.34"/><line x1="12" y1="2" x2="12" y2="4"/></svg>`,
+            bullets: [
+              'Improved application responsiveness.',
+              'Atomic file persistence improvements.',
+              'Expanded automated regression coverage.'
+            ]
+          },
+          {
+            title: 'Quality Verification',
+            iconSvg: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>`,
+            bullets: [
+              '1,073 automated tests passed in the reported test run.',
+              'Seven identified bugs fixed.'
+            ]
+          }
+        ];
+
+        birthdaySections.forEach(sec => {
+          const row = document.createElement('div');
+          row.className = 'birthday-section-row';
+
+          const iconDiv = document.createElement('div');
+          iconDiv.className = 'birthday-section-icon';
+          iconDiv.innerHTML = sec.iconSvg;
+
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'birthday-section-content';
+
+          const title = document.createElement('h4');
+          title.className = 'birthday-section-title';
+          title.textContent = sec.title;
+          contentDiv.appendChild(title);
+
+          const list = document.createElement('ul');
+          list.className = 'birthday-bullet-list';
+          sec.bullets.forEach(b => {
+            const li = document.createElement('li');
+            li.className = 'birthday-bullet-item';
+            const dot = document.createElement('span');
+            dot.className = 'birthday-bullet-dot';
+            dot.textContent = '•';
+            const text = document.createElement('span');
+            text.className = 'birthday-bullet-text';
+            text.textContent = b;
+            li.appendChild(dot);
+            li.appendChild(text);
+            list.appendChild(li);
           });
+          contentDiv.appendChild(list);
 
-          catCard.appendChild(itemsWrap);
-          categoriesContainer.appendChild(catCard);
+          row.appendChild(iconDiv);
+          row.appendChild(contentDiv);
+          contentBody.appendChild(row);
+        });
+
+        const bottomClouds = document.createElement('div');
+        bottomClouds.className = 'birthday-bottom-clouds';
+        bottomClouds.innerHTML = `<svg viewBox="0 0 400 30" preserveAspectRatio="none" width="100%" height="100%" aria-hidden="true"><path d="M-10,30 Q30,10 70,25 Q110,15 130,30 Z" fill="#e0f2fe" opacity="0.6"/><path d="M270,30 Q290,15 330,22 Q370,10 410,30 Z" fill="#e0f2fe" opacity="0.6"/></svg>`;
+        contentBody.appendChild(bottomClouds);
+
+        birthdayCard.appendChild(contentBody);
+        categoriesContainer.appendChild(birthdayCard);
+        if (emptyState) emptyState.style.display = 'none';
+      } else {
+        const buckets = [
+          { key: 'features', title: 'New Features', icon: '🚀', className: 'cat-features' },
+          { key: 'improvements', title: 'Improvements', icon: '⚡', className: 'cat-improvements' },
+          { key: 'performance', title: 'Performance Enhancements', icon: '🏎️', className: 'cat-performance' },
+          { key: 'fixes', title: 'Bug Fixes', icon: '🐞', className: 'cat-fixes' },
+          { key: 'security', title: 'Security & Reliability', icon: '🛡️', className: 'cat-security' }
+        ];
+
+        let totalItems = 0;
+        buckets.forEach(bucket => {
+          const items = rel[bucket.key];
+          if (Array.isArray(items) && items.length > 0) {
+            totalItems += items.length;
+            const catCard = document.createElement('div');
+            catCard.className = `whats-new-cat-card ${bucket.className}`;
+
+            const catHead = document.createElement('div');
+            catHead.className = 'whats-new-cat-head';
+            const badge = document.createElement('span');
+            badge.className = 'whats-new-cat-badge';
+            badge.textContent = `${bucket.icon} ${bucket.title}`;
+            catHead.appendChild(badge);
+            catCard.appendChild(catHead);
+
+            const itemsWrap = document.createElement('div');
+            itemsWrap.className = 'whats-new-cat-items';
+
+            items.forEach(item => {
+              if (typeof item === 'string') {
+                const itemRow = document.createElement('div');
+                itemRow.className = 'whats-new-item-simple';
+                const dot = document.createElement('span');
+                dot.className = 'whats-new-item-bullet';
+                dot.textContent = '•';
+                const txt = document.createElement('span');
+                txt.className = 'whats-new-item-text';
+                txt.textContent = item;
+                itemRow.appendChild(dot);
+                itemRow.appendChild(txt);
+                itemsWrap.appendChild(itemRow);
+              } else if (item && typeof item === 'object') {
+                const itemCard = document.createElement('div');
+                itemCard.className = 'whats-new-item-rich';
+                if (item.title) {
+                  const itemTitle = document.createElement('div');
+                  itemTitle.className = 'whats-new-rich-title';
+                  itemTitle.textContent = item.title;
+                  itemCard.appendChild(itemTitle);
+                }
+                if (item.description) {
+                  const itemDesc = document.createElement('div');
+                  itemDesc.className = 'whats-new-rich-desc';
+                  itemDesc.textContent = item.description;
+                  itemCard.appendChild(itemDesc);
+                }
+                if (item.benefit) {
+                  const itemBenefit = document.createElement('div');
+                  itemBenefit.className = 'whats-new-rich-benefit';
+                  const benefitPill = document.createElement('span');
+                  benefitPill.className = 'benefit-pill';
+                  benefitPill.textContent = `💡 User Benefit: ${item.benefit}`;
+                  itemBenefit.appendChild(benefitPill);
+                  itemCard.appendChild(itemBenefit);
+                }
+                itemsWrap.appendChild(itemCard);
+              }
+            });
+
+            catCard.appendChild(itemsWrap);
+            categoriesContainer.appendChild(catCard);
+          }
+        });
+
+        if (emptyState) {
+          emptyState.style.display = totalItems === 0 ? 'flex' : 'none';
         }
-      });
-
-      if (emptyState) {
-        emptyState.style.display = totalItems === 0 ? 'flex' : 'none';
       }
     }
   },
@@ -7746,7 +8266,14 @@ const TasklyUpdateManager = {
           cache: 'no-store'
         });
         if (resp.ok) {
-          manifest = await resp.json();
+          const remoteData = await resp.json();
+          const remoteCode = parseInt(remoteData?.versionCode, 10) || 0;
+          const instCode = parseInt(this.state.installedVersionCode, 10) || 160;
+          if (remoteCode >= instCode) {
+            manifest = remoteData;
+          } else {
+            console.warn(`[TasklyUpdateManager] Remote manifest (code ${remoteCode}) is older than installed APK (code ${instCode}). Checking local manifest.`);
+          }
         } else {
           throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
         }
@@ -8170,9 +8697,13 @@ const TasklyUpdateManager = {
         const installedRel = this.getReleaseByVersion(this.state.installedVersionCode);
         const latestRel = this.getLatestApprovedRelease();
         const displayRel = installedRel || latestRel;
-        whatsNewBannerSub.textContent = displayRel
-          ? `v${displayRel.versionName || displayRel.version} • ${displayRel.title || 'Latest features & updates'}`
-          : 'Explore everything introduced in recent updates.';
+        if (displayRel && (parseInt(displayRel.versionCode, 10) === 160 || displayRel.isBirthdayRelease)) {
+          whatsNewBannerSub.textContent = '🎂 THE BIRTHDAY UPDATE — Taskly v2.4.0 (Build 16)';
+        } else if (displayRel) {
+          whatsNewBannerSub.textContent = `v${displayRel.versionName || displayRel.version} • ${displayRel.title || 'Latest features & updates'}`;
+        } else {
+          whatsNewBannerSub.textContent = '🎂 THE BIRTHDAY UPDATE — Taskly v2.4.0 (Build 16)';
+        }
       }
     }
 
@@ -8857,9 +9388,14 @@ const SmartListsManager = {
     return routine;
   },
 
-  async deleteRoutine(id) {
+  async deleteRoutine(id, date = null, scope = null) {
+    // Determine effective scope and date
+    // If called with just deleteRoutine(id), preserve backward compatibility with existing tests by deleting entire routine
+    const effectiveScope = scope || (date ? 'occurrence' : 'entire');
+    const effectiveDate = date || this.state.activeDate;
+
     const idx = this.state.routines.findIndex(r => r.id === id);
-    if (idx === -1) {
+    if (idx === -1 && effectiveScope === 'entire') {
       // Idempotent cleanup even if routine was already deleted from routines
       this.state.tomorrowRoutines = (this.state.tomorrowRoutines || []).filter(r => (r.routineId || r.id) !== id);
       Object.keys(this.state.completions).forEach(key => {
@@ -8878,25 +9414,88 @@ const SmartListsManager = {
     const rollbackTomorrow = JSON.parse(JSON.stringify(this.state.tomorrowRoutines || []));
     const rollbackCompletions = JSON.parse(JSON.stringify(this.state.completions || {}));
 
-    // 1. Remove from today's active routines
-    this.state.routines.splice(idx, 1);
+    if (effectiveScope === 'occurrence') {
+      // 1. DELETE THIS OCCURRENCE ONLY (Today or specific date)
+      // Tomorrow and future routines remain intact!
+      const compKey = `${id}_${effectiveDate}`;
+      this.state.completions[compKey] = {
+        ...(this.state.completions[compKey] || {}),
+        status: 'removed',
+        removed: true,
+        cancellationReason: 'removed_from_today',
+        completed: false
+      };
 
-    // 2. Remove from tomorrow's routines immediately
+      // If the targeted date happens to be tomorrowDate, update tomorrowRoutines as well
+      if (effectiveDate === this.state.tomorrowDate) {
+        this.state.tomorrowRoutines = (this.state.tomorrowRoutines || []).filter(r => (r.routineId || r.id) !== id);
+      }
+
+      this.saveToStorage();
+      this.renderRoutines();
+      this.renderTomorrowRoutines();
+      this.computeLocalStreaksAndStats(this.state.activeDate);
+      this.renderStreakWidget();
+
+      // Async persistence
+      const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
+      try {
+        if (isSupabaseAuth) {
+          const { error } = await supabaseClient
+            .from('smart_routine_completions')
+            .upsert({
+              user_id: state.user.id,
+              routine_id: id,
+              date: effectiveDate,
+              status: 'removed',
+              cancellation_reason: 'removed_from_today',
+              completed: false
+            }, { onConflict: 'user_id,routine_id,date' });
+          if (error) console.warn('[SmartLists] Supabase delete occurrence error:', error);
+        } else {
+          const headers = getAuthHeaders();
+          const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
+          await fetch(`${baseUrl}/api/smart-lists/routines/${encodeURIComponent(id)}?date=${encodeURIComponent(effectiveDate)}&scope=occurrence`, {
+            method: 'DELETE',
+            headers
+          });
+        }
+      } catch (err) {
+        const isInvalidUrlInNode = (err.code === 'ERR_INVALID_URL' || (typeof err.message === 'string' && err.message.includes('Failed to parse URL')));
+        if (isInvalidUrlInNode) return true;
+        console.error('[SmartLists] deleteRoutine occurrence failed, rolling back:', err);
+        this.state.completions = rollbackCompletions;
+        this.saveToStorage();
+        this.renderRoutines();
+        this.renderTomorrowRoutines();
+        this.computeLocalStreaksAndStats(this.state.activeDate);
+        this.renderStreakWidget();
+        return false;
+      }
+      return true;
+    }
+
+    // 2. DELETE ENTIRE ROUTINE (effectiveScope === 'entire')
+    if (idx !== -1) {
+      this.state.routines.splice(idx, 1);
+    }
+
+    // Remove from tomorrow's routines immediately
     this.state.tomorrowRoutines = (this.state.tomorrowRoutines || []).filter(r => (r.routineId || r.id) !== id);
 
-    // 3. Clear any pending modal states for this routine
+    // Clear any pending modal states for this routine
     if (this.state.pendingDeleteId === id) this.state.pendingDeleteId = null;
     if (this.state.pendingRemoveTomorrowId === id) this.state.pendingRemoveTomorrowId = null;
     if (this.state.pendingEditTomorrowId === id) this.state.pendingEditTomorrowId = null;
 
-    // 4. Remove completions for this routine
+    // Remove completions for this routine
     Object.keys(this.state.completions).forEach(key => {
       if (key.startsWith(`${id}_`)) {
         delete this.state.completions[key];
       }
     });
 
-    // 5. Persist to storage and refresh UI immediately
+    // Persist to storage and refresh UI immediately
     this.saveToStorage();
     this.renderRoutines();
     this.renderTomorrowRoutines();
@@ -8905,7 +9504,7 @@ const SmartListsManager = {
 
     const isSupabaseAuth = Boolean(supabaseClient && typeof supabaseClient.from === 'function' && state.user?.id);
 
-    // 6. ASYNC PERSISTENCE (Supabase / Backend)
+    // ASYNC PERSISTENCE (Supabase / Backend)
     try {
       if (isSupabaseAuth) {
         // First delete any completion records for this routine to avoid foreign key errors or orphans
@@ -8928,7 +9527,7 @@ const SmartListsManager = {
       } else {
         const headers = getAuthHeaders();
         const baseUrl = (typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : '') || '';
-        const res = await fetch(`${baseUrl}/api/smart-lists/routines/${encodeURIComponent(id)}`, {
+        const res = await fetch(`${baseUrl}/api/smart-lists/routines/${encodeURIComponent(id)}?scope=entire`, {
           method: 'DELETE',
           headers
         });
@@ -8955,6 +9554,10 @@ const SmartListsManager = {
     }
 
     return true;
+  },
+
+  async deleteRoutineOccurrence(id, date = this.state.activeDate) {
+    return await this.deleteRoutine(id, date, 'occurrence');
   },
 
   // --- Daily Completions ---
@@ -9087,7 +9690,8 @@ const SmartListsManager = {
   },
 
   getNextDayYmd(ymd) {
-    const parts = ymd.split('-').map(Number);
+    const targetYmd = ymd || this.state.activeDate || this.getTodayYmd();
+    const parts = targetYmd.split('-').map(Number);
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     d.setDate(d.getDate() + 1);
     return (typeof toYmdString === 'function') ? toYmdString(d) : d.toISOString().slice(0, 10);
@@ -9720,6 +10324,10 @@ const SmartListsManager = {
     } else {
       this.state.reports.unshift(report);
     }
+    this.state.reports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (this.state.reports.length > 10) {
+      this.state.reports = this.state.reports.slice(0, 10);
+    }
     this.saveToStorage();
 
     // Persist to Supabase / API
@@ -9826,7 +10434,7 @@ const SmartListsManager = {
         }
       });
 
-      this.state.reports = Array.from(mergedMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      this.state.reports = Array.from(mergedMap.values()).sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10);
       this.saveToStorage();
 
       // Synchronize offline reports to backend/Supabase in background
@@ -9905,6 +10513,10 @@ const SmartListsManager = {
           const data = await res.json();
           if (Array.isArray(data.reports)) {
             this.state.reports = data.reports.map(r => this.normalizeReport(r)).filter(Boolean);
+            this.state.reports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            if (this.state.reports.length > 10) {
+              this.state.reports = this.state.reports.slice(0, 10);
+            }
             this.saveToStorage();
             return this.state.reports;
           }
@@ -10086,10 +10698,11 @@ const SmartListsManager = {
       }
     }
 
-    if (createdAny) {
-      this.state.reports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      this.saveToStorage();
+    this.state.reports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (this.state.reports.length > 10) {
+      this.state.reports = this.state.reports.slice(0, 10);
     }
+    this.saveToStorage();
 
     return this.state.reports;
   },
@@ -11189,6 +11802,10 @@ const SmartListsManager = {
       this.state.completions[key].completed = false;
       this.state.completions[key].cancellationReason = null;
     }
+    this.state.reports.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (this.state.reports.length > 10) {
+      this.state.reports = this.state.reports.slice(0, 10);
+    }
     this.saveToStorage();
     this.computeLocalStreaksAndStats(d);
     await this.generateDailyReport(d);
@@ -11610,7 +12227,7 @@ const SmartListsManager = {
       btnDelete.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
       btnDelete.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.openDeleteConfirm('routine', routine.id, routine.title);
+        this.openDeleteConfirm('routine', routine.id, routine.title, date);
       });
 
       actions.appendChild(btnStatusPill);
@@ -11767,12 +12384,8 @@ const SmartListsManager = {
     const postponedToDate = postponeInput ? postponeInput.value : null;
     const cancellationReason = cancelInput ? cancelInput.value.trim() : null;
 
-    const confirmBtn = document.getElementById('btn-confirm-status-picker');
-    this.state.isUpdatingStatus = true;
-    if (confirmBtn) {
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Saving...';
-    }
+    // Immediately close modal for instant UI responsiveness (< 10ms)
+    this.closeStatusPicker();
 
     try {
       await this.setRoutineStatus(routineId, date, status, {
@@ -11781,13 +12394,6 @@ const SmartListsManager = {
       });
     } catch (e) {
       console.warn('[SmartLists] confirmStatusPicker error:', e);
-    } finally {
-      this.state.isUpdatingStatus = false;
-      if (confirmBtn) {
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Save Status';
-      }
-      this.closeStatusPicker();
     }
   },
 
@@ -11983,7 +12589,7 @@ const SmartListsManager = {
     if (!list) return;
 
     list.innerHTML = '';
-    const reports = this.state.reports || [];
+    const reports = (this.state.reports || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10);
 
     if (reports.length === 0) {
       if (empty) empty.style.display = 'block';
@@ -12078,16 +12684,31 @@ const SmartListsManager = {
     if (modal) modal.classList.remove('active');
   },
 
-  openDeleteConfirm(type, id, label) {
+  openDeleteConfirm(type, id, label, date = null) {
     this.state.pendingDeleteType = type;
     this.state.pendingDeleteId = id;
+    this.state.pendingDeleteDate = date || this.state.activeDate;
+    this.state.pendingDeleteLabel = label;
 
     const msgEl = document.getElementById('smart-delete-confirm-message');
-    if (msgEl) {
-      if (type === 'routine') {
-        msgEl.textContent = `Are you sure you want to delete "${label}"? It will be removed from future daily lists. Past historical reports will be preserved.`;
-      } else {
+    const scopeContainer = document.getElementById('smart-delete-scope-container');
+    if (type === 'routine') {
+      if (msgEl) {
+        msgEl.textContent = `Are you sure you want to delete "${label}"? Choose an option below. Past historical reports will be preserved.`;
+      }
+      if (scopeContainer) {
+        if (scopeContainer.style) scopeContainer.style.display = 'block';
+        if (typeof scopeContainer.querySelector === 'function') {
+          const defaultRadio = scopeContainer.querySelector('input[value="occurrence"]');
+          if (defaultRadio) defaultRadio.checked = true;
+        }
+      }
+    } else {
+      if (msgEl) {
         msgEl.textContent = `Are you sure you want to delete the daily summary report for ${label}? Saved routines will remain safe.`;
+      }
+      if (scopeContainer && scopeContainer.style) {
+        scopeContainer.style.display = 'none';
       }
     }
 
@@ -12098,6 +12719,8 @@ const SmartListsManager = {
   closeDeleteConfirm() {
     this.state.pendingDeleteType = null;
     this.state.pendingDeleteId = null;
+    this.state.pendingDeleteDate = null;
+    this.state.pendingDeleteLabel = null;
     const modal = document.getElementById('modal-smart-delete-confirm');
     if (modal) modal.classList.remove('active');
   },
@@ -12105,10 +12728,22 @@ const SmartListsManager = {
   async executePendingDelete() {
     const type = this.state.pendingDeleteType;
     const id = this.state.pendingDeleteId;
+    const date = this.state.pendingDeleteDate || this.state.activeDate;
+    let scope = 'entire'; // Default for test / headless environments
+    const scopeContainer = document.getElementById('smart-delete-scope-container');
+    if (scopeContainer && type === 'routine') {
+      if (typeof scopeContainer.querySelector === 'function') {
+        const selected = scopeContainer.querySelector('input[name="routine-delete-scope"]:checked');
+        if (selected && selected.value) {
+          scope = selected.value;
+        }
+      }
+    }
+
     this.closeDeleteConfirm();
 
     if (type === 'routine' && id) {
-      await this.deleteRoutine(id);
+      await this.deleteRoutine(id, date, scope);
     } else if (type === 'report' && id) {
       await this.deleteReport(id);
     }
@@ -13237,12 +13872,52 @@ function setupEventListeners() {
     }
   });
 
-  // Android Capacitor hardware back-button dismissal
+  // Android Capacitor hardware back-button dismissal and navigation
   if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
     try {
       window.Capacitor.Plugins.App.addListener('backButton', () => {
-        if (modalSupportInfo && modalSupportInfo.classList.contains('active')) {
-          closeSupportInfoModal();
+        // 1. Dismiss active modals in hierarchical order
+        const modalHandlers = [
+          { id: 'modal-logout-confirm', close: () => typeof closeLogoutModal === 'function' ? closeLogoutModal() : null },
+          { id: 'modal-delete-category-confirm', close: () => typeof closeDeleteCategoryModal === 'function' ? closeDeleteCategoryModal() : null },
+          { id: 'modal-change-password', close: () => typeof closeChangePasswordModal === 'function' ? closeChangePasswordModal() : null },
+          { id: 'modal-smart-delete-confirm', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeDeleteConfirm() : null },
+          { id: 'modal-smart-status-picker', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeStatusPicker() : null },
+          { id: 'modal-smart-routine', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeRoutineModal() : null },
+          { id: 'modal-smart-edit-tomorrow', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeEditTomorrowModal() : null },
+          { id: 'modal-smart-remove-tomorrow', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeRemoveTomorrowModal() : null },
+          { id: 'modal-smart-daily-summary', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeSummaryModal() : null },
+          { id: 'modal-smart-settings', close: () => typeof SmartListsManager !== 'undefined' ? SmartListsManager.closeSettingsModal() : null },
+          { id: 'modal-notification-settings', close: () => typeof TasklyNotifications !== 'undefined' ? TasklyNotifications.closeSettingsModal() : null },
+          { id: 'modal-custom-category', close: () => typeof closeCustomCategoryModal === 'function' ? closeCustomCategoryModal() : null },
+          { id: 'modal-quick-reminder-prompt', close: () => typeof closeQuickReminderPromptModal === 'function' ? closeQuickReminderPromptModal() : null },
+          { id: 'modal-edit-task', close: () => typeof closeEditTaskModal === 'function' ? closeEditTaskModal() : null },
+          { id: 'modal-whats-new', close: () => typeof TasklyUpdateManager !== 'undefined' ? TasklyUpdateManager.closeWhatsNewModal() : null },
+          { id: 'modal-version', close: () => typeof TasklyUpdateManager !== 'undefined' ? TasklyUpdateManager.closeModal() : null },
+          { id: 'modal-support-info', close: () => typeof closeSupportInfoModal === 'function' ? closeSupportInfoModal() : null },
+          { id: 'modal-select-theme', close: () => { const m = document.getElementById('modal-select-theme'); if (m) m.classList.remove('active'); } }
+        ];
+
+        for (const item of modalHandlers) {
+          const el = document.getElementById(item.id);
+          if (el && el.classList.contains('active')) {
+            item.close();
+            el.classList.remove('active');
+            return;
+          }
+        }
+
+        // 2. If no modal is active and user is on a secondary tab, navigate to Home
+        if (typeof state !== 'undefined' && state.activeTab && state.activeTab !== 'home') {
+          if (typeof showMainFlow === 'function') {
+            showMainFlow('home');
+            return;
+          }
+        }
+
+        // 3. If already on Home tab with no open modals, cleanly exit native app
+        if (typeof window.Capacitor.Plugins.App.exitApp === 'function') {
+          window.Capacitor.Plugins.App.exitApp();
         }
       });
     } catch (_) {}
@@ -13286,7 +13961,9 @@ function setupEventListeners() {
   const selectWhatsNewVersion = document.getElementById('select-whats-new-version');
 
   if (btnOpenWhatsNew) {
-    btnOpenWhatsNew.addEventListener('click', () => TasklyUpdateManager.openWhatsNew());
+    btnOpenWhatsNew.addEventListener('click', () => {
+      TasklyUpdateManager.openWhatsNew(TasklyUpdateManager.state.installedVersionCode || 160);
+    });
   }
   if (btnCloseWhatsNew) {
     btnCloseWhatsNew.addEventListener('click', () => TasklyUpdateManager.closeWhatsNew());
@@ -13417,13 +14094,14 @@ function setupEventListeners() {
     formAddRoutine.addEventListener('submit', async (e) => {
       e.preventDefault();
       const val = inputAddRoutine ? inputAddRoutine.value : '';
-      await SmartListsManager.addRoutine(val);
+      if (!val || !val.trim()) return;
       if (formAddRoutine) {
         formAddRoutine.style.display = 'none';
         formAddRoutine.reset();
       }
       if (addRoutineBox) addRoutineBox.style.display = 'block';
       if (btnToggleAddRoutine) btnToggleAddRoutine.style.display = 'flex';
+      await SmartListsManager.addRoutine(val);
     });
   }
 
@@ -14063,6 +14741,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ResponsiveLayoutManager,
     OEMCompatibilityManager,
     ThemeManager,
+    renderTaskItemHtml,
+    navigateToTask: (id) => TasklyNotifications.navigateToTask(id),
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };

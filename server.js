@@ -585,9 +585,11 @@ app.patch('/api/smart-lists/routines/:id', async (req, res, next) => {
 app.delete('/api/smart-lists/routines/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const success = await SmartListStore.deleteRoutine(req.user.id, id);
+    const date = req.query.date || (req.body && req.body.date);
+    const scope = req.query.scope || (req.body && req.body.scope);
+    const success = await SmartListStore.deleteRoutine(req.user.id, id, { date, scope });
     if (!success) return res.status(404).json({ error: 'Routine not found' });
-    res.json({ success: true, id });
+    res.json({ success: true, id, date: date || null, scope: scope || 'entire' });
   } catch (err) {
     next(err);
   }

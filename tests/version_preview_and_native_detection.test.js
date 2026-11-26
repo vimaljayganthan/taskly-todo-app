@@ -237,7 +237,7 @@ describe('Taskly v2.2.0 Build 14 — Version, Preview, and Access Test Suite', (
   // --------------------------------------------------------------------------
   // Scenario 2: Production Web Browser Detection & Manifest Selection
   // --------------------------------------------------------------------------
-  test('2. Production web browser: detects production_web on taskly-todo-app-4z1c.vercel.app, selects /version-manifest.json, displays v2.3.3 (Build 15.3)', async () => {
+  test('2. Production web browser: detects production_web on taskly-todo-app-4z1c.vercel.app, selects /version-manifest.json, displays v2.4.0 (Build 16)', async () => {
     global.window.location.hostname = 'taskly-todo-app-4z1c.vercel.app';
     global.window.Capacitor = undefined;
 
@@ -263,8 +263,8 @@ describe('Taskly v2.2.0 Build 14 — Version, Preview, and Access Test Suite', (
 
     assert.strictEqual(platformLabel.textContent, 'Web Application');
     assert.strictEqual(labelInstalled.textContent, 'Web Version');
-    assert.strictEqual(valInstalled.textContent, 'v2.3.3 (Build 15.3)');
-    assert.strictEqual(valLatest.textContent, 'v2.3.3 (Build 15.3)');
+    assert.strictEqual(valInstalled.textContent, 'v2.4.0 (Build 16)');
+    assert.strictEqual(valLatest.textContent, 'v2.4.0 (Build 16)');
   });
 
   // --------------------------------------------------------------------------
@@ -487,22 +487,22 @@ describe('Taskly v2.2.0 Build 14 — Version, Preview, and Access Test Suite', (
   // --------------------------------------------------------------------------
   // Scenario 8: Production Manifest Files Remain Completely Unchanged
   // --------------------------------------------------------------------------
-  test('8. Production manifest integrity: releases/version-manifest.json and public/version-manifest.json are synchronized at v2.3.3 (Build 15.3)', () => {
-    assert.strictEqual(PROD_MANIFEST.latestVersion, '2.3.3');
-    assert.strictEqual(PROD_MANIFEST.versionCode, 153);
-    assert.strictEqual(PUBLIC_MANIFEST.latestVersion, '2.3.3');
-    assert.strictEqual(PUBLIC_MANIFEST.versionCode, 153);
+  test('8. Production manifest integrity: releases/version-manifest.json and public/version-manifest.json are synchronized at v2.4.0 (Build 16)', () => {
+    assert.strictEqual(PROD_MANIFEST.latestVersion, '2.4.0');
+    assert.strictEqual(PROD_MANIFEST.versionCode, 160);
+    assert.strictEqual(PUBLIC_MANIFEST.latestVersion, '2.4.0');
+    assert.strictEqual(PUBLIC_MANIFEST.versionCode, 160);
     assert.deepStrictEqual(PROD_MANIFEST, PUBLIC_MANIFEST, 'Both manifests must remain byte-identical');
     assert.strictEqual(
       PROD_MANIFEST.apkDownloadUrl,
-      'https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.3.3-b15.3/taskly-v2.3.3.apk'
+      'https://github.com/vimaljayganthan/taskly-todo-app/releases/download/v2.4.0-b16/taskly-v2.4.0.apk'
     );
-    assert.strictEqual(PROD_MANIFEST.history[0].version, '2.3.3');
-    assert.strictEqual(PROD_MANIFEST.history[0].versionCode, 153);
-    assert.strictEqual(PROD_MANIFEST.history[1].version, '2.3.2');
-    assert.strictEqual(PROD_MANIFEST.history[1].versionCode, 152);
-    assert.strictEqual(PROD_MANIFEST.history[2].version, '2.3.1');
-    assert.strictEqual(PROD_MANIFEST.history[2].versionCode, 151);
+    assert.strictEqual(PROD_MANIFEST.history[0].version, '2.4.0');
+    assert.strictEqual(PROD_MANIFEST.history[0].versionCode, 160);
+    assert.strictEqual(PROD_MANIFEST.history[1].version, '2.3.3');
+    assert.strictEqual(PROD_MANIFEST.history[1].versionCode, 153);
+    assert.strictEqual(PROD_MANIFEST.history[2].version, '2.3.2');
+    assert.strictEqual(PROD_MANIFEST.history[2].versionCode, 152);
   });
 
   // --------------------------------------------------------------------------

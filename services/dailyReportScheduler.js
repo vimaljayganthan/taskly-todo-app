@@ -352,6 +352,26 @@ class DailyReportScheduler {
         cursor = addDays(cursor, 1);
       }
 
+      // Enforce strict 10-day rolling history limit in Supabase (Build 16)
+      try {
+        const { data: allUserReports } = await supabase
+          .from('smart_routine_reports')
+          .select('id, date')
+          .eq('user_id', targetUserId)
+          .order('date', { ascending: false });
+
+        if (Array.isArray(allUserReports) && allUserReports.length > 10) {
+          const pruneIds = allUserReports.slice(10).map(r => r.id);
+          await supabase
+            .from('smart_routine_reports')
+            .delete()
+            .in('id', pruneIds)
+            .eq('user_id', targetUserId);
+        }
+      } catch (retentionErr) {
+        console.warn(`[DailyReportScheduler] Supabase 10-day retention pruning error for user ${targetUserId}:`, retentionErr.message);
+      }
+
       results.push({
         userId: targetUserId,
         reconciledCount: userReconciledReports.length,
@@ -408,6 +428,7 @@ class DailyReportScheduler {
       });
 
       results.push(res);
+      await SmartListStore.enforceHistoryRetention(targetUserId, 10);
     }
 
     const totalReconciled = results.reduce((acc, r) => acc + (r.reconciledCount || 0), 0);

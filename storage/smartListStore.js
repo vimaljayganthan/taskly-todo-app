@@ -46,11 +46,16 @@ async function ensureDataLoaded() {
 async function persistData() {
   if (!inMemoryData) return;
   const filePath = getDataFile();
+  const tempFile = `${filePath}.${crypto.randomUUID ? crypto.randomUUID() : Date.now()}.tmp`;
   try {
     await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
-    await fsPromises.writeFile(filePath, JSON.stringify(inMemoryData, null, 2), 'utf8');
+    await fsPromises.writeFile(tempFile, JSON.stringify(inMemoryData, null, 2), 'utf8');
+    await fsPromises.rename(tempFile, filePath);
   } catch (err) {
     console.error('[SmartListStore] Persist error:', err.message);
+    try {
+      if (fs.existsSync(tempFile)) await fsPromises.unlink(tempFile);
+    } catch (_) {}
   }
 }
 
@@ -67,11 +72,13 @@ function formatCompletion(c) {
     ))
   );
   const status = isRemoved ? 'removed' : (c.status || (c.completed ? 'completed' : 'pending'));
+  const routineId = c.routineId || c.routine_id || null;
   return {
     id: c.id,
     userId: c.userId || c.user_id,
     user_id: c.userId || c.user_id,
-    routineId: c.routineId,
+    routineId,
+    routine_id: routineId,
     date: c.date,
     status,
     removed: isRemoved,
@@ -140,8 +147,23 @@ const SmartListStore = {
     return routine;
   },
 
-  async deleteRoutine(userId, routineId) {
+  async deleteRoutine(userId, routineId, options = {}) {
     const data = await ensureDataLoaded();
+    let scope = 'entire';
+    let date = null;
+
+    if (typeof options === 'string') {
+      scope = options;
+    } else if (typeof options === 'object' && options !== null) {
+      scope = options.scope || (options.date ? 'occurrence' : 'entire');
+      date = options.date ? toYmdString(options.date) : null;
+    }
+
+    if (scope === 'occurrence' && date) {
+      return await this.removeOccurrenceFromDate(userId, { routineId, date });
+    }
+
+    // Default: entire routine deletion
     const idx = data.routines.findIndex(r => r.id === routineId && (r.userId === userId || r.user_id === userId));
     if (idx === -1) return false;
 
@@ -847,13 +869,38 @@ const SmartListStore = {
     return record;
   },
 
-  // --- Daily Summary Reports ---
+  // --- Daily Summary Reports & 10-Day Retention (Build 16) ---
 
-  async getReports(userId) {
+  async enforceHistoryRetention(userId, maxReports = 10) {
+    const data = await ensureDataLoaded();
+    const limit = typeof maxReports === 'number' && maxReports > 0 ? maxReports : 10;
+    const userReports = (data.reports || [])
+      .filter(r => r.userId === userId || r.user_id === userId)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    if (userReports.length > limit) {
+      const keepIds = new Set(userReports.slice(0, limit).map(r => r.id));
+      data.reports = (data.reports || []).filter(r => {
+        if (r.userId === userId || r.user_id === userId) {
+          return keepIds.has(r.id);
+        }
+        return true;
+      });
+      await persistData();
+    }
+    return (data.reports || [])
+      .filter(r => r.userId === userId || r.user_id === userId)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  },
+
+  async getReports(userId, options = {}) {
+    const limit = typeof options?.limit === 'number' ? options.limit : 10;
+    await this.enforceHistoryRetention(userId, limit);
     const data = await ensureDataLoaded();
     return (data.reports || [])
       .filter(r => r.userId === userId || r.user_id === userId)
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, limit);
   },
 
   async getReport(userId, date) {
@@ -1002,6 +1049,7 @@ const SmartListStore = {
     }
 
     await persistData();
+    await this.enforceHistoryRetention(userId, 10);
     return report;
   },
 
