@@ -816,7 +816,7 @@ async function initSupabaseAuth() {
           flowType: 'pkce',
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true
+          detectSessionInUrl: false
         }
       });
 
