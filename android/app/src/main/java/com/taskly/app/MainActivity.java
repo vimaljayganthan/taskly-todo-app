@@ -1,5 +1,6 @@
 package com.taskly.app;
 
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.WebSettings;
@@ -26,5 +27,11 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             // Graceful fallback on older Android versions or custom webview providers
         }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
     }
 }

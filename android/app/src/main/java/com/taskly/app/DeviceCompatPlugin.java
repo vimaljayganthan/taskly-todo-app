@@ -1,5 +1,7 @@
 package com.taskly.app;
 
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.util.DisplayMetrics;
 import com.getcapacitor.JSObject;
@@ -48,6 +50,28 @@ public class DeviceCompatPlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Failed to retrieve device profile: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Launch an external browser intent for OAuth authentication.
+     */
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || url.trim().isEmpty()) {
+            call.reject("URL cannot be empty");
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject ret = new JSObject();
+            ret.put("opened", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to open URL in browser: " + e.getMessage(), e);
         }
     }
 }

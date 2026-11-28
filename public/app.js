@@ -376,6 +376,192 @@ function getAuthRedirectUrl() {
   return null;
 }
 
+// ==========================================================================
+// Google OAuth & Universal Redirect Routing
+// ==========================================================================
+let isGoogleAuthInProgress = false;
+let pendingAuthDeepLinkUrl = null;
+let capacitorAuthListenersRegistered = false;
+
+function isNativeApp() {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    (typeof window.Capacitor?.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) ||
+    (typeof window.Capacitor?.getPlatform === 'function' && window.Capacitor.getPlatform() === 'android') ||
+    (typeof window.Capacitor?.getPlatform === 'function' && window.Capacitor.getPlatform() === 'ios') ||
+    window.location?.protocol === 'capacitor:' ||
+    window.location?.protocol === 'ionic:' ||
+    (window.location?.hostname === 'localhost' && window.location?.port === '' && !window.location?.origin?.includes(':3000'))
+  );
+}
+
+function getOAuthRedirectUrl() {
+  // 1. Native Android / iOS: Use deep-link callback intercepted by AndroidManifest intent filter
+  if (isNativeApp()) {
+    return 'com.taskly.app://auth/callback';
+  }
+
+  // 2. Web Browser: Return origin / root URL
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    const origin = window.location.origin;
+    const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
+    if (isLocal) {
+      return origin;
+    }
+    if (state.config && typeof state.config.appUrl === 'string' && state.config.appUrl.trim()) {
+      return state.config.appUrl.trim().replace(/\/+$/, '');
+    }
+    if (!origin.startsWith('null') && !origin.startsWith('file:') && origin.startsWith('https://')) {
+      return origin.replace(/\/+$/, '');
+    }
+  }
+
+  if (state.config && typeof state.config.appUrl === 'string' && state.config.appUrl.trim()) {
+    return state.config.appUrl.trim().replace(/\/+$/, '');
+  }
+
+  return 'http://localhost:3000';
+}
+
+function resetGoogleSignInButton() {
+  isGoogleAuthInProgress = false;
+  if (typeof document === 'undefined') return;
+  const btnGoogle = document.getElementById('btn-google-signin');
+  const btnGoogleText = document.getElementById('btn-google-text');
+  const authSubmitBtn = document.getElementById('btn-auth-submit');
+  if (btnGoogle) {
+    btnGoogle.disabled = false;
+    btnGoogle.classList.remove('loading');
+  }
+  if (authSubmitBtn) authSubmitBtn.disabled = false;
+  if (btnGoogleText) {
+    btnGoogleText.textContent = 'Continue with Google';
+  }
+}
+
+async function handleGoogleSignIn() {
+  if (isGoogleAuthInProgress) {
+    console.log('[Google Auth]: Request already in progress. Ignoring duplicate click.');
+    return;
+  }
+
+  const btnGoogle = (typeof document !== 'undefined') ? document.getElementById('btn-google-signin') : null;
+  const btnGoogleText = (typeof document !== 'undefined') ? document.getElementById('btn-google-text') : null;
+  const authSubmitBtn = (typeof document !== 'undefined') ? document.getElementById('btn-auth-submit') : null;
+  const authErrorMsg = (typeof document !== 'undefined') ? document.getElementById('auth-error-msg') : null;
+
+  if (authErrorMsg) authErrorMsg.style.display = 'none';
+
+  isGoogleAuthInProgress = true;
+  if (btnGoogle) {
+    btnGoogle.disabled = true;
+    btnGoogle.classList.add('loading');
+  }
+  if (authSubmitBtn) authSubmitBtn.disabled = true;
+  if (btnGoogleText) btnGoogleText.textContent = 'Connecting to Google...';
+
+  try {
+    if (!supabaseClient) {
+      await initSupabaseAuth();
+    }
+
+    if (!supabaseClient || typeof supabaseClient.auth?.signInWithOAuth !== 'function') {
+      throw new Error('Authentication service is currently unavailable. Please check your internet connection.');
+    }
+
+    const isNative = isNativeApp();
+    const redirectUrl = getOAuthRedirectUrl();
+    console.log('[Google Auth]: Initiating Google OAuth with redirect URL:', redirectUrl, 'isNative:', isNative);
+
+    const { data, error } = await supabaseClient.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectUrl,
+        skipBrowserRedirect: isNative,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account'
+        }
+      }
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (isNative && data?.url) {
+      console.log('[Google Auth]: Opening external system browser for OAuth:', data.url);
+      let opened = false;
+      const CapBrowser = (typeof window !== 'undefined') ? window.Capacitor?.Plugins?.Browser : null;
+      if (CapBrowser && typeof CapBrowser.open === 'function') {
+        try {
+          if (typeof CapBrowser.addListener === 'function') {
+            CapBrowser.addListener('browserFinished', () => {
+              console.log('[Google Auth]: Browser closed by user');
+              setTimeout(() => {
+                if (!isAuthenticated()) {
+                  resetGoogleSignInButton();
+                }
+              }, 400);
+            });
+          }
+          await CapBrowser.open({ url: data.url, windowName: '_system' });
+          opened = true;
+        } catch (pluginErr) {
+          console.warn('[Google Auth]: Browser.open exception:', pluginErr);
+        }
+      }
+      if (!opened && typeof window !== 'undefined' && window.Capacitor?.Plugins?.DeviceCompat?.openUrl) {
+        try {
+          await window.Capacitor.Plugins.DeviceCompat.openUrl({ url: data.url });
+          opened = true;
+        } catch (pluginErr) {
+          console.warn('[Google Auth]: DeviceCompat.openUrl exception:', pluginErr);
+        }
+      }
+      if (!opened) {
+        if (typeof window !== 'undefined' && typeof window.open === 'function') {
+          window.open(data.url, '_system');
+        } else if (typeof window !== 'undefined' && window.location) {
+          window.location.href = data.url;
+        }
+      }
+
+      // Re-enable button if user switches back to app without completing authentication
+      const handleAppResume = () => {
+        setTimeout(() => {
+          if (!isAuthenticated()) {
+            resetGoogleSignInButton();
+          }
+        }, 1200);
+      };
+
+      if (typeof window !== 'undefined') {
+        if (window.Capacitor?.Plugins?.App?.addListener) {
+          window.Capacitor.Plugins.App.addListener('appStateChange', (state) => {
+            if (state && state.isActive) handleAppResume();
+          });
+        }
+        window.addEventListener('focus', handleAppResume, { once: true });
+      }
+    } else if (!isNative && data?.url) {
+      if (typeof window !== 'undefined' && window.location) {
+        window.location.href = data.url;
+      }
+    }
+  } catch (err) {
+    console.error('[Google Auth Error]:', err);
+    if (authErrorMsg) {
+      authErrorMsg.style.display = 'flex';
+      authErrorMsg.style.borderColor = '#fecaca';
+      authErrorMsg.style.background = '#fef2f2';
+      authErrorMsg.style.color = '#dc2626';
+      authErrorMsg.textContent = err.message || 'Google Sign-In failed. Please try again.';
+    }
+    resetGoogleSignInButton();
+  }
+}
+
 function handleAuthExpiry() {
   console.warn('[Auth]: Session expired or unauthorized. Redirecting to sign in.');
   syncAuthSignOut();
@@ -417,8 +603,65 @@ function handleUnverifiedEmail(message) {
 // Set to prevent duplicate PKCE / deep link callback processing
 const processedAuthCodes = new Set();
 
+function setupCapacitorAuthListeners() {
+  if (capacitorAuthListenersRegistered) return;
+  if (typeof window === 'undefined') return;
+
+  const CapApp = window.Capacitor?.Plugins?.App;
+  if (!CapApp || typeof CapApp.addListener !== 'function') return;
+
+  capacitorAuthListenersRegistered = true;
+
+  // Warm resume: User clicked confirmation link or returned from browser OAuth while app was in background
+  CapApp.addListener('appUrlOpen', (event) => {
+    if (event && event.url) {
+      console.log('[Capacitor App]: Received appUrlOpen deep link:', event.url);
+      if (supabaseClient) {
+        handleAuthDeepLink(event.url);
+      } else {
+        pendingAuthDeepLinkUrl = event.url;
+      }
+    }
+  });
+
+  // Cold start: User launched app from deep link while app was closed
+  try {
+    if (typeof CapApp.getLaunchUrl === 'function') {
+      CapApp.getLaunchUrl().then(launchData => {
+        if (launchData && launchData.url) {
+          console.log('[Capacitor App]: Received cold-start launch URL:', launchData.url);
+          if (supabaseClient) {
+            handleAuthDeepLink(launchData.url);
+          } else {
+            pendingAuthDeepLinkUrl = launchData.url;
+          }
+        }
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
 async function handleAuthDeepLink(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return;
+
+  // Immediately close Capacitor Browser if open
+  if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.Browser?.close) {
+    try {
+      await window.Capacitor.Plugins.Browser.close();
+    } catch (_) {}
+  }
+
+  // Web-to-Native Bridge: If auth callback arrives in an external mobile browser, bounce to native app
+  const isMobileBrowser = typeof navigator !== 'undefined' && /Android|iPhone|iPad/i.test(navigator.userAgent || '');
+  if (!isNativeApp() && isMobileBrowser && (rawUrl.includes('access_token=') || rawUrl.includes('code='))) {
+    try {
+      const search = (typeof window !== 'undefined' && window.location?.search) || '';
+      const hash = (typeof window !== 'undefined' && window.location?.hash) || '';
+      const appDeepLink = `com.taskly.app://auth/callback${search}${hash}`;
+      console.log('[Web Auth Bridge]: Mobile browser OAuth redirect detected. Bouncing to native Taskly app:', appDeepLink);
+      window.location.href = appDeepLink;
+    } catch (_) {}
+  }
 
   let code = null;
   let accessToken = null;
@@ -462,9 +705,15 @@ async function handleAuthDeepLink(rawUrl) {
         authErrorMsg.style.borderColor = '#fecaca';
         authErrorMsg.style.background = '#fef2f2';
         authErrorMsg.style.color = '#dc2626';
-        authErrorMsg.textContent = errorMsg || 'Confirmation link is invalid or has expired. Please sign in or request a new confirmation email.';
+        const isCancelled = (errorCode === 'access_denied') || (errorMsg && errorMsg.toLowerCase().includes('denied'));
+        authErrorMsg.textContent = isCancelled
+          ? 'Google Sign-In was cancelled.'
+          : (errorMsg || 'Confirmation link is invalid or has expired. Please sign in or request a new confirmation email.');
       }
       showOnboardingStep('profile-setup', false);
+    }
+    if (typeof resetGoogleSignInButton === 'function') {
+      resetGoogleSignInButton();
     }
     return;
   }
@@ -482,7 +731,7 @@ async function handleAuthDeepLink(rawUrl) {
   // Ensure supabaseClient is ready
   if (!supabaseClient) {
     let attempts = 0;
-    while (!supabaseClient && attempts < 10) {
+    while (!supabaseClient && attempts < 25) {
       await new Promise(r => setTimeout(r, 200));
       attempts++;
     }
@@ -500,11 +749,12 @@ async function handleAuthDeepLink(rawUrl) {
         const { data, error } = await supabaseClient.auth.exchangeCodeForSession(code);
         if (data && data.session && !error) {
           syncAuthSession(data.session);
-          if (isOnboardingCompleted()) {
-            showMainFlow('home');
-          } else {
-            showOnboardingStep('welcome');
+          setOnboardingCompleted(true, true);
+          if (typeof resetGoogleSignInButton === 'function') resetGoogleSignInButton();
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            try { window.history.replaceState(null, '', window.location.pathname || '/'); } catch (_) {}
           }
+          showMainFlow('home');
           return;
         } else if (error) {
           console.warn('[Supabase PKCE Auth Exchange Error]:', error.message);
@@ -537,11 +787,12 @@ async function handleAuthDeepLink(rawUrl) {
         });
         if (data && data.session && !error) {
           syncAuthSession(data.session);
-          if (isOnboardingCompleted()) {
-            showMainFlow('home');
-          } else {
-            showOnboardingStep('welcome');
+          setOnboardingCompleted(true, true);
+          if (typeof resetGoogleSignInButton === 'function') resetGoogleSignInButton();
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            try { window.history.replaceState(null, '', window.location.pathname || '/'); } catch (_) {}
           }
+          showMainFlow('home');
           return;
         }
       }
@@ -562,6 +813,7 @@ async function initSupabaseAuth() {
     if (window.supabase && config.supabaseUrl && config.supabaseAnonKey) {
       supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
         auth: {
+          flowType: 'pkce',
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true
@@ -582,26 +834,11 @@ async function initSupabaseAuth() {
       }
 
       // 2. Register native Capacitor App deep-link listeners (Android APK)
-      if (typeof window !== 'undefined' && window.Capacitor?.Plugins?.App) {
-        const CapApp = window.Capacitor.Plugins.App;
-
-        // Warm resume: User clicked confirmation link while app was running in background
-        CapApp.addListener('appUrlOpen', (event) => {
-          if (event && event.url) {
-            console.log('[Capacitor App]: Received appUrlOpen deep link:', event.url);
-            handleAuthDeepLink(event.url);
-          }
-        });
-
-        // Cold start: User clicked confirmation link while app was closed
-        try {
-          CapApp.getLaunchUrl().then(launchData => {
-            if (launchData && launchData.url) {
-              console.log('[Capacitor App]: Received cold-start launch URL:', launchData.url);
-              handleAuthDeepLink(launchData.url);
-            }
-          }).catch(() => {});
-        } catch (_) {}
+      setupCapacitorAuthListeners();
+      if (pendingAuthDeepLinkUrl) {
+        const urlToProcess = pendingAuthDeepLinkUrl;
+        pendingAuthDeepLinkUrl = null;
+        await handleAuthDeepLink(urlToProcess);
       }
 
       const { data, error } = await supabaseClient.auth.getSession();
@@ -672,6 +909,8 @@ function syncAuthSession(session) {
   state.user.isPreview = false;
   if (meta.name) {
     state.user.name = meta.name;
+  } else if (meta.full_name) {
+    state.user.name = meta.full_name;
   } else if (!state.user.name && session.user?.email) {
     state.user.name = session.user.email.split('@')[0];
   }
@@ -799,9 +1038,39 @@ if (typeof document !== 'undefined') {
       }
     });
 
+    // Register PWA Service Worker for web/Safari environments
+    registerServiceWorker();
+
     // Restore the active screen/route on reload or initial visit
     restoreActiveRoute();
   });
+}
+
+function registerServiceWorker() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+  if (!('serviceWorker' in navigator)) return;
+  // Strictly avoid registering service worker in native Capacitor (Android/iOS) apps
+  if (isNativeApp()) return;
+
+  const initSW = () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then((registration) => {
+        console.log('[Taskly PWA]: ServiceWorker registered successfully with scope:', registration.scope);
+        // Actively check for service worker updates to prevent stale JavaScript
+        if (typeof registration.update === 'function') {
+          registration.update().catch(() => {});
+        }
+      })
+      .catch((err) => {
+        console.warn('[Taskly PWA]: ServiceWorker registration failed:', err);
+      });
+  };
+
+  if (typeof document !== 'undefined' && document.readyState === 'complete') {
+    initSW();
+  } else if (typeof window !== 'undefined') {
+    window.addEventListener('load', initSW);
+  }
 }
 
 // Pre-render fast router to eliminate onboarding carousel flash on cold start
@@ -6744,6 +7013,8 @@ function setAuthMode(mode) {
   const authTitle = document.getElementById('auth-title');
   const authSubtitle = document.getElementById('auth-subtitle');
   const btnAuthText = document.getElementById('btn-auth-text');
+  const switchPromptText = document.getElementById('auth-switch-prompt-text');
+  const btnSwitchAuth = document.getElementById('btn-switch-auth');
 
   if (mode === 'signup') {
     btnToggleSignup?.classList.add('active');
@@ -6753,6 +7024,8 @@ function setAuthMode(mode) {
     if (authTitle) authTitle.innerHTML = 'Create your<br>account ✨';
     if (authSubtitle) authSubtitle.textContent = 'Start organizing your tasks with Taskly.';
     if (btnAuthText) btnAuthText.textContent = 'Create Account';
+    if (switchPromptText) switchPromptText.textContent = 'Already have an account?';
+    if (btnSwitchAuth) btnSwitchAuth.textContent = 'Sign In';
   } else {
     btnToggleLogin?.classList.add('active');
     btnToggleSignup?.classList.remove('active');
@@ -6761,6 +7034,8 @@ function setAuthMode(mode) {
     if (authTitle) authTitle.innerHTML = 'Welcome back<br>to Taskly ✨';
     if (authSubtitle) authSubtitle.textContent = 'Sign in to access and sync your tasks.';
     if (btnAuthText) btnAuthText.textContent = 'Sign In';
+    if (switchPromptText) switchPromptText.textContent = "Don't have an account?";
+    if (btnSwitchAuth) btnSwitchAuth.textContent = 'Sign Up';
   }
 }
 
@@ -12758,6 +13033,8 @@ if (typeof window !== 'undefined') {
 // Event Listeners Setup
 // ==========================================================================
 function setupEventListeners() {
+  setupCapacitorAuthListeners();
+
   // Screen 2: Carousel Navigation (Back to previous slide)
   const btnBackToLaunch = document.getElementById('btn-back-to-launch');
   if (btnBackToLaunch) {
@@ -12805,9 +13082,16 @@ function setupEventListeners() {
   // Auth Mode Toggles (Sign In vs Create Account)
   const btnToggleLogin = document.getElementById('btn-toggle-login');
   const btnToggleSignup = document.getElementById('btn-toggle-signup');
+  const btnSwitchAuth = document.getElementById('btn-switch-auth');
 
   if (btnToggleLogin) btnToggleLogin.addEventListener('click', () => setAuthMode('login'));
   if (btnToggleSignup) btnToggleSignup.addEventListener('click', () => setAuthMode('signup'));
+  if (btnSwitchAuth) {
+    btnSwitchAuth.addEventListener('click', () => {
+      const currentMode = state.authMode || 'login';
+      setAuthMode(currentMode === 'login' ? 'signup' : 'login');
+    });
+  }
 
   // Password Visibility Toggle Listeners
   const btnTogglePassword = document.getElementById('btn-toggle-password');
@@ -12999,6 +13283,15 @@ function setupEventListeners() {
       } finally {
         if (submitBtn) submitBtn.disabled = false;
       }
+    });
+  }
+
+  // Screen 3: Google Sign-In Button Listener
+  const btnGoogleSignin = document.getElementById('btn-google-signin');
+  if (btnGoogleSignin) {
+    btnGoogleSignin.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await handleGoogleSignIn();
     });
   }
 
@@ -14743,6 +15036,13 @@ if (typeof module !== 'undefined' && module.exports) {
     ThemeManager,
     renderTaskItemHtml,
     navigateToTask: (id) => TasklyNotifications.navigateToTask(id),
+    isNativeApp,
+    getOAuthRedirectUrl,
+    handleGoogleSignIn,
+    resetGoogleSignInButton,
+    setupCapacitorAuthListeners,
+    registerServiceWorker,
+    isGoogleAuthInProgress: () => isGoogleAuthInProgress,
     setSupabaseClient: (client) => { supabaseClient = client; },
     getSupabaseClient: () => supabaseClient
   };

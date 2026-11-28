@@ -3304,6 +3304,146 @@ body.onboarding-active .desktop-header,
   outline-offset: 2px;
 }
 
+/* ==========================================================================
+   Google Sign-In & Authentication Divider
+   Consistent with reference screenshot & responsive dark/light themes
+   ========================================================================== */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 18px 0 16px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  user-select: none;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.auth-divider span {
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.btn-google-auth {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 20px;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all var(--transition-fast, 0.18s ease);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.btn-google-auth:hover {
+  background: var(--bg-hover, #f0f9ff);
+  border-color: var(--primary, #0284c7);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12);
+}
+
+.btn-google-auth:active {
+  transform: scale(0.99);
+}
+
+.btn-google-auth:focus-visible {
+  outline: 2px solid var(--primary, #0284c7);
+  outline-offset: 2px;
+}
+
+.btn-google-auth:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-google-auth .google-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* Dark Theme Overrides - Pixel-perfect match to dark reference screenshot */
+[data-theme="dark"] .auth-divider {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .auth-divider::before,
+[data-theme="dark"] .auth-divider::after {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .btn-google-auth {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .btn-google-auth:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.auth-switch-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 18px;
+  text-align: center;
+  font-size: 0.9375rem;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.btn-auth-switch-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  color: #a855f7;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.btn-auth-switch-link:hover {
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .auth-switch-prompt {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+[data-theme="dark"] .btn-auth-switch-link {
+  color: #c084fc;
+}
+
 .btn-password-toggle svg,
 .btn-eye-toggle svg {
   display: block;
